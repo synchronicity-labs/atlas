@@ -57,6 +57,12 @@ export class ConversationsService {
 				...(input.contactId ? { contactId: input.contactId } : {}),
 				...(input.companyId ? { companyId: input.companyId } : {}),
 				...(input.dealId ? { dealId: input.dealId } : {}),
+				...(input.atlasContextKind
+					? {
+							atlasContextKind: input.atlasContextKind,
+							atlasContextId: input.atlasContextId,
+						}
+					: {}),
 			},
 			orderBy: { lastMessageAt: "desc" },
 			take: 20,
@@ -99,6 +105,8 @@ export class ConversationsService {
 				contactId: input.contactId ?? null,
 				companyId: input.companyId ?? null,
 				dealId: input.dealId ?? null,
+				atlasContextKind: input.atlasContextKind ?? null,
+				atlasContextId: input.atlasContextId ?? null,
 			},
 			update: {
 				continuationToken: input.continuationToken ?? null,
@@ -153,6 +161,8 @@ export class ConversationsService {
 				contactId: true,
 				companyId: true,
 				dealId: true,
+				atlasContextKind: true,
+				atlasContextId: true,
 				sessionId: true,
 			},
 		});
@@ -174,7 +184,10 @@ export class ConversationsService {
 				conversation.contactId ??
 					conversation.companyId ??
 					conversation.dealId ??
-					"",
+					this.atlasKey(
+						conversation.atlasContextKind,
+						conversation.atlasContextId,
+					),
 			),
 		);
 
@@ -187,15 +200,25 @@ export class ConversationsService {
 		contactId?: string;
 		companyId?: string;
 		dealId?: string;
+		atlasContextKind?: string;
+		atlasContextId?: string;
 	}): string {
-		const recordId = input.contactId ?? input.companyId ?? input.dealId;
+		const recordId =
+			input.contactId ??
+			input.companyId ??
+			input.dealId ??
+			this.atlasKey(input.atlasContextKind, input.atlasContextId);
 
 		if (!recordId) {
 			throw new BadRequestException(
-				"A conversation belongs to a contact, a company or a deal.",
+				"A conversation needs a CRM record or Atlas context.",
 			);
 		}
 
 		return recordId;
+	}
+
+	private atlasKey(kind?: string | null, id?: string | null): string {
+		return kind && id ? `atlas:${kind}:${id}` : "";
 	}
 }

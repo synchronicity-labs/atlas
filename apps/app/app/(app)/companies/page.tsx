@@ -17,7 +17,7 @@ import { CompaniesTable } from "./companies-table";
 import { CreateCompanySheet } from "./create-company-sheet";
 
 export const metadata: Metadata = {
-	title: "Companies",
+	title: "Clients",
 };
 
 export default async function CompaniesPage({
@@ -40,9 +40,9 @@ export default async function CompaniesPage({
 		<PageShell className="min-h-0">
 			<PageShellHeader>
 				<PageShellHeading>
-					<PageShellTitle>Companies</PageShellTitle>
+					<PageShellTitle>Clients</PageShellTitle>
 					<PageShellDescription>
-						Every account in the pipeline.
+						HubSpot companies connected to their contacts and product accounts.
 					</PageShellDescription>
 				</PageShellHeading>
 				<PageShellActions>

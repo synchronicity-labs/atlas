@@ -1,10 +1,31 @@
 # Environment
 
-## One `.env`, at the root of the repo
+## Atlas local development uses Doppler
 
-Copy [`.env.example`](../.env.example) to `.env` and fill in the five required
-values. That file is the documentation — every variable the repo reads is in it,
-with a note on what it does, and nothing that is not read is in it.
+The shared local configuration is Doppler project `atlas`, config `local`.
+Authenticate once and bind this checkout without downloading secrets:
+
+```sh
+doppler login
+doppler setup --project atlas --config local
+doppler run -- bun install
+bun run dev
+```
+
+The root `dev`, database, Metabase, and marketing sync scripts run through `doppler run`.
+Use `bun run dev:env` only in CI or a deployment that already injects the same
+variables into the process. Never commit a Doppler service token or secret value.
+
+The Google OAuth client must authorize
+`http://localhost:3001/api/auth/callback/google`. Metabase, Google reporting, and
+PostHog credentials must be read-only; Atlas never needs write or admin access.
+
+## One fallback `.env`, at the root of the repo
+
+Self-hosted and CI environments may copy [`.env.example`](../.env.example) to
+`.env` and fill in the required values. That file is the contract — every variable
+the repo reads is in it, with a note on what it does, and nothing that is not read
+is in it. Doppler-injected variables take precedence over the fallback file.
 
 ```sh
 cp .env.example .env
@@ -197,28 +218,20 @@ agent plans around what it actually has, and gives the tools a shared
 research budget is charged, so an install without a key does not pay for the
 discovery on every contact.
 
-### The Context key is asked for, not configured
+### The Context key is a workspace setting, not an environment variable
 
 **`CONTEXT_DEV_API_KEY` is not a variable in this repo, and adding one back
 would be a second answer to a question that already has one.** Nothing reads it
 — not `.env.example`, not `env.validation.ts`, not any `turbo.json`. The key
-lives in `AppSetting` beside the agent's model, it is asked for at
-`/onboarding/research`, and **Settings → General** changes it afterwards.
+lives in `AppSetting` beside the agent's model and **Settings → General** saves
+or changes it for the whole workspace.
 
 Same reason as [SSO](./api.md#sso-is-a-row-not-a-deployment): an admin who
-cannot redeploy cannot set an environment variable. It goes further than SSO
-does, because this is not a key an install can sensibly do without — it decides
-whether a company arrives as itself or as a grey square with its initials in
-it — so [the proxy asks for it](./api.md#the-gate-is-proxyts-and-it-is-answered-once-per-browser)
-rather than leaving it to be discovered on a settings page nobody visits.
-
-- **An install that had the variable set is asked for the key again, and that
-  is the intended upgrade.** Nothing adopts the old value — no boot-time
-  migration, no fallback — so the first navigation after deploying lands
-  everyone on `/onboarding/research`, where they paste the key they already
-  have. It is one interruption, once, in exchange for the answer living in one
-  place rather than two — and it cannot be dismissed, because a dismissed gate
-  is an install quietly filling up with companies that have no logo.
+cannot redeploy can still set a workspace integration. Context is optional in
+Atlas: without it, company research and branding are unavailable, but sign-in,
+dashboards, questions, users, Metabase sync, and the rest of the CRM keep
+working. The old `/onboarding/research` entry point redirects to the default
+Atlas dashboard; configuration lives in Settings.
 - **Nothing is lost in the meantime, and the wait is not a queue.** A `brand`
   task with nowhere to look is consumed and marked done — but it settles
   `SKIPPED` *before* anything marks the row `RUNNING`, and `settle` only writes
@@ -320,7 +333,10 @@ nothing, and Calendar reads from `now` onwards.
 
 | Variable | Required | Notes |
 | --- | --- | --- |
-| `CRON_SECRET` | in deployed environments | Bearer guard on `POST /internal/sync/google`. Vercel sends it automatically as `Authorization: Bearer $CRON_SECRET`. Minimum 16 characters; the route **fails closed** if unset, so locally the cron simply never runs. |
+| `CRON_SECRET` | in deployed environments | Bearer guard on Google, Metabase, marketing, abuse, Modal import, and economics sync routes. Vercel sends it automatically as `Authorization: Bearer $CRON_SECRET`. Minimum 16 characters; every route **fails closed** if unset. |
+| `ATLAS_QUERY_SECRET` | when an internal agent reads Atlas | Read-only bearer credential for `/internal/atlas/catalog` and `/internal/atlas/questions/:number`. It cannot invoke sync routes or mutate data and **fails closed** if unset. |
+| `RUDY_API_URL` | when Atlas chat uses the shared Rudy | Server-only URL for Rudy's Hermes session API. Use a Tailnet endpoint in a deployed environment or a loopback SSH tunnel for local development. |
+| `RUDY_API_KEY` | with `RUDY_API_URL` | Strong bearer credential shared only by Atlas's API process and Rudy's Hermes gateway. It never reaches browser code. |
 
 The absences are deliberate:
 
@@ -343,15 +359,19 @@ Two things to do in Google Cloud before this works:
   Internal app needs no further review. Going External later means the full
   review, so this is a decision, not a checkbox.
 
-The cron is declared in `apps/api/vercel.json` at `*/5 * * * *`. Minute-level
-schedules need a Pro plan; on Hobby it silently becomes daily.
+The generated API deployment declares Google sync every five minutes, Metabase,
+marketing, and inference-economics sync every eight hours, abuse sync every six
+hours, and progressive Metabase backfill every 15 minutes. The definitions live in
+`apps/api/scripts/build-func.mjs`. Minute-level schedules need a Pro plan; on Hobby
+they silently become daily. The separate aggregate Modal collector must run on Rudy
+at least daily before the economics refresh.
 
 ## Database
 
 Prisma is driven through turbo from the repo root: `db:generate`, `db:migrate`,
-`db:push`, `db:reset`, `db:seed`, `db:studio`, `db:deploy`. Config lives in
-`packages/db/prisma.config.ts`, which loads the root `.env` itself, so the CLI
-works without any app running.
+`db:push`, `db:reset`, `db:seed`, `db:studio`, `db:deploy`. Mutating local database
+commands run through Doppler; `packages/db/prisma.config.ts` also supports the root
+fallback `.env` for CI and self-hosted environments.
 
 ## What is not an env var
 

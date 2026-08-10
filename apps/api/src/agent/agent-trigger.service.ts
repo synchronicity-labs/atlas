@@ -70,6 +70,16 @@ export class AgentTriggerService {
 		});
 	}
 
+	async productUserViewed(productUserId: string): Promise<void> {
+		await this.enqueue({
+			productUserId,
+			kind: "posthog-profile",
+			reason: "Product user opened in Atlas",
+			priority: PRIORITY.posthog,
+			budget: 1,
+		});
+	}
+
 	async meetingSoon(contactId: string, when: Date): Promise<void> {
 		await this.enqueue({
 			contactId,
@@ -146,6 +156,7 @@ export class AgentTriggerService {
 	private async enqueue(task: {
 		contactId?: string;
 		companyId?: string;
+		productUserId?: string;
 		kind: string;
 		reason: string;
 		priority: number;
@@ -158,6 +169,7 @@ export class AgentTriggerService {
 					finishedAt: null,
 					...(task.contactId ? { contactId: task.contactId } : {}),
 					...(task.companyId ? { companyId: task.companyId } : {}),
+					...(task.productUserId ? { productUserId: task.productUserId } : {}),
 				},
 				select: { id: true },
 			});
@@ -168,6 +180,7 @@ export class AgentTriggerService {
 				data: {
 					contactId: task.contactId ?? null,
 					companyId: task.companyId ?? null,
+					productUserId: task.productUserId ?? null,
 					kind: task.kind,
 					reason: task.reason,
 					priority: task.priority,
@@ -181,6 +194,7 @@ export class AgentTriggerService {
 				kind: task.kind,
 				contactId: task.contactId,
 				companyId: task.companyId,
+				productUserId: task.productUserId,
 			});
 
 			this.poke();

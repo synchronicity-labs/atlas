@@ -55,13 +55,11 @@ export default async function SignInPage({
 			<AuthShell>
 				<AuthHeading
 					title="No way in yet"
-					description="This CRM has no sign-in method configured, so nobody can get in — including you."
+					description="Atlas has no sign-in method configured, so nobody can get in — including you."
 				/>
 
 				<p className="text-center text-muted-foreground text-sm/5">
-					Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in the root .env file
-					and restart. Your own identity provider can be added from Settings
-					once somebody is signed in.
+					Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in Doppler and restart.
 				</p>
 			</AuthShell>
 		);

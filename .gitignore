@@ -38,6 +38,7 @@ yarn-error.log*
 
 # Agent worktrees
 .claude/worktrees/
+.Codex/
 
 # eve build output
 .eve

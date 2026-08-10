@@ -1,4 +1,6 @@
 import "@crm/ui/globals.css";
+import "react-grid-layout/css/styles.css";
+import "react-resizable/css/styles.css";
 import { Toaster } from "@crm/ui/components/sonner";
 import { TooltipProvider } from "@crm/ui/components/tooltip";
 import { cn } from "@crm/ui/lib/utils";
@@ -20,10 +22,10 @@ const fontMono = Geist_Mono({
 
 export const metadata: Metadata = {
 	title: {
-		default: "Comp AI - CRM",
-		template: "%s · Comp AI CRM",
+		default: "Atlas",
+		template: "%s · Atlas",
 	},
-	description: "Customer Relationship Management for Comp AI",
+	description: "Sync's company brain for metrics, customers and agents.",
 	icons: {
 		icon: [
 			{ url: "/favicon.svg", type: "image/svg+xml" },

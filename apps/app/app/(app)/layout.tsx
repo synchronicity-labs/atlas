@@ -3,7 +3,8 @@ import { AppIconRail } from "@/components/app-icon-rail";
 import { QuickSwitcher } from "@/components/crm/quick-switcher";
 import { RecordSheetHost } from "@/components/crm/record-sheet/record-sheet-host";
 import { MobileNavProvider } from "@/components/mobile-nav";
-import { requireGoogleAccess } from "@/lib/session";
+import { RudyChatHost } from "@/components/rudy-chat";
+import { requireSession } from "@/lib/session";
 import { HydrateClient } from "@/lib/trpc/hydrate";
 
 export default async function AppLayout({
@@ -11,7 +12,7 @@ export default async function AppLayout({
 }: Readonly<{
 	children: React.ReactNode;
 }>) {
-	const { user } = await requireGoogleAccess();
+	const { user } = await requireSession();
 
 	return (
 		<MobileNavProvider>
@@ -31,6 +32,7 @@ export default async function AppLayout({
 				</div>
 
 				<RecordSheetHost />
+				<RudyChatHost />
 
 				<QuickSwitcher />
 			</div>

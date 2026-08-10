@@ -44,9 +44,30 @@ async function handler(request: Request): Promise<Response> {
 	const contactId = request.headers.get("x-crm-contact");
 	const companyId = request.headers.get("x-crm-company");
 	const dealId = request.headers.get("x-crm-deal");
+	const atlasWorkspace = request.headers.get("x-atlas-workspace");
+	const atlasDashboard = request.headers.get("x-atlas-dashboard");
+	const atlasQuestion = request.headers.get("x-atlas-question");
 	headers.delete("x-crm-contact");
 	headers.delete("x-crm-company");
 	headers.delete("x-crm-deal");
+	headers.delete("x-atlas-workspace");
+	headers.delete("x-atlas-dashboard");
+	headers.delete("x-atlas-question");
+
+	const atlasContext =
+		atlasWorkspace === "atlas"
+			? { atlasContextKind: "workspace" as const, atlasContextId: "atlas" }
+			: positiveInteger(atlasDashboard)
+				? {
+						atlasContextKind: "dashboard" as const,
+						atlasContextId: positiveInteger(atlasDashboard) as string,
+					}
+				: positiveInteger(atlasQuestion)
+					? {
+							atlasContextKind: "question" as const,
+							atlasContextId: positiveInteger(atlasQuestion) as string,
+						}
+					: {};
 
 	headers.set(
 		"authorization",
@@ -60,6 +81,7 @@ async function handler(request: Request): Promise<Response> {
 				contactId: cuid(contactId),
 				companyId: cuid(companyId),
 				dealId: cuid(dealId),
+				...atlasContext,
 			},
 		)}`,
 	);
@@ -118,4 +140,8 @@ export {
 
 function cuid(value: string | null): string | undefined {
 	return value && /^[a-z0-9]{20,32}$/.test(value) ? value : undefined;
+}
+
+function positiveInteger(value: string | null): string | undefined {
+	return value && /^[1-9]\d*$/.test(value) ? value : undefined;
 }

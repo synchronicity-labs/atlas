@@ -1,16 +1,19 @@
 import { AUTH_COOKIE_PREFIX } from "@crm/auth/cookies";
 import { getSessionCookie } from "better-auth/cookies";
 import { type NextRequest, NextResponse } from "next/server";
-import {
-	ONBOARDING_PATH,
-	RESEARCH_PATH,
-	readOnboardingGate,
-	readResearchGate,
-} from "@/lib/onboarding";
+import { ONBOARDING_PATH, readOnboardingGate } from "@/lib/onboarding";
 
 const SIGN_IN_PATH = "/sign-in";
 
-const UNGATED = [SIGN_IN_PATH, "/grant-access", "/eve"];
+const UNGATED = [
+	SIGN_IN_PATH,
+	"/grant-access",
+	"/eve",
+	"/dashboards",
+	"/questions",
+	"/users",
+	"/companies",
+];
 
 export async function proxy(request: NextRequest) {
 	const { pathname } = request.nextUrl;
@@ -25,19 +28,11 @@ export async function proxy(request: NextRequest) {
 
 	if (isUngated(pathname)) return NextResponse.next();
 
-	// Both answers, every time, and concurrently — so the gate costs one round
-	// trip rather than two, and neither answer can be stale.
-	const [onboarding, research] = await Promise.all([
-		readOnboardingGate(request),
-		readResearchGate(request),
-	]);
+	const onboarding = await readOnboardingGate(request);
 
 	if (onboarding === "required") return sendTo(ONBOARDING_PATH, request);
-	if (research === "required") return sendTo(RESEARCH_PATH, request);
 
-	const settled = onboarding === "settled" && research === "settled";
-
-	return settled && isSetup(pathname)
+	return onboarding === "settled" && pathname === ONBOARDING_PATH
 		? NextResponse.redirect(new URL("/", request.nextUrl))
 		: NextResponse.next();
 }
@@ -46,10 +41,6 @@ function isUngated(pathname: string): boolean {
 	return UNGATED.some(
 		(prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
 	);
-}
-
-function isSetup(pathname: string): boolean {
-	return pathname === ONBOARDING_PATH || pathname === RESEARCH_PATH;
 }
 
 function sendTo(path: string, request: NextRequest): NextResponse {

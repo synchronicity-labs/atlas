@@ -13,16 +13,24 @@ export function GoogleSignIn() {
 	async function handleClick() {
 		setPending(true);
 
-		const origin = window.location.origin;
+		try {
+			const origin = window.location.origin;
+			const { error } = await signIn.social({
+				provider: "google",
+				callbackURL: `${origin}/dashboards`,
+				errorCallbackURL: `${origin}/sign-in`,
+			});
 
-		const { error } = await signIn.social({
-			provider: "google",
-			callbackURL: `${origin}/`,
-			errorCallbackURL: `${origin}/sign-in`,
-		});
-
-		if (error) {
-			toast.error(error.message ?? "Could not reach the sign-in service.");
+			if (error) {
+				toast.error(error.message ?? "Could not reach the sign-in service.");
+			}
+		} catch (error) {
+			toast.error(
+				error instanceof Error
+					? error.message
+					: "Could not reach the sign-in service.",
+			);
+		} finally {
 			setPending(false);
 		}
 	}

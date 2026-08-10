@@ -1,0 +1,1 @@
+ALTER TYPE "QueryLanguage" ADD VALUE IF NOT EXISTS 'API';

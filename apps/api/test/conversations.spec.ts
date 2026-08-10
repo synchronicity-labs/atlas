@@ -122,6 +122,32 @@ describe("ConversationsService", () => {
 		expect(await service.list({ contactId }, "somebody-else")).toEqual([]);
 	});
 
+	it("keeps Atlas dashboard conversations in their own context", async () => {
+		await service.save(
+			{
+				atlasContextKind: "dashboard",
+				atlasContextId: "1",
+				sessionId: `ses_${suffix}_atlas_1`,
+				title: "What changed?",
+				messageCount: 2,
+			},
+			userId,
+		);
+
+		const conversations = await service.list(
+			{ atlasContextKind: "dashboard", atlasContextId: "1" },
+			userId,
+		);
+		expect(conversations).toHaveLength(1);
+		expect(conversations[0]?.sessionId).toBe(`ses_${suffix}_atlas_1`);
+		expect(
+			await service.list(
+				{ atlasContextKind: "question", atlasContextId: "1" },
+				userId,
+			),
+		).toEqual([]);
+	});
+
 	it("refuses a conversation that belongs to a record of neither kind", async () => {
 		expect(
 			service.save({ sessionId: `ses_${suffix}_3` }, userId),

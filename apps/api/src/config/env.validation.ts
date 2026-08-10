@@ -102,6 +102,125 @@ export class EnvironmentVariables {
 	@IsOptional()
 	@IsString()
 	AGENT_BRIDGE_SECRET?: string;
+
+	@IsOptional()
+	@IsUrl({ require_tld: false, require_protocol: true })
+	RUDY_API_URL?: string;
+
+	@IsOptional()
+	@IsString()
+	@MinLength(16, {
+		message: "RUDY_API_KEY must be at least 16 characters.",
+	})
+	RUDY_API_KEY?: string;
+
+	@IsOptional()
+	@IsString()
+	@MinLength(16, {
+		message: "ATLAS_QUERY_SECRET must be at least 16 characters.",
+	})
+	ATLAS_QUERY_SECRET?: string;
+
+	@IsOptional()
+	@IsUrl({ require_tld: false })
+	METABASE_BASE_URL?: string;
+
+	@IsOptional()
+	@IsString()
+	METABASE_API_KEY?: string;
+
+	@IsOptional()
+	@Type(() => Number)
+	@IsInt()
+	@Min(1)
+	METABASE_DASHBOARD_ID?: number;
+
+	@IsOptional()
+	@Type(() => Number)
+	@IsInt()
+	@Min(1)
+	METABASE_USER_QUESTION_ID?: number;
+
+	@IsOptional()
+	@Type(() => Number)
+	@IsInt()
+	@Min(1)
+	@Max(100)
+	METABASE_SYNC_BATCH_SIZE?: number;
+
+	@IsOptional()
+	@Type(() => Number)
+	@IsInt()
+	@Min(10)
+	@Max(2000)
+	METABASE_USER_BATCH_SIZE?: number;
+
+	@IsOptional()
+	@Type(() => Number)
+	@IsInt()
+	@Min(1)
+	@Max(120)
+	METABASE_MAX_BACKFILL_MONTHS?: number;
+
+	@IsOptional()
+	@IsString()
+	GOOGLE_SERVICE_ACCOUNT_JSON?: string;
+
+	@IsOptional()
+	@IsString()
+	GA4_LANDING_PROPERTY_ID?: string;
+
+	@IsOptional()
+	@IsString()
+	GA4_BLOG_PROPERTY_ID?: string;
+
+	@IsOptional()
+	@IsString()
+	GA4_PLAYGROUND_PROPERTY_ID?: string;
+
+	@IsOptional()
+	@IsString()
+	GA4_DOCS_PROPERTY_ID?: string;
+
+	@IsOptional()
+	@IsString()
+	GA4_LIPSYNC_PROPERTY_ID?: string;
+
+	@IsOptional()
+	@IsString()
+	GA4_SUPPORT_PROPERTY_ID?: string;
+
+	@IsOptional()
+	@IsString()
+	GOOGLE_SEARCH_CONSOLE_SYNC_SITE?: string;
+
+	@IsOptional()
+	@IsString()
+	GOOGLE_SEARCH_CONSOLE_LIPSYNC_SITE?: string;
+
+	@IsOptional()
+	@IsUrl({ require_tld: false })
+	POSTHOG_HOST?: string;
+
+	@IsOptional()
+	@IsString()
+	POSTHOG_API_KEY?: string;
+
+	@IsOptional()
+	@IsString()
+	POSTHOG_PROJECT_ID?: string;
+
+	@IsOptional()
+	@IsString()
+	HUBSPOT_ACCESS_TOKEN?: string;
+
+	@IsOptional()
+	@IsUrl({ require_tld: false })
+	HUBSPOT_BASE_URL?: string;
+
+	@IsOptional()
+	@IsString()
+	HUBSPOT_PORTAL_ID?: string;
 }
 
 export function validateEnv(

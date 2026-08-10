@@ -14,22 +14,32 @@ import { z } from "zod";
 const t = initTRPC.create();
 const publicProcedure = t.procedure;
 import { timelineInput, timelineCountsInput, myTasksInput, activityCreateInput, completeInput } from "../activities/activities.contracts";
+import { dashboardNumberInput, dashboardRefreshInput, dashboardLayoutInput } from "../atlas-dashboards/atlas-dashboards.contracts";
 import { companyListInput, companyIdInput, companyOptionsInput, companyCreateInput, companyUpdateArgs, setPrimaryContactInput } from "../companies/companies.contracts";
 import { contactListInput, contactIdInput, contactCreateInput, contactUpdateArgs, factDecisionInput } from "../contacts/contacts.contracts";
 import { conversationListInput, conversationEventsInput, conversationSaveInput, conversationIdInput } from "../conversations/conversations.contracts";
 import { dashboardSummaryInput } from "../dashboard/dashboard.contracts";
 import { dealListInput, dealIdInput, dealCreateInput, dealUpdateArgs, setStageInput } from "../deals/deals.contracts";
 import { setAutoCreateInput, suppressDomainInput, threadInput, calendarEventInput } from "../google/google.contracts";
+import { metabaseUserSyncInput, metabaseDashboardSyncInput } from "../metabase/metabase.contracts";
+import { productUserListInput, productUserIdInput, productUserDomainInput } from "../product-users/product-users.contracts";
+import { questionListInput, questionNumberInput, questionProposalInput, questionPreviewInput, questionSaveVersionInput } from "../questions/questions.contracts";
+import { rudyListInput, rudyMessagesInput, rudySendInput, rudyRemoveInput } from "../rudy/rudy.contracts";
 import { setAgentModelInput, setResearchKeyInput } from "../settings/settings.contracts";
 import { ssoProviderListInput, registerSsoProviderInput, deleteSsoProviderInput } from "../sso/sso.contracts";
 import { memberListInput, updateWorkspaceInput, setMemberRoleInput } from "../workspace/workspace.contracts";
 import type { ActivitiesRouter } from "../activities/activities.router";
+import type { AtlasDashboardsRouter } from "../atlas-dashboards/atlas-dashboards.router";
 import type { CompaniesRouter } from "../companies/companies.router";
 import type { ContactsRouter } from "../contacts/contacts.router";
 import type { ConversationsRouter } from "../conversations/conversations.router";
 import type { DashboardRouter } from "../dashboard/dashboard.router";
 import type { DealsRouter } from "../deals/deals.router";
 import type { GoogleRouter } from "../google/google.router";
+import type { MetabaseRouter } from "../metabase/metabase.router";
+import type { ProductUsersRouter } from "../product-users/product-users.router";
+import type { QuestionsRouter } from "../questions/questions.router";
+import type { RudyRouter } from "../rudy/rudy.router";
 import type { SearchRouter } from "../search/search.router";
 import type { SettingsRouter } from "../settings/settings.router";
 import type { SsoRouter } from "../sso/sso.router";
@@ -53,6 +63,19 @@ const appRouter = t.router({
     complete: publicProcedure
       .input(completeInput)
       .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<ActivitiesRouter["complete"]>>)
+    }),
+  atlasDashboards: t.router({
+    list: publicProcedure
+      .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<AtlasDashboardsRouter["list"]>>),
+    byNumber: publicProcedure
+      .input(dashboardNumberInput)
+      .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<AtlasDashboardsRouter["byNumber"]>>),
+    refresh: publicProcedure
+      .input(dashboardRefreshInput)
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<AtlasDashboardsRouter["refresh"]>>),
+    updateLayout: publicProcedure
+      .input(dashboardLayoutInput)
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<AtlasDashboardsRouter["updateLayout"]>>)
     }),
   companies: t.router({
     list: publicProcedure
@@ -166,6 +189,60 @@ const appRouter = t.router({
     event: publicProcedure
       .input(calendarEventInput)
       .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<GoogleRouter["event"]>>)
+    }),
+  metabase: t.router({
+    status: publicProcedure
+      .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<MetabaseRouter["status"]>>),
+    syncUsers: publicProcedure
+      .input(metabaseUserSyncInput)
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<MetabaseRouter["syncUsers"]>>),
+    syncDashboard: publicProcedure
+      .input(metabaseDashboardSyncInput)
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<MetabaseRouter["syncDashboard"]>>)
+    }),
+  productUsers: t.router({
+    list: publicProcedure
+      .input(productUserListInput)
+      .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<ProductUsersRouter["list"]>>),
+    byId: publicProcedure
+      .input(productUserIdInput)
+      .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<ProductUsersRouter["byId"]>>),
+    domain: publicProcedure
+      .input(productUserDomainInput)
+      .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<ProductUsersRouter["domain"]>>)
+    }),
+  questions: t.router({
+    list: publicProcedure
+      .input(questionListInput)
+      .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<QuestionsRouter["list"]>>),
+    byNumber: publicProcedure
+      .input(questionNumberInput)
+      .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<QuestionsRouter["byNumber"]>>),
+    proposal: publicProcedure
+      .input(questionProposalInput)
+      .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<QuestionsRouter["proposal"]>>),
+    preview: publicProcedure
+      .input(questionPreviewInput)
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<QuestionsRouter["preview"]>>),
+    saveVersion: publicProcedure
+      .input(questionSaveVersionInput)
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<QuestionsRouter["saveVersion"]>>)
+    }),
+  rudy: t.router({
+    status: publicProcedure
+      .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<RudyRouter["status"]>>),
+    list: publicProcedure
+      .input(rudyListInput)
+      .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<RudyRouter["list"]>>),
+    messages: publicProcedure
+      .input(rudyMessagesInput)
+      .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<RudyRouter["messages"]>>),
+    send: publicProcedure
+      .input(rudySendInput)
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<RudyRouter["send"]>>),
+    remove: publicProcedure
+      .input(rudyRemoveInput)
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<RudyRouter["remove"]>>)
     }),
   search: t.router({
     quick: publicProcedure

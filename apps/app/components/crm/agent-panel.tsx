@@ -3,6 +3,7 @@
 import Checkmark from "@carbon/icons-react/es/Checkmark";
 import CircleDash from "@carbon/icons-react/es/CircleDash";
 import Document from "@carbon/icons-react/es/Document";
+import Edit from "@carbon/icons-react/es/Edit";
 import LogoGithub from "@carbon/icons-react/es/LogoGithub";
 import LogoLinkedin from "@carbon/icons-react/es/LogoLinkedin";
 import Send from "@carbon/icons-react/es/Send";
@@ -46,7 +47,8 @@ import {
 import { Spinner } from "@crm/ui/components/spinner";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEveAgent } from "eve/react";
-import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
 	type Conversation,
 	ConversationPicker,
@@ -77,20 +79,43 @@ import { useTRPC } from "@/lib/trpc/client";
 import { useRecordSheetView } from "./record-sheet/record-stack";
 
 export function AgentPanel({ record }: { record: AgentRecord }) {
-	const conversations = useConversations(recordFilter(record));
 	const { thread, setThread } = useRecordSheetView("overview");
+	return (
+		<AgentConversationPanel
+			record={record}
+			thread={thread}
+			onThreadChange={setThread}
+		/>
+	);
+}
 
-	const history = conversations.data ?? [];
+export function AgentConversationPanel({
+	record,
+	thread,
+	onThreadChange,
+}: {
+	record: AgentRecord;
+	thread: string | null;
+	onThreadChange: (thread: string | null) => void;
+}) {
+	const conversations = useConversations(recordFilter(record));
 
-	const landedOn = useRef<string | null>(null);
-	if (landedOn.current === null && conversations.isSuccess) {
-		landedOn.current = history[0]?.id ?? NEW_THREAD;
-	}
+	const history = useMemo(
+		() => conversations.data ?? [],
+		[conversations.data],
+	);
+
+	const [landedOn, setLandedOn] = useState<string | null>(null);
+	useEffect(() => {
+		if (landedOn === null && conversations.isSuccess) {
+			setLandedOn(history[0]?.id ?? NEW_THREAD);
+		}
+	}, [conversations.isSuccess, history, landedOn]);
 
 	const { openId, current } = resolveThread({
 		conversations: history,
 		fromUrl: thread,
-		landedOn: landedOn.current,
+		landedOn,
 	});
 
 	if (conversations.isPending) return <Loading />;
@@ -100,8 +125,8 @@ export function AgentPanel({ record }: { record: AgentRecord }) {
 			<ConversationPicker
 				conversations={history}
 				current={current}
-				onSelect={(conversation) => setThread(conversation.id)}
-				onNew={() => setThread(NEW_THREAD)}
+				onSelect={(conversation) => onThreadChange(conversation.id)}
+				onNew={() => onThreadChange(NEW_THREAD)}
 				busy={false}
 			/>
 
@@ -109,7 +134,7 @@ export function AgentPanel({ record }: { record: AgentRecord }) {
 				key={openId ?? NEW_THREAD}
 				record={record}
 				conversation={current}
-				onNewThread={() => setThread(NEW_THREAD)}
+				onNewThread={() => onThreadChange(NEW_THREAD)}
 			/>
 		</div>
 	);
@@ -360,6 +385,25 @@ const SOURCE_ICONS: Record<Source["network"], CarbonIcon> = {
 };
 
 function Item({ item }: { item: TranscriptItem }) {
+	if (item.kind === "proposal") {
+		return (
+			<div className="ml-9 rounded-md border bg-muted/30 p-3">
+				<div className="flex items-start gap-2">
+					<Icon icon={Edit} className="mt-0.5 shrink-0 text-muted-foreground" />
+					<div className="min-w-0 flex-1">
+						<p className="font-medium text-sm">
+							Proposed edit to question {item.questionNumber}
+						</p>
+						<p className="mt-1 text-muted-foreground text-xs">{item.summary}</p>
+						<Button asChild variant="outline" size="sm" className="mt-3">
+							<Link href={item.reviewUrl}>Review and preview</Link>
+						</Button>
+					</div>
+				</div>
+			</div>
+		);
+	}
+
 	if (item.kind === "said") {
 		return item.mine ? (
 			<Message align="end">
@@ -475,7 +519,13 @@ function useSavedConversation({
 	session,
 	messages,
 }: {
-	record: { contactId?: string; companyId?: string; dealId?: string };
+	record: {
+		contactId?: string;
+		companyId?: string;
+		dealId?: string;
+		atlasContextKind?: "workspace" | "dashboard" | "question";
+		atlasContextId?: string;
+	};
 	conversation: Conversation | null;
 	opening: React.RefObject<string | null>;
 	session: {
@@ -492,12 +542,15 @@ function useSavedConversation({
 	const sessionId = session?.sessionId ?? null;
 	const token = session?.continuationToken ?? null;
 	const streamIndex = session?.streamIndex ?? 0;
-	const { contactId, companyId, dealId } = record;
+	const { contactId, companyId, dealId, atlasContextKind, atlasContextId } =
+		record;
 
 	const isNew = conversation === null || conversation.sessionId !== sessionId;
 
 	const latest = useRef({ save, queryClient, trpc, opening });
-	latest.current = { save, queryClient, trpc, opening };
+	useEffect(() => {
+		latest.current = { save, queryClient, trpc, opening };
+	}, [opening, queryClient, save, trpc]);
 
 	const written = useRef<string | null>(null);
 
@@ -520,6 +573,8 @@ function useSavedConversation({
 				...(contactId ? { contactId } : {}),
 				...(companyId ? { companyId } : {}),
 				...(dealId ? { dealId } : {}),
+				...(atlasContextKind ? { atlasContextKind } : {}),
+				...(atlasContextId ? { atlasContextId } : {}),
 				sessionId,
 				continuationToken: token,
 				streamIndex,
@@ -543,6 +598,8 @@ function useSavedConversation({
 		contactId,
 		companyId,
 		dealId,
+		atlasContextKind,
+		atlasContextId,
 		isNew,
 	]);
 }

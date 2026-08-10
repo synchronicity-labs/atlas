@@ -12,19 +12,13 @@ import {
 	DropdownMenuTrigger,
 } from "@crm/ui/components/dropdown-menu";
 import { Icon } from "@crm/ui/components/icon";
+import { RelativeTimestamp } from "@crm/ui/components/relative-timestamp";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { useTRPC } from "@/lib/trpc/client";
 import type { RouterOutputs } from "@/lib/trpc/types";
 
 export type Conversation = RouterOutputs["conversations"]["list"][number];
-
-const dateFormat = new Intl.DateTimeFormat(undefined, {
-	month: "short",
-	day: "numeric",
-	hour: "numeric",
-	minute: "2-digit",
-});
 
 export function ConversationPicker({
 	conversations,
@@ -68,7 +62,10 @@ export function ConversationPicker({
 									{conversation.title ?? "Untitled"}
 								</span>
 								<span className="shrink-0 text-muted-foreground text-xs">
-									{dateFormat.format(new Date(conversation.lastMessageAt))}
+									<RelativeTimestamp
+										value={conversation.lastMessageAt}
+										prefix=""
+									/>
 								</span>
 							</DropdownMenuItem>
 						))
@@ -128,6 +125,9 @@ function Forget({
 export function useConversations(recordId: {
 	contactId?: string;
 	companyId?: string;
+	dealId?: string;
+	atlasContextKind?: "workspace" | "dashboard" | "question";
+	atlasContextId?: string;
 }) {
 	const trpc = useTRPC();
 	return useQuery(trpc.conversations.list.queryOptions(recordId));

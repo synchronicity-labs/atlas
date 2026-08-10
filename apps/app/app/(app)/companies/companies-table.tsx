@@ -93,6 +93,14 @@ const COLUMNS: DataTableColumn<CompanyRow>[] = [
 		cell: (row) => <span className="tabular-nums">{row.contactCount}</span>,
 	},
 	{
+		id: "productUsers",
+		header: "Product users",
+		align: "right",
+		width: "w-[9%]",
+		hideBelow: "lg",
+		cell: (row) => <span className="tabular-nums">{row.productUserCount}</span>,
+	},
+	{
 		id: "deals",
 		header: "Open deals",
 		sortable: true,
@@ -190,7 +198,7 @@ export function CompaniesTable() {
 	return (
 		<DataTable
 			query={query}
-			search={<ListSearch placeholder="Search companies by name or domain…" />}
+			search={<ListSearch placeholder="Search clients by name or domain…" />}
 			columns={COLUMNS}
 			rows={companies.data?.rows ?? []}
 			total={companies.data?.total ?? 0}
@@ -200,7 +208,7 @@ export function CompaniesTable() {
 			loading={companies.isFetching}
 			onRowHover={(row) => prefetchRecord({ kind: "company", id: row.id })}
 			onRowClick={(row) => openRecord({ kind: "company", id: row.id })}
-			empty="No companies match this view."
+			empty="No clients match this view."
 		/>
 	);
 }

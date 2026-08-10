@@ -1,4 +1,3 @@
-
 datasource db {
   provider = "postgresql"
 }
@@ -30,6 +29,7 @@ model User {
   mailboxSyncs   MailboxSync[]
   factDecisions  ContactFact[]       @relation("FactDecider")
   conversations  AgentConversation[] @relation("ConversationOwner")
+  rudySessions   RudySession[]
 
   members     Member[]
   invitations Invitation[]
@@ -133,6 +133,74 @@ enum RecordSource {
   IMPORT
   EMAIL
   CALENDAR
+  HUBSPOT
+}
+
+enum DataSourceKind {
+  METABASE
+  STRIPE
+  HUBSPOT
+  POSTHOG
+  ATLAS
+}
+
+enum ExternalRecordKind {
+  COMPANY
+  CONTACT
+  PERSON
+  DEAL
+  PIPELINE
+  OWNER
+  ACTIVITY
+}
+
+enum IdentityLinkMethod {
+  EXACT_EXTERNAL_ID
+  EXACT_EMAIL
+  EXACT_DOMAIN
+  SOURCE_ASSOCIATION
+  MEMBER_DOMAIN
+}
+
+enum SourceStatus {
+  UNCONFIGURED
+  SYNCING
+  HEALTHY
+  STALE
+  ERROR
+}
+
+enum SyncMode {
+  INCREMENTAL
+  BACKFILL
+}
+
+enum SyncRunStatus {
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+enum QueryLanguage {
+  SQL
+  MBQL
+  API
+}
+
+enum QuestionStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+enum VisualizationType {
+  NUMBER
+  LINE
+  AREA
+  BAR
+  PIE
+  TABLE
+  FUNNEL
+  TEXT
 }
 
 model Company {
@@ -178,14 +246,17 @@ model Company {
 
   lastActivityAt DateTime?
 
-  contacts       Contact[]           @relation("CompanyContacts")
-  conversations  AgentConversation[]
-  deals          Deal[]
-  activities     Activity[]
-  emailThreads   EmailThread[]
-  calendarEvents CalendarEvent[]
-  createdAt      DateTime            @default(now())
-  updatedAt      DateTime            @updatedAt
+  contacts                 Contact[]                        @relation("CompanyContacts")
+  conversations            AgentConversation[]
+  deals                    Deal[]
+  activities               Activity[]
+  emailThreads             EmailThread[]
+  calendarEvents           CalendarEvent[]
+  sourceRecords            SourceRecord[]
+  productUserLinks         ProductUserCompanyLink[]
+  productOrganizationLinks ProductOrganizationCompanyLink[]
+  createdAt                DateTime                         @default(now())
+  updatedAt                DateTime                         @updatedAt
 
   @@index([ownerId])
   @@index([name])
@@ -235,13 +306,15 @@ model Contact {
 
   lastActivityAt DateTime?
 
-  deals           DealContact[]
-  activities      Activity[]
-  emailThreads    EmailThread[]
-  calendarEvents  CalendarEvent[]
-  eventAttendance CalendarAttendee[]
-  createdAt       DateTime           @default(now())
-  updatedAt       DateTime           @updatedAt
+  deals            DealContact[]
+  activities       Activity[]
+  emailThreads     EmailThread[]
+  calendarEvents   CalendarEvent[]
+  eventAttendance  CalendarAttendee[]
+  sourceRecords    SourceRecord[]
+  productUserLinks ProductUserContactLink[]
+  createdAt        DateTime                 @default(now())
+  updatedAt        DateTime                 @updatedAt
 
   @@index([companyId])
   @@index([ownerId])
@@ -310,9 +383,11 @@ model ContactBrief {
 }
 
 model AgentTask {
-  id        String  @id @default(cuid())
-  contactId String?
-  companyId String?
+  id            String       @id @default(cuid())
+  contactId     String?
+  companyId     String?
+  productUserId String?
+  productUser   ProductUser? @relation(fields: [productUserId], references: [id], onDelete: Cascade)
 
   kind   String
   reason String
@@ -333,6 +408,7 @@ model AgentTask {
 
   @@index([dueAt, leasedUntil])
   @@index([contactId])
+  @@index([productUserId])
   @@map("agentTask")
 }
 
@@ -360,6 +436,9 @@ model AgentConversation {
   dealId    String?
   deal      Deal?    @relation(fields: [dealId], references: [id], onDelete: Cascade)
 
+  atlasContextKind String?
+  atlasContextId   String?
+
   userId String
   user   User   @relation("ConversationOwner", fields: [userId], references: [id], onDelete: Cascade)
 
@@ -376,7 +455,28 @@ model AgentConversation {
   @@index([contactId, lastMessageAt])
   @@index([companyId, lastMessageAt])
   @@index([dealId, lastMessageAt])
+  @@index([atlasContextKind, atlasContextId, lastMessageAt])
   @@map("agentConversation")
+}
+
+model RudySession {
+  id String @id @default(cuid())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  contextKind String
+  contextId   String
+
+  hermesSessionId String @unique
+  title           String?
+  messageCount    Int    @default(0)
+
+  createdAt     DateTime @default(now())
+  lastMessageAt DateTime @default(now())
+
+  @@index([userId, contextKind, contextId, lastMessageAt])
+  @@map("rudySession")
 }
 
 model Deal {
@@ -623,6 +723,484 @@ model AppSetting {
   updatedAt DateTime @updatedAt
 
   @@map("appSetting")
+}
+
+model DataSource {
+  id                  String         @id @default(cuid())
+  key                 String         @unique
+  kind                DataSourceKind
+  label               String
+  state               SourceStatus   @default(UNCONFIGURED)
+  lastSyncAt          DateTime?
+  lastError           String?
+  freshnessDeadlineAt DateTime?
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+
+  dashboards            SourceDashboard[]
+  cards                 SourceCard[]
+  syncRuns              SyncRun[]
+  syncCursors           SyncCursor[]
+  resultSnapshots       ResultSnapshot[]
+  questions             Question[]
+  productUsers          ProductUser[]
+  productOrganizations  ProductOrganization[]
+  productUserSnapshots  ProductUserSnapshot[]
+  sourceRecords         SourceRecord[]
+  sourceRecordSnapshots SourceRecordSnapshot[]
+
+  @@map("dataSource")
+}
+
+model SourceDashboard {
+  id           String     @id @default(cuid())
+  sourceId     String
+  source       DataSource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  externalId   String
+  name         String
+  description  String?
+  tabs         Json
+  metadataHash String
+  metadata     Json?
+  syncedAt     DateTime
+
+  cards SourceCard[]
+
+  @@unique([sourceId, externalId])
+  @@index([sourceId, syncedAt])
+  @@map("sourceDashboard")
+}
+
+model SourceCard {
+  id                 String          @id @default(cuid())
+  sourceId           String
+  source             DataSource      @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  dashboardId        String
+  dashboard          SourceDashboard @relation(fields: [dashboardId], references: [id], onDelete: Cascade)
+  externalId         String
+  dashcardExternalId String
+  tabExternalId      String?
+  name               String
+  description        String?
+  display            String
+  queryType          String?
+  databaseExternalId String?
+  metadata           Json
+  syncedAt           DateTime
+
+  @@unique([sourceId, dashcardExternalId])
+  @@index([sourceId, externalId])
+  @@index([dashboardId, tabExternalId])
+  @@map("sourceCard")
+}
+
+model SyncRun {
+  id               String        @id @default(cuid())
+  runKey           String        @unique
+  sourceId         String
+  source           DataSource    @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  mode             SyncMode
+  status           SyncRunStatus @default(RUNNING)
+  scope            String
+  period           String
+  cardsProcessed   Int           @default(0)
+  snapshotsCreated Int           @default(0)
+  recordsProcessed Int           @default(0)
+  checkpoint       Json?
+  error            String?
+  startedAt        DateTime      @default(now())
+  finishedAt       DateTime?
+
+  @@index([sourceId, startedAt])
+  @@map("syncRun")
+}
+
+model SyncCursor {
+  id               String     @id @default(cuid())
+  sourceId         String
+  source           DataSource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  mode             SyncMode
+  scope            String
+  period           String
+  offset           Int        @default(0)
+  cursor           String?
+  completedPeriods Int        @default(0)
+  updatedAt        DateTime   @updatedAt
+
+  @@unique([sourceId, mode, scope])
+  @@map("syncCursor")
+}
+
+model ResultSnapshot {
+  id                  String     @id @default(cuid())
+  idempotencyKey      String     @unique
+  sourceId            String
+  source              DataSource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  dashboardExternalId String?
+  questionExternalId  String
+  reportingPeriod     String
+  capturedAt          DateTime
+  contentHash         String
+  columns             Json
+  rows                Json
+  rowCount            Int
+  createdAt           DateTime   @default(now())
+
+  @@index([questionExternalId, reportingPeriod, capturedAt])
+  @@index([sourceId, capturedAt])
+  @@map("resultSnapshot")
+}
+
+model Question {
+  id                        String         @id @default(cuid())
+  number                    Int            @unique
+  name                      String
+  description               String?
+  connector                 DataSourceKind
+  sourceId                  String?
+  source                    DataSource?    @relation(fields: [sourceId], references: [id], onDelete: SetNull)
+  sourceExternalId          String?
+  sourceDashboardExternalId String?
+  databaseExternalId        String?
+  status                    QuestionStatus @default(ACTIVE)
+  createdAt                 DateTime       @default(now())
+  updatedAt                 DateTime       @updatedAt
+
+  versions        QuestionVersion[]
+  dashboardCards  DashboardCard[]
+  changeProposals QuestionChangeProposal[]
+
+  @@unique([connector, sourceExternalId])
+  @@index([status, updatedAt])
+  @@map("question")
+}
+
+model QuestionChangeProposal {
+  id            String        @id @default(cuid())
+  questionId    String
+  question      Question      @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  sessionId     String
+  summary       String
+  name          String
+  description   String?
+  queryLanguage QueryLanguage
+  queryText     String
+  display       String
+  visualization Json
+  status        String        @default("PENDING")
+  createdAt     DateTime      @default(now())
+  reviewedAt    DateTime?
+
+  @@index([questionId, status, createdAt])
+  @@index([sessionId, createdAt])
+  @@map("questionChangeProposal")
+}
+
+model QuestionVersion {
+  id                   String        @id @default(cuid())
+  questionId           String
+  question             Question      @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  version              Int
+  queryLanguage        QueryLanguage
+  queryText            String
+  display              String
+  visualization        Json
+  sourceCardExternalId String?
+  createdBy            String
+  createdAt            DateTime      @default(now())
+
+  @@unique([questionId, version])
+  @@index([questionId, createdAt])
+  @@map("questionVersion")
+}
+
+model Dashboard {
+  id            String   @id @default(cuid())
+  number        Int      @unique
+  name          String
+  description   String?
+  layoutVersion Int      @default(1)
+  createdBy     String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  tabs  DashboardTab[]
+  cards DashboardCard[]
+
+  @@map("dashboard")
+}
+
+model DashboardTab {
+  id               String    @id @default(cuid())
+  dashboardId      String
+  dashboard        Dashboard @relation(fields: [dashboardId], references: [id], onDelete: Cascade)
+  number           Int
+  name             String
+  position         Int
+  sourceExternalId String?
+
+  cards DashboardCard[]
+
+  @@unique([dashboardId, number])
+  @@index([dashboardId, position])
+  @@map("dashboardTab")
+}
+
+model DashboardCard {
+  id              String            @id @default(cuid())
+  dashboardId     String
+  dashboard       Dashboard         @relation(fields: [dashboardId], references: [id], onDelete: Cascade)
+  tabId           String?
+  tab             DashboardTab?     @relation(fields: [tabId], references: [id], onDelete: Cascade)
+  questionId      String
+  question        Question          @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  position        Int
+  x               Int
+  y               Int
+  width           Int
+  height          Int
+  visualization   VisualizationType
+  displaySettings Json?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  @@index([dashboardId, position])
+  @@index([tabId, position])
+  @@index([questionId])
+  @@map("dashboardCard")
+}
+
+model ProductUser {
+  id              String     @id @default(cuid())
+  sourceId        String
+  source          DataSource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  externalId      String
+  email           String?
+  displayName     String?
+  role            String?
+  disabled        Boolean?
+  banned          Boolean?
+  isAnonymous     Boolean?
+  avatarUrl       String?
+  locale          String?
+  phoneNumber     String?
+  emailVerified   Boolean?
+  createdAtSource DateTime?
+  updatedAtSource DateTime?
+  lastSeenAt      DateTime?
+  traits          Json
+  syncedAt        DateTime
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  identities   ProductUserIdentity[]
+  memberships  ProductOrganizationMembership[]
+  snapshots    ProductUserSnapshot[]
+  sourceLinks  ProductUserSourceLink[]
+  contactLinks ProductUserContactLink[]
+  companyLinks ProductUserCompanyLink[]
+  agentTasks   AgentTask[]
+
+  @@unique([sourceId, externalId])
+  @@index([email])
+  @@index([displayName])
+  @@index([lastSeenAt])
+  @@index([externalId(ops: raw("gin_trgm_ops"))], type: Gin, map: "productUser_externalId_trgm_idx")
+  @@index([email(ops: raw("gin_trgm_ops"))], type: Gin, map: "productUser_email_trgm_idx")
+  @@index([displayName(ops: raw("gin_trgm_ops"))], type: Gin, map: "productUser_displayName_trgm_idx")
+  @@index([role(ops: raw("gin_trgm_ops"))], type: Gin, map: "productUser_role_trgm_idx")
+  @@map("productUser")
+}
+
+model ProductUserIdentity {
+  id              String      @id @default(cuid())
+  productUserId   String
+  productUser     ProductUser @relation(fields: [productUserId], references: [id], onDelete: Cascade)
+  kind            String
+  value           String
+  normalizedValue String
+  source          String
+  createdAt       DateTime    @default(now())
+
+  @@unique([productUserId, kind, normalizedValue])
+  @@index([normalizedValue])
+  @@index([normalizedValue(ops: raw("gin_trgm_ops"))], type: Gin, map: "productUserIdentity_normalizedValue_trgm_idx")
+  @@map("productUserIdentity")
+}
+
+model ProductOrganization {
+  id                   String     @id @default(cuid())
+  sourceId             String
+  source               DataSource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  externalId           String
+  name                 String?
+  domain               String?
+  plan                 String?
+  paymentStatus        Json?
+  stripeSubscriptionId String?
+  stripeCustomerId     String?
+  traits               Json
+  syncedAt             DateTime
+  createdAt            DateTime   @default(now())
+  updatedAt            DateTime   @updatedAt
+
+  memberships  ProductOrganizationMembership[]
+  companyLinks ProductOrganizationCompanyLink[]
+
+  @@unique([sourceId, externalId])
+  @@index([name])
+  @@index([domain])
+  @@index([stripeCustomerId])
+  @@index([externalId(ops: raw("gin_trgm_ops"))], type: Gin, map: "productOrganization_externalId_trgm_idx")
+  @@index([name(ops: raw("gin_trgm_ops"))], type: Gin, map: "productOrganization_name_trgm_idx")
+  @@index([domain(ops: raw("gin_trgm_ops"))], type: Gin, map: "productOrganization_domain_trgm_idx")
+  @@index([stripeCustomerId(ops: raw("gin_trgm_ops"))], type: Gin, map: "productOrganization_stripeCustomerId_trgm_idx")
+  @@map("productOrganization")
+}
+
+model ProductOrganizationMembership {
+  id                    String              @id @default(cuid())
+  productUserId         String
+  productUser           ProductUser         @relation(fields: [productUserId], references: [id], onDelete: Cascade)
+  productOrganizationId String
+  productOrganization   ProductOrganization @relation(fields: [productOrganizationId], references: [id], onDelete: Cascade)
+  role                  String?
+  traits                Json?
+  syncedAt              DateTime
+
+  @@unique([productUserId, productOrganizationId])
+  @@index([productOrganizationId])
+  @@map("productOrganizationMembership")
+}
+
+model ProductUserSnapshot {
+  id             String      @id @default(cuid())
+  idempotencyKey String      @unique
+  sourceId       String
+  source         DataSource  @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  productUserId  String
+  productUser    ProductUser @relation(fields: [productUserId], references: [id], onDelete: Cascade)
+  capturedAt     DateTime
+  contentHash    String
+  payload        Json
+  createdAt      DateTime    @default(now())
+
+  @@index([productUserId, capturedAt])
+  @@index([sourceId, capturedAt])
+  @@map("productUserSnapshot")
+}
+
+model SourceRecord {
+  id              String             @id @default(cuid())
+  sourceId        String
+  source          DataSource         @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  kind            ExternalRecordKind
+  externalId      String
+  companyId       String?
+  company         Company?           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  contactId       String?
+  contact         Contact?           @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  contentHash     String
+  payload         Json
+  sourceCreatedAt DateTime?
+  sourceUpdatedAt DateTime?
+  syncedAt        DateTime
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  snapshots        SourceRecordSnapshot[]
+  productUserLinks ProductUserSourceLink[]
+
+  @@unique([sourceId, kind, externalId])
+  @@index([companyId])
+  @@index([contactId])
+  @@index([sourceId, syncedAt])
+  @@map("sourceRecord")
+}
+
+model SourceRecordSnapshot {
+  id             String       @id @default(cuid())
+  idempotencyKey String       @unique
+  sourceId       String
+  source         DataSource   @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  sourceRecordId String
+  sourceRecord   SourceRecord @relation(fields: [sourceRecordId], references: [id], onDelete: Cascade)
+  capturedAt     DateTime
+  contentHash    String
+  payload        Json
+  createdAt      DateTime     @default(now())
+
+  @@index([sourceRecordId, capturedAt])
+  @@index([sourceId, capturedAt])
+  @@map("sourceRecordSnapshot")
+}
+
+model ProductUserSourceLink {
+  id             String             @id @default(cuid())
+  productUserId  String
+  productUser    ProductUser        @relation(fields: [productUserId], references: [id], onDelete: Cascade)
+  sourceRecordId String
+  sourceRecord   SourceRecord       @relation(fields: [sourceRecordId], references: [id], onDelete: Cascade)
+  method         IdentityLinkMethod
+  confidence     Float
+  evidence       Json
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  @@unique([productUserId, sourceRecordId])
+  @@index([sourceRecordId])
+  @@map("productUserSourceLink")
+}
+
+model ProductUserContactLink {
+  id            String             @id @default(cuid())
+  productUserId String
+  productUser   ProductUser        @relation(fields: [productUserId], references: [id], onDelete: Cascade)
+  contactId     String
+  contact       Contact            @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  method        IdentityLinkMethod
+  confidence    Float
+  evidence      Json
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+
+  @@unique([productUserId, contactId])
+  @@index([contactId])
+  @@map("productUserContactLink")
+}
+
+model ProductUserCompanyLink {
+  id            String             @id @default(cuid())
+  productUserId String
+  productUser   ProductUser        @relation(fields: [productUserId], references: [id], onDelete: Cascade)
+  companyId     String
+  company       Company            @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  method        IdentityLinkMethod
+  confidence    Float
+  evidence      Json
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+
+  @@unique([productUserId, companyId])
+  @@index([companyId])
+  @@map("productUserCompanyLink")
+}
+
+model ProductOrganizationCompanyLink {
+  id                    String              @id @default(cuid())
+  productOrganizationId String
+  productOrganization   ProductOrganization @relation(fields: [productOrganizationId], references: [id], onDelete: Cascade)
+  companyId             String
+  company               Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  method                IdentityLinkMethod
+  confidence            Float
+  evidence              Json
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+
+  @@unique([productOrganizationId, companyId])
+  @@index([companyId])
+  @@map("productOrganizationCompanyLink")
 }
 
 model Organization {

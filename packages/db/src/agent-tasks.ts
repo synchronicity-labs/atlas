@@ -1,6 +1,7 @@
 export const TASK_KINDS = [
 	"brand",
 	"portrait",
+	"posthog-profile",
 	"meeting-prep",
 	"identify",
 	"profile",
@@ -11,7 +12,7 @@ export const TASK_KINDS = [
 
 export type TaskKind = (typeof TASK_KINDS)[number];
 
-export const DIRECT_KINDS = ["brand", "portrait"] as const;
+export const DIRECT_KINDS = ["brand", "portrait", "posthog-profile"] as const;
 
 export type DirectKind = (typeof DIRECT_KINDS)[number];
 
@@ -22,6 +23,7 @@ export function isDirectKind(kind: string): kind is DirectKind {
 export const PRIORITY = {
 	brand: 900,
 	portrait: 800,
+	posthog: 700,
 	workspace: 500,
 	requested: 300,
 	meeting: 200,

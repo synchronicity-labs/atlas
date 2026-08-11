@@ -12,6 +12,52 @@ The analytics layer deliberately separates Atlas identity from source identity:
 - Dashboards compose questions. Tabs are URL-addressable with `?tab=1`, and layout
   positions live on dashboard cards rather than in a Metabase-specific model.
 
+## Source-first metric system
+
+Atlas reads governed metrics from the underlying source systems. Existing Metabase
+cards are discovery and reconciliation references, not the canonical extraction path.
+A certified question points to an approved metric version; exploratory questions and
+reconciliation questions remain available but cannot publish a canonical answer by
+accident.
+
+The repository remains one product with separate runtime boundaries:
+
+- `apps/app` renders questions, dashboards, and CRM context.
+- `apps/api` serves authenticated application data and the read-only metric API.
+- source adapters and scheduled ingestion move behind an independent ingest runtime;
+  the existing sync routes remain compatible while adapters are extracted.
+- `packages/metrics` owns UTC windows, shared-watermark selection, metric contract
+  validation, and deterministic contract hashing.
+
+Postgres separates the data plane into namespaces without moving existing application
+tables:
+
+- `ingestion.dataset` registers a physical source dataset and its event-time,
+  watermark, cadence, freshness, and backfill rules.
+- `ingestion.sourceWatermark` records retry-safe checkpoints and the complete
+  `dataThrough` boundary produced by a source run.
+- `core.normalizedFact` stores immutable facts at the smallest useful grain, with
+  canonical entity IDs, eligibility state, dimensions, measures, and content hashes.
+- `metrics.metricDefinition` and `metrics.metricVersion` hold the business meaning,
+  owner, source queries, normalization rules, computation, verification policy, and
+  cadence.
+- `metrics.metricRun`, `metrics.metricVerification`, and `metrics.metricSnapshot`
+  preserve inputs, the oldest common source watermark, validation evidence, and the
+  immutable published result.
+- existing CRM, auth, question, dashboard, and source-mirror records remain in
+  `public`. The reserved `atlas_app` schema is available for a later application-table
+  move that does not block the metric-layer rollout.
+
+A multi-source metric never mixes unequal source windows. Its run uses the oldest
+complete required watermark as the shared `dataThrough` time. A rolling window is
+anchored to that exact instant, and a calendar window uses UTC half-open boundaries.
+Missing, stale, pending, and failed verification states are explicit API results.
+
+The trusted agent API exposes the metric contract, input datasets, source queries,
+watermarks, run hashes, verification evidence, and trust status with each certified
+question. The browser and Rudy read this API; they do not query source systems
+directly.
+
 ## Reporting time policy
 
 Atlas uses UTC for every deterministic reporting boundary:
@@ -36,6 +82,11 @@ must pass the `UTC` timezone to their `toStartOf*` boundary functions.
 
 The server owns the Metabase credential. Browser code receives source metadata,
 result snapshots, and an explicit freshness/error state, never the API key.
+
+This connector remains useful for mirroring the Product Scoreboard and reconciling
+historical answers during the source-first transition. Metabase-backed questions are
+classified as `RECONCILIATION`. A metric becomes `CERTIFIED` only after its direct
+source inputs, normalization, verification policy, and approved metric version exist.
 
 `POST /internal/sync/metabase/users` advances the product-user cursor by at most
 twenty 500-row pages without also refreshing dashboard cards.
@@ -290,7 +341,8 @@ boundary when its visual preview contract is added.
 
 ## Future sources
 
-Stripe, TinyBird, and agent-authored SQL should create Atlas questions and
-snapshots through the same canonical model. They should not pretend to be Metabase
-cards or reuse Metabase numbering. The deterministic API remains the execution and
-persistence layer; agent behavior stays outside it.
+Stripe, TinyBird, Postgres, HubSpot, PostHog, GA4, and Search Console register physical
+datasets and write normalized facts through the same ingestion contract. They do not
+pretend to be Metabase cards or reuse Metabase numbering. The metric layer publishes
+verified snapshots; the deterministic API serves them; agent behavior stays outside
+both layers.

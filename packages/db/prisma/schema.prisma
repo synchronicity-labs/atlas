@@ -1,5 +1,6 @@
 datasource db {
   provider = "postgresql"
+  schemas  = ["public", "ingestion", "core", "metrics", "atlas_app"]
 }
 
 generator client {
@@ -38,6 +39,7 @@ model User {
 
   @@unique([email])
   @@map("user")
+  @@schema("public")
 }
 
 model Session {
@@ -56,6 +58,7 @@ model Session {
   @@unique([token])
   @@index([userId])
   @@map("session")
+  @@schema("public")
 }
 
 model Account {
@@ -76,6 +79,7 @@ model Account {
 
   @@index([userId])
   @@map("account")
+  @@schema("public")
 }
 
 model Verification {
@@ -88,6 +92,7 @@ model Verification {
 
   @@index([identifier])
   @@map("verification")
+  @@schema("public")
 }
 
 model RateLimit {
@@ -98,6 +103,7 @@ model RateLimit {
 
   @@unique([key])
   @@map("rateLimit")
+  @@schema("public")
 }
 
 enum DealStage {
@@ -108,6 +114,8 @@ enum DealStage {
   CONTRACT_SENT
   CLOSED_WON
   CLOSED_LOST
+
+  @@schema("public")
 }
 
 enum ActivityType {
@@ -118,6 +126,8 @@ enum ActivityType {
   TASK
   STAGE_CHANGE
   ENRICHMENT
+
+  @@schema("public")
 }
 
 enum EnrichmentStatus {
@@ -126,6 +136,8 @@ enum EnrichmentStatus {
   COMPLETE
   FAILED
   SKIPPED
+
+  @@schema("public")
 }
 
 enum RecordSource {
@@ -134,14 +146,22 @@ enum RecordSource {
   EMAIL
   CALENDAR
   HUBSPOT
+
+  @@schema("public")
 }
 
 enum DataSourceKind {
   METABASE
+  POSTGRES
+  TINYBIRD
   STRIPE
   HUBSPOT
   POSTHOG
+  GOOGLE_ANALYTICS
+  GOOGLE_SEARCH_CONSOLE
   ATLAS
+
+  @@schema("public")
 }
 
 enum ExternalRecordKind {
@@ -152,6 +172,8 @@ enum ExternalRecordKind {
   PIPELINE
   OWNER
   ACTIVITY
+
+  @@schema("public")
 }
 
 enum IdentityLinkMethod {
@@ -160,6 +182,8 @@ enum IdentityLinkMethod {
   EXACT_DOMAIN
   SOURCE_ASSOCIATION
   MEMBER_DOMAIN
+
+  @@schema("public")
 }
 
 enum SourceStatus {
@@ -168,28 +192,46 @@ enum SourceStatus {
   HEALTHY
   STALE
   ERROR
+
+  @@schema("public")
 }
 
 enum SyncMode {
   INCREMENTAL
   BACKFILL
+
+  @@schema("public")
 }
 
 enum SyncRunStatus {
   RUNNING
   COMPLETED
   FAILED
+
+  @@schema("public")
 }
 
 enum QueryLanguage {
   SQL
   MBQL
   API
+
+  @@schema("public")
 }
 
 enum QuestionStatus {
   ACTIVE
   ARCHIVED
+
+  @@schema("public")
+}
+
+enum QuestionPurpose {
+  CERTIFIED
+  EXPLORATORY
+  RECONCILIATION
+
+  @@schema("public")
 }
 
 enum VisualizationType {
@@ -201,6 +243,54 @@ enum VisualizationType {
   TABLE
   FUNNEL
   TEXT
+
+  @@schema("public")
+}
+
+enum FactGrain {
+  EVENT
+  DAY
+  WEEK
+  MONTH
+  QUARTER
+
+  @@schema("core")
+}
+
+enum MetricLifecycleStatus {
+  DRAFT
+  CERTIFIED
+  DEPRECATED
+
+  @@schema("metrics")
+}
+
+enum MetricRunStatus {
+  QUEUED
+  RUNNING
+  VALIDATING
+  PUBLISHED
+  FAILED
+
+  @@schema("metrics")
+}
+
+enum MetricTrustStatus {
+  PENDING
+  VERIFIED
+  FAILED
+  STALE
+
+  @@schema("metrics")
+}
+
+enum VerificationStatus {
+  PENDING
+  PASSED
+  FAILED
+  WAIVED
+
+  @@schema("metrics")
 }
 
 model Company {
@@ -262,6 +352,7 @@ model Company {
   @@index([name])
   @@index([lastActivityAt])
   @@map("company")
+  @@schema("public")
 }
 
 model CompanyEnrichment {
@@ -272,6 +363,7 @@ model CompanyEnrichment {
   fetchedAt DateTime @default(now())
 
   @@map("companyEnrichment")
+  @@schema("public")
 }
 
 model Contact {
@@ -320,12 +412,15 @@ model Contact {
   @@index([ownerId])
   @@index([lastActivityAt])
   @@map("contact")
+  @@schema("public")
 }
 
 enum FactBand {
   VERIFIED
   PROBABLE
   POSSIBLE
+
+  @@schema("public")
 }
 
 enum FactStatus {
@@ -333,6 +428,8 @@ enum FactStatus {
   PROPOSED
   DISMISSED
   SUPERSEDED
+
+  @@schema("public")
 }
 
 model ContactFact {
@@ -364,6 +461,7 @@ model ContactFact {
   @@index([contactId, field, status])
   @@index([status, observedAt])
   @@map("contactFact")
+  @@schema("public")
 }
 
 model ContactBrief {
@@ -380,6 +478,7 @@ model ContactBrief {
   refreshedAt DateTime @default(now())
 
   @@map("contactBrief")
+  @@schema("public")
 }
 
 model AgentTask {
@@ -410,6 +509,7 @@ model AgentTask {
   @@index([contactId])
   @@index([productUserId])
   @@map("agentTask")
+  @@schema("public")
 }
 
 model AgentEvent {
@@ -424,6 +524,7 @@ model AgentEvent {
   @@index([sessionId, emittedAt])
   @@index([contactId, emittedAt])
   @@map("agentEvent")
+  @@schema("public")
 }
 
 model AgentConversation {
@@ -457,6 +558,7 @@ model AgentConversation {
   @@index([dealId, lastMessageAt])
   @@index([atlasContextKind, atlasContextId, lastMessageAt])
   @@map("agentConversation")
+  @@schema("public")
 }
 
 model RudySession {
@@ -468,15 +570,16 @@ model RudySession {
   contextKind String
   contextId   String
 
-  hermesSessionId String @unique
+  hermesSessionId String  @unique
   title           String?
-  messageCount    Int    @default(0)
+  messageCount    Int     @default(0)
 
   createdAt     DateTime @default(now())
   lastMessageAt DateTime @default(now())
 
   @@index([userId, contextKind, contextId, lastMessageAt])
   @@map("rudySession")
+  @@schema("public")
 }
 
 model Deal {
@@ -509,6 +612,7 @@ model Deal {
   @@index([expectedCloseDate])
   @@index([lastActivityAt])
   @@map("deal")
+  @@schema("public")
 }
 
 model DealContact {
@@ -521,6 +625,7 @@ model DealContact {
   @@id([dealId, contactId])
   @@index([contactId])
   @@map("dealContact")
+  @@schema("public")
 }
 
 model Activity {
@@ -558,6 +663,7 @@ model Activity {
   @@index([dueAt])
   @@index([createdById])
   @@map("activity")
+  @@schema("public")
 }
 
 enum GoogleSyncStatus {
@@ -565,11 +671,15 @@ enum GoogleSyncStatus {
   RUNNING
   NEEDS_RECONNECT
   FAILED
+
+  @@schema("public")
 }
 
 enum EmailDirection {
   INBOUND
   OUTBOUND
+
+  @@schema("public")
 }
 
 model MailboxSync {
@@ -591,6 +701,7 @@ model MailboxSync {
   @@unique([userId, source])
   @@index([status])
   @@map("mailboxSync")
+  @@schema("public")
 }
 
 model EmailThread {
@@ -616,6 +727,7 @@ model EmailThread {
   @@index([companyId, lastMessageAt])
   @@index([contactId, lastMessageAt])
   @@map("emailThread")
+  @@schema("public")
 }
 
 model EmailMessage {
@@ -640,6 +752,7 @@ model EmailMessage {
 
   @@index([threadId, sentAt])
   @@map("emailMessage")
+  @@schema("public")
 }
 
 model CalendarEvent {
@@ -676,6 +789,7 @@ model CalendarEvent {
   @@index([companyId, startsAt])
   @@index([contactId, startsAt])
   @@map("calendarEvent")
+  @@schema("public")
 }
 
 model CalendarAttendee {
@@ -693,6 +807,7 @@ model CalendarAttendee {
   @@unique([eventId, email])
   @@index([contactId])
   @@map("calendarAttendee")
+  @@schema("public")
 }
 
 model SuppressedDomain {
@@ -701,6 +816,7 @@ model SuppressedDomain {
   createdAt DateTime @default(now())
 
   @@map("suppressedDomain")
+  @@schema("public")
 }
 
 model SuppressedContact {
@@ -709,6 +825,7 @@ model SuppressedContact {
   createdAt DateTime @default(now())
 
   @@map("suppressedContact")
+  @@schema("public")
 }
 
 model AppSetting {
@@ -723,6 +840,7 @@ model AppSetting {
   updatedAt DateTime @updatedAt
 
   @@map("appSetting")
+  @@schema("public")
 }
 
 model DataSource {
@@ -748,8 +866,12 @@ model DataSource {
   productUserSnapshots  ProductUserSnapshot[]
   sourceRecords         SourceRecord[]
   sourceRecordSnapshots SourceRecordSnapshot[]
+  ingestionDatasets     IngestionDataset[]
+  sourceWatermarks      SourceWatermark[]
+  normalizedFacts       NormalizedFact[]
 
   @@map("dataSource")
+  @@schema("public")
 }
 
 model SourceDashboard {
@@ -769,6 +891,7 @@ model SourceDashboard {
   @@unique([sourceId, externalId])
   @@index([sourceId, syncedAt])
   @@map("sourceDashboard")
+  @@schema("public")
 }
 
 model SourceCard {
@@ -792,6 +915,7 @@ model SourceCard {
   @@index([sourceId, externalId])
   @@index([dashboardId, tabExternalId])
   @@map("sourceCard")
+  @@schema("public")
 }
 
 model SyncRun {
@@ -807,12 +931,25 @@ model SyncRun {
   snapshotsCreated Int           @default(0)
   recordsProcessed Int           @default(0)
   checkpoint       Json?
+  attempt          Int           @default(1)
+  leaseOwner       String?
+  leasedAt         DateTime?
+  heartbeatAt      DateTime?
+  nextRetryAt      DateTime?
+  dataThrough      DateTime?
   error            String?
   startedAt        DateTime      @default(now())
   finishedAt       DateTime?
+  updatedAt        DateTime      @default(now()) @updatedAt
+
+  sourceWatermarks SourceWatermark[]
+  normalizedFacts  NormalizedFact[]
 
   @@index([sourceId, startedAt])
+  @@index([status, nextRetryAt])
+  @@index([leaseOwner, leasedAt])
   @@map("syncRun")
+  @@schema("public")
 }
 
 model SyncCursor {
@@ -825,10 +962,235 @@ model SyncCursor {
   offset           Int        @default(0)
   cursor           String?
   completedPeriods Int        @default(0)
+  checkpoint       Json?
+  dataThrough      DateTime?
+  lastSuccessAt    DateTime?
   updatedAt        DateTime   @updatedAt
 
   @@unique([sourceId, mode, scope])
   @@map("syncCursor")
+  @@schema("public")
+}
+
+model IngestionDataset {
+  id                  String     @id @default(cuid())
+  sourceId            String
+  source              DataSource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  key                 String
+  label               String
+  description         String?
+  adapter             String
+  eventTimeField      String
+  watermarkField      String?
+  cadenceMinutes      Int
+  freshnessSlaMinutes Int
+  backfillWindowDays  Int?
+  config              Json
+  enabled             Boolean    @default(true)
+  createdAt           DateTime   @default(now())
+  updatedAt           DateTime   @updatedAt
+
+  watermarks   SourceWatermark[]
+  facts        NormalizedFact[]
+  metricInputs MetricInput[]
+
+  @@unique([sourceId, key])
+  @@index([enabled, cadenceMinutes])
+  @@map("dataset")
+  @@schema("ingestion")
+}
+
+model SourceWatermark {
+  id             String           @id @default(cuid())
+  idempotencyKey String           @unique
+  datasetId      String
+  dataset        IngestionDataset @relation(fields: [datasetId], references: [id], onDelete: Cascade)
+  sourceId       String
+  source         DataSource       @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  syncRunId      String?
+  syncRun        SyncRun?         @relation(fields: [syncRunId], references: [id], onDelete: SetNull)
+  dataThrough    DateTime
+  complete       Boolean          @default(false)
+  rowCount       Int?
+  contentHash    String?
+  checkpoint     Json?
+  observedAt     DateTime
+  createdAt      DateTime         @default(now())
+
+  @@index([datasetId, dataThrough])
+  @@index([sourceId, observedAt])
+  @@index([syncRunId])
+  @@map("sourceWatermark")
+  @@schema("ingestion")
+}
+
+model NormalizedFact {
+  id             String           @id @default(cuid())
+  idempotencyKey String           @unique
+  datasetId      String
+  dataset        IngestionDataset @relation(fields: [datasetId], references: [id], onDelete: Cascade)
+  sourceId       String
+  source         DataSource       @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  syncRunId      String?
+  syncRun        SyncRun?         @relation(fields: [syncRunId], references: [id], onDelete: SetNull)
+  entityType     String
+  entityId       String
+  grain          FactGrain
+  periodStart    DateTime
+  periodEnd      DateTime
+  eventTime      DateTime?
+  dataThrough    DateTime
+  dimensions     Json
+  measures       Json
+  eligibility    Json?
+  contentHash    String
+  createdAt      DateTime         @default(now())
+
+  @@index([datasetId, periodStart, periodEnd])
+  @@index([entityType, entityId, periodStart])
+  @@index([sourceId, dataThrough])
+  @@index([syncRunId])
+  @@map("normalizedFact")
+  @@schema("core")
+}
+
+model MetricDefinition {
+  id          String                @id @default(cuid())
+  key         String                @unique
+  name        String
+  description String
+  ownerTeam   String
+  status      MetricLifecycleStatus @default(DRAFT)
+  createdAt   DateTime              @default(now())
+  updatedAt   DateTime              @updatedAt
+
+  versions MetricVersion[]
+
+  @@index([status, ownerTeam])
+  @@map("metricDefinition")
+  @@schema("metrics")
+}
+
+model MetricVersion {
+  id                  String           @id @default(cuid())
+  metricId            String
+  metric              MetricDefinition @relation(fields: [metricId], references: [id], onDelete: Cascade)
+  version             Int
+  businessDefinition  Json
+  normalizationPolicy Json
+  computation         Json
+  verificationPolicy  Json
+  cadence             Json
+  contentHash         String
+  createdBy           String
+  approvedBy          String?
+  approvedAt          DateTime?
+  createdAt           DateTime         @default(now())
+
+  inputs    MetricInput[]
+  runs      MetricRun[]
+  snapshots MetricSnapshot[]
+  questions Question[]
+
+  @@unique([metricId, version])
+  @@index([metricId, approvedAt])
+  @@map("metricVersion")
+  @@schema("metrics")
+}
+
+model MetricInput {
+  id              String           @id @default(cuid())
+  metricVersionId String
+  metricVersion   MetricVersion    @relation(fields: [metricVersionId], references: [id], onDelete: Cascade)
+  datasetId       String
+  dataset         IngestionDataset @relation(fields: [datasetId], references: [id], onDelete: Restrict)
+  alias           String
+  required        Boolean          @default(true)
+  queryLanguage   QueryLanguage
+  queryText       String
+  queryHash       String
+  expectedGrain   FactGrain
+  maxLagSeconds   Int
+  createdAt       DateTime         @default(now())
+
+  @@unique([metricVersionId, alias])
+  @@index([datasetId, metricVersionId])
+  @@map("metricInput")
+  @@schema("metrics")
+}
+
+model MetricRun {
+  id               String          @id @default(cuid())
+  runKey           String          @unique
+  metricVersionId  String
+  metricVersion    MetricVersion   @relation(fields: [metricVersionId], references: [id], onDelete: Cascade)
+  status           MetricRunStatus @default(QUEUED)
+  periodStart      DateTime
+  periodEnd        DateTime
+  dataThrough      DateTime?
+  sourceWatermarks Json
+  inputHash        String?
+  outputHash       String?
+  rowCount         Int             @default(0)
+  validation       Json?
+  error            String?
+  requestedAt      DateTime        @default(now())
+  startedAt        DateTime?
+  finishedAt       DateTime?
+
+  snapshot      MetricSnapshot?
+  verifications MetricVerification[]
+
+  @@index([metricVersionId, periodStart, periodEnd])
+  @@index([status, requestedAt])
+  @@map("metricRun")
+  @@schema("metrics")
+}
+
+model MetricSnapshot {
+  id              String            @id @default(cuid())
+  idempotencyKey  String            @unique
+  metricVersionId String
+  metricVersion   MetricVersion     @relation(fields: [metricVersionId], references: [id], onDelete: Cascade)
+  metricRunId     String            @unique
+  metricRun       MetricRun         @relation(fields: [metricRunId], references: [id], onDelete: Cascade)
+  reportingPeriod String
+  periodStart     DateTime
+  periodEnd       DateTime
+  dataThrough     DateTime
+  computedAt      DateTime
+  trustStatus     MetricTrustStatus @default(PENDING)
+  contentHash     String
+  columns         Json
+  rows            Json
+  rowCount        Int
+  createdAt       DateTime          @default(now())
+
+  @@index([metricVersionId, reportingPeriod, computedAt])
+  @@index([trustStatus, dataThrough])
+  @@map("metricSnapshot")
+  @@schema("metrics")
+}
+
+model MetricVerification {
+  id             String             @id @default(cuid())
+  metricRunId    String
+  metricRun      MetricRun          @relation(fields: [metricRunId], references: [id], onDelete: Cascade)
+  name           String
+  status         VerificationStatus @default(PENDING)
+  referenceType  String
+  referenceValue Json?
+  actualValue    Json?
+  tolerance      Json?
+  evidence       Json?
+  verifiedBy     String?
+  verifiedAt     DateTime?
+  createdAt      DateTime           @default(now())
+
+  @@unique([metricRunId, name])
+  @@index([status, createdAt])
+  @@map("metricVerification")
+  @@schema("metrics")
 }
 
 model ResultSnapshot {
@@ -849,22 +1211,26 @@ model ResultSnapshot {
   @@index([questionExternalId, reportingPeriod, capturedAt])
   @@index([sourceId, capturedAt])
   @@map("resultSnapshot")
+  @@schema("public")
 }
 
 model Question {
-  id                        String         @id @default(cuid())
-  number                    Int            @unique
+  id                        String          @id @default(cuid())
+  number                    Int             @unique
   name                      String
   description               String?
   connector                 DataSourceKind
   sourceId                  String?
-  source                    DataSource?    @relation(fields: [sourceId], references: [id], onDelete: SetNull)
+  source                    DataSource?     @relation(fields: [sourceId], references: [id], onDelete: SetNull)
   sourceExternalId          String?
   sourceDashboardExternalId String?
   databaseExternalId        String?
-  status                    QuestionStatus @default(ACTIVE)
-  createdAt                 DateTime       @default(now())
-  updatedAt                 DateTime       @updatedAt
+  status                    QuestionStatus  @default(ACTIVE)
+  purpose                   QuestionPurpose @default(EXPLORATORY)
+  metricVersionId           String?
+  metricVersion             MetricVersion?  @relation(fields: [metricVersionId], references: [id], onDelete: SetNull)
+  createdAt                 DateTime        @default(now())
+  updatedAt                 DateTime        @updatedAt
 
   versions        QuestionVersion[]
   dashboardCards  DashboardCard[]
@@ -872,7 +1238,9 @@ model Question {
 
   @@unique([connector, sourceExternalId])
   @@index([status, updatedAt])
+  @@index([metricVersionId, purpose])
   @@map("question")
+  @@schema("public")
 }
 
 model QuestionChangeProposal {
@@ -894,6 +1262,7 @@ model QuestionChangeProposal {
   @@index([questionId, status, createdAt])
   @@index([sessionId, createdAt])
   @@map("questionChangeProposal")
+  @@schema("public")
 }
 
 model QuestionVersion {
@@ -912,6 +1281,7 @@ model QuestionVersion {
   @@unique([questionId, version])
   @@index([questionId, createdAt])
   @@map("questionVersion")
+  @@schema("public")
 }
 
 model Dashboard {
@@ -928,6 +1298,7 @@ model Dashboard {
   cards DashboardCard[]
 
   @@map("dashboard")
+  @@schema("public")
 }
 
 model DashboardTab {
@@ -944,6 +1315,7 @@ model DashboardTab {
   @@unique([dashboardId, number])
   @@index([dashboardId, position])
   @@map("dashboardTab")
+  @@schema("public")
 }
 
 model DashboardCard {
@@ -968,6 +1340,7 @@ model DashboardCard {
   @@index([tabId, position])
   @@index([questionId])
   @@map("dashboardCard")
+  @@schema("public")
 }
 
 model ProductUser {
@@ -1010,6 +1383,7 @@ model ProductUser {
   @@index([displayName(ops: raw("gin_trgm_ops"))], type: Gin, map: "productUser_displayName_trgm_idx")
   @@index([role(ops: raw("gin_trgm_ops"))], type: Gin, map: "productUser_role_trgm_idx")
   @@map("productUser")
+  @@schema("public")
 }
 
 model ProductUserIdentity {
@@ -1026,6 +1400,7 @@ model ProductUserIdentity {
   @@index([normalizedValue])
   @@index([normalizedValue(ops: raw("gin_trgm_ops"))], type: Gin, map: "productUserIdentity_normalizedValue_trgm_idx")
   @@map("productUserIdentity")
+  @@schema("public")
 }
 
 model ProductOrganization {
@@ -1056,6 +1431,7 @@ model ProductOrganization {
   @@index([domain(ops: raw("gin_trgm_ops"))], type: Gin, map: "productOrganization_domain_trgm_idx")
   @@index([stripeCustomerId(ops: raw("gin_trgm_ops"))], type: Gin, map: "productOrganization_stripeCustomerId_trgm_idx")
   @@map("productOrganization")
+  @@schema("public")
 }
 
 model ProductOrganizationMembership {
@@ -1071,6 +1447,7 @@ model ProductOrganizationMembership {
   @@unique([productUserId, productOrganizationId])
   @@index([productOrganizationId])
   @@map("productOrganizationMembership")
+  @@schema("public")
 }
 
 model ProductUserSnapshot {
@@ -1088,6 +1465,7 @@ model ProductUserSnapshot {
   @@index([productUserId, capturedAt])
   @@index([sourceId, capturedAt])
   @@map("productUserSnapshot")
+  @@schema("public")
 }
 
 model SourceRecord {
@@ -1116,6 +1494,7 @@ model SourceRecord {
   @@index([contactId])
   @@index([sourceId, syncedAt])
   @@map("sourceRecord")
+  @@schema("public")
 }
 
 model SourceRecordSnapshot {
@@ -1133,6 +1512,7 @@ model SourceRecordSnapshot {
   @@index([sourceRecordId, capturedAt])
   @@index([sourceId, capturedAt])
   @@map("sourceRecordSnapshot")
+  @@schema("public")
 }
 
 model ProductUserSourceLink {
@@ -1150,6 +1530,7 @@ model ProductUserSourceLink {
   @@unique([productUserId, sourceRecordId])
   @@index([sourceRecordId])
   @@map("productUserSourceLink")
+  @@schema("public")
 }
 
 model ProductUserContactLink {
@@ -1167,6 +1548,7 @@ model ProductUserContactLink {
   @@unique([productUserId, contactId])
   @@index([contactId])
   @@map("productUserContactLink")
+  @@schema("public")
 }
 
 model ProductUserCompanyLink {
@@ -1184,6 +1566,7 @@ model ProductUserCompanyLink {
   @@unique([productUserId, companyId])
   @@index([companyId])
   @@map("productUserCompanyLink")
+  @@schema("public")
 }
 
 model ProductOrganizationCompanyLink {
@@ -1201,6 +1584,7 @@ model ProductOrganizationCompanyLink {
   @@unique([productOrganizationId, companyId])
   @@index([companyId])
   @@map("productOrganizationCompanyLink")
+  @@schema("public")
 }
 
 model Organization {
@@ -1216,6 +1600,7 @@ model Organization {
 
   @@unique([slug])
   @@map("organization")
+  @@schema("public")
 }
 
 model WorkspaceProfile {
@@ -1231,6 +1616,7 @@ model WorkspaceProfile {
   refreshedAt DateTime @default(now())
 
   @@map("workspaceProfile")
+  @@schema("public")
 }
 
 model Member {
@@ -1246,6 +1632,7 @@ model Member {
   @@index([organizationId])
   @@index([userId])
   @@map("member")
+  @@schema("public")
 }
 
 model Invitation {
@@ -1263,6 +1650,7 @@ model Invitation {
   @@index([organizationId])
   @@index([email])
   @@map("invitation")
+  @@schema("public")
 }
 
 model SsoProvider {
@@ -1278,4 +1666,5 @@ model SsoProvider {
 
   @@unique([providerId])
   @@map("ssoProvider")
+  @@schema("public")
 }

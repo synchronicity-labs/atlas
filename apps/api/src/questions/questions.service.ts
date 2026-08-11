@@ -72,9 +72,18 @@ export class QuestionsService {
 					name: true,
 					description: true,
 					connector: true,
+					purpose: true,
 					sourceExternalId: true,
 					status: true,
 					updatedAt: true,
+					metricVersion: {
+						select: {
+							version: true,
+							metric: {
+								select: { key: true, name: true, status: true },
+							},
+						},
+					},
 					versions: {
 						orderBy: { version: "desc" },
 						take: 1,
@@ -109,6 +118,28 @@ export class QuestionsService {
 				name: true,
 				description: true,
 				connector: true,
+				purpose: true,
+				metricVersionId: true,
+				metricVersion: {
+					select: {
+						version: true,
+						approvedAt: true,
+						businessDefinition: true,
+						normalizationPolicy: true,
+						computation: true,
+						verificationPolicy: true,
+						cadence: true,
+						metric: {
+							select: {
+								key: true,
+								name: true,
+								description: true,
+								ownerTeam: true,
+								status: true,
+							},
+						},
+					},
+				},
 				source: { select: { key: true } },
 				sourceExternalId: true,
 				sourceDashboardExternalId: true,
@@ -141,31 +172,85 @@ export class QuestionsService {
 			throw new NotFoundException(`No Atlas question ${number}.`);
 		}
 
-		const snapshots = question.sourceExternalId
-			? await this.db.resultSnapshot.findMany({
-					where: { questionExternalId: question.sourceExternalId },
-					orderBy: { capturedAt: "desc" },
-					take: question.sourceExternalId.startsWith(
-						"atlas:failed-generations:",
+		const snapshots = question.metricVersionId
+			? await this.db.metricSnapshot
+					.findMany({
+						where: { metricVersionId: question.metricVersionId },
+						orderBy: { computedAt: "desc" },
+						take: 12,
+						select: {
+							id: true,
+							reportingPeriod: true,
+							computedAt: true,
+							dataThrough: true,
+							trustStatus: true,
+							columns: true,
+							rows: true,
+							rowCount: true,
+						},
+					})
+					.then((rows) =>
+						rows.map((row) => ({
+							id: row.id,
+							reportingPeriod: row.reportingPeriod,
+							capturedAt: row.computedAt,
+							dataThrough: row.dataThrough,
+							trustStatus: row.trustStatus,
+							columns: row.columns,
+							rows: row.rows,
+							rowCount: row.rowCount,
+						})),
 					)
-						? 1
-						: 12,
-					select: {
-						id: true,
-						reportingPeriod: true,
-						capturedAt: true,
-						columns: true,
-						rows: true,
-						rowCount: true,
-					},
-				})
-			: [];
+			: question.sourceExternalId
+				? await this.db.resultSnapshot
+						.findMany({
+							where: { questionExternalId: question.sourceExternalId },
+							orderBy: { capturedAt: "desc" },
+							take: question.sourceExternalId.startsWith(
+								"atlas:failed-generations:",
+							)
+								? 1
+								: 12,
+							select: {
+								id: true,
+								reportingPeriod: true,
+								capturedAt: true,
+								columns: true,
+								rows: true,
+								rowCount: true,
+							},
+						})
+						.then((rows) =>
+							rows.map((row) => ({
+								...row,
+								dataThrough: null,
+								trustStatus: null,
+							})),
+						)
+				: [];
 		const config = metabaseConfig();
 		const hubspotPortalId = process.env.HUBSPOT_PORTAL_ID?.trim();
 		const posthogProjectId = process.env.POSTHOG_PROJECT_ID?.trim();
 
 		return {
 			...question,
+			metric: question.metricVersion
+				? {
+						...question.metricVersion.metric,
+						version: question.metricVersion.version,
+						approvedAt:
+							question.metricVersion.approvedAt?.toISOString() ?? null,
+						contract: {
+							businessDefinition: question.metricVersion.businessDefinition,
+							normalizationPolicy: question.metricVersion.normalizationPolicy,
+							computation: question.metricVersion.computation,
+							verificationPolicy: question.metricVersion.verificationPolicy,
+							cadence: question.metricVersion.cadence,
+						},
+					}
+				: null,
+			metricVersion: undefined,
+			metricVersionId: undefined,
 			sourceKey: question.source?.key ?? null,
 			source: undefined,
 			updatedAt: question.updatedAt.toISOString(),
@@ -176,6 +261,7 @@ export class QuestionsService {
 			snapshots: snapshots.map((snapshot) => ({
 				...snapshot,
 				capturedAt: snapshot.capturedAt.toISOString(),
+				dataThrough: snapshot.dataThrough?.toISOString() ?? null,
 			})),
 			sourceUrl:
 				config &&

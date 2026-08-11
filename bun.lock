@@ -153,6 +153,15 @@
         "typescript": "5.9.2",
       },
     },
+    "packages/metrics": {
+      "name": "@crm/metrics",
+      "version": "0.0.0",
+      "devDependencies": {
+        "@crm/typescript-config": "workspace:*",
+        "@types/node": "^24.10.1",
+        "typescript": "5.9.2",
+      },
+    },
     "packages/typescript-config": {
       "name": "@crm/typescript-config",
       "version": "0.0.0",
@@ -354,6 +363,8 @@
     "@crm/db": ["@crm/db@workspace:packages/db"],
 
     "@crm/env": ["@crm/env@workspace:packages/env"],
+
+    "@crm/metrics": ["@crm/metrics@workspace:packages/metrics"],
 
     "@crm/typescript-config": ["@crm/typescript-config@workspace:packages/typescript-config"],
 

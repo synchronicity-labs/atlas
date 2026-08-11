@@ -36,8 +36,8 @@ Atlas builds on [CompAI CRM](https://github.com/trycompai/crm), preserving its
 agentic CRM foundation while adding a first-class analytics model. Questions have
 stable Atlas numbers, immutable versions, real source queries, and reusable
 visualizations. Dashboards compose those questions into URL-addressable tabs and a
-granular, editable grid. Metabase is the first source; Stripe, HubSpot, and other
-sources can implement the same adapter contract without inheriting Metabase IDs.
+granular, editable grid. Governed metrics read source systems directly; Metabase is a
+discovery and reconciliation reference, not the canonical data path.
 
 The initial dashboard mirrors the Product 2026 Scoreboard and keeps local snapshots,
 freshness, sync-run, and checkpoint state in Postgres. Product users are ingested as
@@ -205,6 +205,7 @@ reproduces the view.
 | `apps/app` | Next.js front end · :3000 |
 | `apps/api` | NestJS API — HTTP, auth, tRPC, Google sync · :3001 |
 | `packages/db` | Prisma schema, migrations, shared Postgres client |
+| `packages/metrics` | Metric contracts, UTC windows, watermark alignment, deterministic hashes |
 | `packages/auth` | Better Auth config and the sign-in allow-list |
 | `packages/ui` | shadcn/ui components, the Tailwind theme |
 | `packages/env` | Finds and loads the root `.env` |

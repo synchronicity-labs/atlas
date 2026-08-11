@@ -65,6 +65,33 @@ slower than the request that produced it.
 If you are about to add a vendor client to `apps/api`, you want
 `apps/agent/agent/lib` instead.
 
+## Atlas is the deterministic read layer for agents
+
+Internal agents read governed metrics through `GET /internal/atlas/catalog` and
+`GET /internal/atlas/questions/:number`, protected by `ATLAS_QUERY_SECRET`. A
+question response includes its immutable result snapshot, saved definition,
+freshness status, content hash, idempotency key, and source provenance. Historical
+reads accept `reportingPeriod=YYYY-MM` and `asOf=<ISO timestamp>`.
+
+These routes are intentionally read-only and separate from `CRON_SECRET` sync
+routes. They do not execute arbitrary queries, refresh a connector, edit a question,
+or mutate CRM records. Rudy should use this surface first and reach through to a
+vendor only for an undefined metric or explicit reconciliation work.
+
+## Atlas is a first-party Rudy client
+
+The in-app Rudy drawer talks to Hermes's persisted session API through the Atlas
+API server. It does not start Eve or another agent. Atlas authenticates the Google
+Workspace user, owns the mapping from that user and Atlas context to a Hermes
+session, and sends the current typed `workspace`, `dashboard`, or `question`
+context on every turn. Hermes owns the durable transcript and resumes the same
+session for follow-ups.
+
+The browser never receives the Hermes bearer credential or a direct Rudy URL.
+Question changes returned by Rudy become `QuestionChangeProposal` rows; they do
+not mutate a live question. The user must open the proposal, execute the existing
+read-only preview, and save a new immutable question version.
+
 ## There is exactly one organization, and it is not a tenancy boundary
 
 This is an internal tool behind Google sign-in, and it is **single tenant**.
@@ -146,60 +173,30 @@ called, who works here, and what do we sell — and for nothing else.
     redirect needs; every page behind it still resolves the real session
     server-side through `requireGoogleAccess()`.
   - **Nothing is cached in a cookie, and that is the second thing this got
-    wrong.** The answers were kept in httpOnly `crm.onboarded` and
-    `crm.research` markers with a year's life, on the reasoning that they
-    change once in the life of an install. They do not: reset the database and
-    both facts revert while the browser goes on insisting the gate was
-    satisfied — so a fresh workspace was never asked to name itself and never
-    asked for a key, and nothing anywhere said why. A cache with no
-    invalidation is only correct for a fact that cannot go back, and neither of
-    these is one.
-  - **Both reads run concurrently**, so asking every time costs one round trip
-    rather than two. Which question is asked *first* is still decided in order
-    — a rep who has not named the workspace is sent to `/onboarding`, not to
-    the key form — but there is no reason to wait for that answer before
-    starting the other read.
-  - **If the cost ever matters, cache it in the API**, where there is a place
-    to invalidate from: `settings.setResearchKey` and `WorkspaceService.update`
-    are the only two writers, and `cache-manager` is already the documented
-    pattern for exactly that shape. Do not put it back in the browser.
-  - **`/sign-in`, `/grant-access` and `/eve` are ungated.**
-    `requireGoogleAccess()` redirects to `/grant-access`, so gating it would
-    ping-pong against the onboarding redirect for anyone who signed in without
-    both scopes.
+	wrong.** The answer was kept in an httpOnly `crm.onboarded` marker with a
+	year's life, on the reasoning that it changes once in the life of an install.
+	It does not: reset the database and the fact reverts while the browser goes
+	on insisting the gate was satisfied. A cache with no invalidation is only
+	correct for a fact that cannot go back, and this one can.
+	- **If the cost ever matters, cache it in the API**, where there is a place
+	  to invalidate from: `WorkspaceService.update` is the writer, and
+	  `cache-manager` is already the documented
+	  pattern for exactly that shape. Do not put it back in the browser.
+	- **`/sign-in`, `/grant-access`, `/eve`, `/dashboards`, `/questions`,
+	  `/users`, and `/companies` are ungated.**
+	  `requireGoogleAccess()` redirects to `/grant-access`, so gating it would
+	  ping-pong against the onboarding redirect for anyone who signed in without
+	  both scopes. Atlas surfaces only require the signed-in session and do not
+	  depend on CRM setup.
   - **An unreachable API fails open.** Each read returns `unknown` on a
     non-200, a timeout or a parse failure, and an unknown gate lets the request
     through. The alternative is an install that cannot reach its own API
-    redirecting every request to a form that cannot be submitted.
-- **There is a second gate behind the first**, `/onboarding/research`, which
-  asks for the Context API key that gives the agent somewhere to look — see
-  [the environment rules](./environment.md#the-context-key-is-asked-for-not-configured).
-  It is the same shape as the onboarding gate and shares its machinery: a read
-  (`settings.researchKey`), a `required`/`settled`/`unknown` answer, an httpOnly
-  marker so it is asked once per browser, and fail-open on an unreachable API.
-  - **The order is fixed and the second read is not made early.** A rep who has
-    not named the workspace goes to `/onboarding` and `settings.researchKey` is
-    never called — there is no point asking the second question while the first
-    is open, and the test pins that the call count stays at zero.
-  - **A settled workspace is remembered even while the key is outstanding.**
-    The marker is written onto the *redirect* to the key form, so the workspace
-    is not re-read on every request during the window a rep is being asked
-    something else.
-  - **There is no way past it but to answer, and that is the point.** It had a
-    Skip, and Skip was the one path that could strand an install: every company
-    added afterwards sits `PENDING` waiting for a key nobody is going to be
-    asked for again, and nothing anywhere says so. A gate whose escape hatch
-    silently accumulates broken records is not a gate. If it should become
-    optional again, the missing piece is somewhere that surfaces *N companies
-    are waiting on a key* — not a link that hides the question.
-  - **Settings → General is the same write.** `settings.setResearchKey` is
-    posted by both, so there is one write path and no second opinion about what
-    a valid key looks like — including the check: that mutation asks the agent
-    whether Context recognises the key and refuses to save one that comes back
-    `401`. See
-    [the environment rules](./environment.md#the-context-key-is-asked-for-not-configured)
-    for why the call is the agent's to make and why a check that cannot be made
-    still saves.
+	  redirecting every request to a form that cannot be submitted.
+- **Context is an optional workspace integration, not an onboarding gate.**
+  `settings.setResearchKey` stores the shared key from Settings → General and
+  asks the agent whether Context recognises it before saving. The absence of a
+  key disables that capability without blocking sign-in or navigation. See
+  [the environment rules](./environment.md#the-context-key-is-a-workspace-setting-not-an-environment-variable).
 - **The name arrives as a placeholder, not as an answer.** A workspace is
   created as `DEFAULT_WORKSPACE_NAME` — the literal string `CRM` — and the field
   is empty with that behind it. It used to be derived from the sign-in domain,

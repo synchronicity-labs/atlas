@@ -1,5 +1,10 @@
 import { db } from "@crm/db";
 import { websiteUrl } from "@crm/db/workspace";
+import {
+	readAtlasDashboard,
+	readAtlasQuestion,
+	readAtlasWorkspace,
+} from "./atlas";
 import { capabilitiesMarkdown } from "./capabilities";
 import { identity, usMarkdown, type WorkspaceIdentity } from "./workspace";
 
@@ -20,14 +25,137 @@ export async function sessionPreamble(
 		contactId?: string | null;
 		companyId?: string | null;
 		dealId?: string | null;
+		atlasContextKind?: string | null;
+		atlasContextId?: string | null;
 	},
 	opened: Opened,
 ): Promise<Preamble> {
 	if (opened.kind === "workspace-profile") return workspacePreamble();
+	if (record.atlasContextKind === "workspace") return atlasWorkspacePreamble();
+	if (record.atlasContextKind === "dashboard" && record.atlasContextId) {
+		return atlasDashboardPreamble(Number(record.atlasContextId));
+	}
+	if (record.atlasContextKind === "question" && record.atlasContextId) {
+		return atlasQuestionPreamble(Number(record.atlasContextId));
+	}
 	if (record.contactId) return contactPreamble(record.contactId, opened);
 	if (record.companyId) return companyPreamble(record.companyId, opened);
 	if (record.dealId) return dealPreamble(record.dealId, opened);
 	return noRecordPreamble();
+}
+
+export async function atlasWorkspacePreamble(): Promise<Preamble> {
+	const atlas = await readAtlasWorkspace();
+	const dashboards = atlas.dashboards
+		.map(
+			(dashboard) =>
+				`- **${dashboard.number}. ${dashboard.name}** — ${dashboard._count.cards} questions across ${dashboard._count.tabs} tabs`,
+		)
+		.join("\n");
+	const sources = atlas.sources
+		.map(
+			(source) =>
+				`- ${source.label}: ${source.state}; last sync ${source.lastSyncAt?.toISOString() ?? "never"}; freshness deadline ${source.freshnessDeadlineAt?.toISOString() ?? "unset"}${source.lastError ? `; error: ${source.lastError}` : ""}`,
+		)
+		.join("\n");
+
+	return {
+		markdown: [
+			"## This Atlas session",
+			"",
+			"A colleague opened Rudy from the global Atlas header. Atlas is the deterministic company data layer and must be checked before reaching into Metabase, HubSpot, PostHog, Stripe, or another source.",
+			"Calendar reporting periods are UTC. Preserve that rule in every answer.",
+			"",
+			"### Dashboards",
+			"",
+			dashboards || "No dashboards are configured.",
+			"",
+			"### Source health",
+			"",
+			sources || "No sources are configured.",
+			"",
+			"Use `read_atlas` before answering a KPI question. If asked to change a question, use `propose_atlas_question_change`; it creates a review draft and never mutates the live query.",
+			"",
+			await closing(),
+		].join("\n"),
+		focus: {},
+	};
+}
+
+export async function atlasDashboardPreamble(
+	number: number,
+): Promise<Preamble> {
+	const dashboard = await readAtlasDashboard(number);
+	if (!dashboard) {
+		return {
+			markdown: `Atlas dashboard ${number} does not exist.\n\n${await closing()}`,
+			focus: {},
+		};
+	}
+	const cards = dashboard.cards
+		.map((card) => {
+			const snapshot = card.latestSnapshot;
+			return `- Question ${card.question.number}: **${card.question.name}** (${card.visualization}, ${card.question.latestVersion?.queryLanguage ?? "unknown query"}) — period ${snapshot?.reportingPeriod ?? "unavailable"}, captured ${snapshot?.capturedAt.toISOString() ?? "never"}, ${snapshot?.rowCount ?? 0} rows`;
+		})
+		.join("\n");
+
+	return {
+		markdown: [
+			"## This Atlas session",
+			"",
+			`A colleague has **dashboard ${dashboard.number}: ${dashboard.name}** open.`,
+			dashboard.description ?? "",
+			"Calendar reporting periods are UTC. The captured timestamp is provenance, not the reporting period.",
+			"",
+			"### Questions currently on the dashboard",
+			"",
+			cards,
+			"",
+			"Call `read_atlas` on this dashboard or one of its question numbers before explaining a result. For a requested query change, create a reviewable draft with `propose_atlas_question_change`. Never claim the live dashboard changed until a person previews and saves it.",
+			"",
+			await closing(),
+		]
+			.filter(Boolean)
+			.join("\n"),
+		focus: {},
+	};
+}
+
+export async function atlasQuestionPreamble(number: number): Promise<Preamble> {
+	const question = await readAtlasQuestion(number);
+	if (!question) {
+		return {
+			markdown: `Atlas question ${number} does not exist.\n\n${await closing()}`,
+			focus: {},
+		};
+	}
+	const latest = question.versions[0];
+	const snapshot = question.snapshots[0];
+	return {
+		markdown: [
+			"## This Atlas session",
+			"",
+			`A colleague has **question ${question.number}: ${question.name}** open.`,
+			question.description ?? "",
+			`Connector: ${question.connector}. Source id: ${question.sourceExternalId ?? "Atlas-native"}.`,
+			`Latest immutable version: ${latest?.version ?? "none"}; ${latest?.queryLanguage ?? "unknown"}; display ${latest?.display ?? "unknown"}.`,
+			`Latest result: reporting period ${snapshot?.reportingPeriod ?? "unavailable"}; captured ${snapshot?.capturedAt.toISOString() ?? "never"}; ${snapshot?.rowCount ?? 0} rows.`,
+			"Calendar reporting periods are UTC. Do not infer a timeframe from the capture timestamp.",
+			"",
+			"### Current query",
+			"",
+			"```",
+			latest?.queryText ?? "No saved query",
+			"```",
+			"",
+			"Use `read_atlas` if you need the result rows or earlier versions. Explain the real query rather than guessing from the chart. If asked to change it, call `propose_atlas_question_change`; the colleague will receive a review link and must preview before saving a new version.",
+			"",
+			await closing(),
+		]
+			.filter(Boolean)
+			.join("\n"),
+		focus: {},
+	};
 }
 
 export async function composeClosing(

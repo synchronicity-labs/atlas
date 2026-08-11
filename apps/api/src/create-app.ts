@@ -4,6 +4,7 @@ import {
 	ExpressAdapter,
 	type NestExpressApplication,
 } from "@nestjs/platform-express";
+import { json } from "express";
 import helmet from "helmet";
 import { AppModule } from "./app.module";
 import { ContextLogger } from "./logging/context-logger";
@@ -15,6 +16,7 @@ export async function createApp(): Promise<NestExpressApplication> {
 		{ bodyParser: false, logger: new ContextLogger() },
 	);
 
+	app.use("/internal/sync/modal", json({ limit: "1mb" }));
 	app.use(helmet());
 	app.useGlobalPipes(
 		new ValidationPipe({

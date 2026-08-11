@@ -147,7 +147,7 @@ writeFileSync(
 		handler: "index.mjs",
 		launcherType: "Nodejs",
 		shouldAddHelpers: false,
-		maxDuration: 60,
+		maxDuration: 300,
 		memory: 1769,
 		environment: { NODE_ENV: "production" },
 		regions: ["iad1"],
@@ -158,7 +158,37 @@ writeFileSync(
 	JSON.stringify({
 		version: 3,
 		routes: [{ src: "/(.*)", dest: "/api/index" }],
-		crons: [{ path: "/internal/sync/google", schedule: "*/5 * * * *" }],
+		crons: [
+			{ path: "/internal/sync/google", schedule: "*/5 * * * *" },
+			{
+				path: "/internal/sync/metabase/users",
+				schedule: "7 * * * *",
+			},
+			{
+				path: "/internal/sync/metabase/incremental",
+				schedule: "17 */8 * * *",
+			},
+			{
+				path: "/internal/sync/atlas/1",
+				schedule: "27 */8 * * *",
+			},
+			{
+				path: "/internal/sync/metabase/backfill",
+				schedule: "*/15 * * * *",
+			},
+			{
+				path: "/internal/sync/marketing",
+				schedule: "37 */8 * * *",
+			},
+			{
+				path: "/internal/sync/atlas/5",
+				schedule: "47 */6 * * *",
+			},
+			{
+				path: "/internal/sync/atlas/6",
+				schedule: "53 */8 * * *",
+			},
+		],
 	}),
 );
 

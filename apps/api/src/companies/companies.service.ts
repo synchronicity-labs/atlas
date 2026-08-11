@@ -65,6 +65,7 @@ export type CompanyRow = {
 		image: string | null;
 	} | null;
 	contactCount: number;
+	productUserCount: number;
 	openDealCount: number;
 	lastActivityAt: string | null;
 	createdAt: string;
@@ -124,6 +125,7 @@ export class CompaniesService {
 					_count: {
 						select: {
 							contacts: true,
+							productUserLinks: true,
 							deals: { where: { stage: { in: [...OPEN_DEAL_STAGES] } } },
 						},
 					},
@@ -153,6 +155,7 @@ export class CompaniesService {
 				source: row.source,
 				owner: row.owner,
 				contactCount: row._count.contacts,
+				productUserCount: row._count.productUserLinks,
 				openDealCount: row._count.deals,
 				lastActivityAt: row.lastActivityAt?.toISOString() ?? null,
 				createdAt: row.createdAt.toISOString(),
@@ -230,6 +233,57 @@ export class CompaniesService {
 						owner: { select: OWNER_SELECT },
 					},
 				},
+				sourceRecords: {
+					orderBy: { syncedAt: "desc" },
+					select: {
+						kind: true,
+						externalId: true,
+						syncedAt: true,
+						source: {
+							select: { key: true, label: true, state: true, lastSyncAt: true },
+						},
+					},
+				},
+				productUserLinks: {
+					orderBy: { productUser: { email: "asc" } },
+					select: {
+						method: true,
+						confidence: true,
+						productUser: {
+							select: {
+								id: true,
+								externalId: true,
+								email: true,
+								displayName: true,
+								avatarUrl: true,
+								lastSeenAt: true,
+								memberships: {
+									select: {
+										productOrganization: {
+											select: { id: true, name: true, plan: true },
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+				productOrganizationLinks: {
+					orderBy: { productOrganization: { name: "asc" } },
+					select: {
+						method: true,
+						confidence: true,
+						productOrganization: {
+							select: {
+								id: true,
+								externalId: true,
+								name: true,
+								plan: true,
+								domain: true,
+							},
+						},
+					},
+				},
 			},
 		});
 
@@ -246,6 +300,21 @@ export class CompaniesService {
 			enrichedAt: enrichedAt?.toISOString() ?? null,
 			primaryContactId: primaryContact?.id ?? null,
 			primaryContact,
+			sourceRecords: company.sourceRecords.map((record) => ({
+				...record,
+				syncedAt: record.syncedAt.toISOString(),
+				source: {
+					...record.source,
+					lastSyncAt: record.source.lastSyncAt?.toISOString() ?? null,
+				},
+			})),
+			productUserLinks: company.productUserLinks.map((link) => ({
+				...link,
+				productUser: {
+					...link.productUser,
+					lastSeenAt: link.productUser.lastSeenAt?.toISOString() ?? null,
+				},
+			})),
 			deals: deals.map((deal) => ({
 				...deal,
 				amount: undefined,

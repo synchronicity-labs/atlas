@@ -9,28 +9,22 @@ import {
 	CommandItem,
 	CommandList,
 } from "@crm/ui/components/command";
-import {
-	EntityLogo,
-	type EntityLogoTone,
-} from "@crm/ui/components/entity-logo";
 import { PersonAvatar } from "@crm/ui/components/person-avatar";
 import { useMountEffect } from "@crm/ui/hooks/use-mount-effect";
 import { useQuery } from "@tanstack/react-query";
+import { useRouter } from "next/navigation";
 import { parseAsBoolean, useQueryState } from "nuqs";
 import { useState } from "react";
-import { useOpenRecord } from "@/components/crm/record-sheet/record-stack";
 import { useTRPC } from "@/lib/trpc/client";
 
 const GROUP_LABEL = {
-	company: "Companies",
-	contact: "Contacts",
-	deal: "Deals",
+	user: "Product users",
 } as const;
 
-const KINDS = ["company", "contact", "deal"] as const;
+const KINDS = ["user"] as const;
 
 export function QuickSwitcher() {
-	const openRecord = useOpenRecord();
+	const router = useRouter();
 	const trpc = useTRPC();
 
 	const [open, setOpen] = useQueryState("k", parseAsBoolean.withDefault(false));
@@ -56,10 +50,10 @@ export function QuickSwitcher() {
 
 	const hits = results.data?.hits ?? [];
 
-	const go = (kind: (typeof KINDS)[number], id: string) => {
+	const go = (id: string) => {
 		setQuery("");
 		void setOpen(null);
-		openRecord({ kind, id });
+		router.push(`/users/${id}`);
 	};
 
 	return (
@@ -67,11 +61,11 @@ export function QuickSwitcher() {
 			open={open}
 			onOpenChange={(next) => setOpen(next || null)}
 			title="Search"
-			description="Jump to a company, contact or deal"
+			description="Jump to a product user"
 		>
 			<Command shouldFilter={false}>
 				<CommandInput
-					placeholder="Search companies, contacts and deals…"
+					placeholder="Search product users…"
 					value={query}
 					onValueChange={setQuery}
 				/>
@@ -92,23 +86,13 @@ export function QuickSwitcher() {
 									<CommandItem
 										key={`${hit.kind}:${hit.id}`}
 										value={`${hit.kind}:${hit.id}`}
-										onSelect={() => go(kind, hit.id)}
+										onSelect={() => go(hit.id)}
 									>
-										{hit.kind === "contact" ? (
-											<PersonAvatar
-												src={hit.imageUrl}
-												name={hit.label}
-												size="sm"
-											/>
-										) : (
-											<EntityLogo
-												src={hit.iconUrl}
-												darkSrc={hit.iconDarkUrl}
-												tone={hit.iconTone as EntityLogoTone | null | undefined}
-												name={hit.label}
-												size="sm"
-											/>
-										)}
+										<PersonAvatar
+											src={hit.imageUrl}
+											name={hit.label}
+											size="sm"
+										/>
 										<span className="flex min-w-0 flex-col">
 											<span className="truncate">{hit.label}</span>
 											{hit.detail ? (

@@ -3,7 +3,7 @@ import { Injectable } from "@nestjs/common";
 import { InjectDatabase } from "../database/database.constants";
 
 export type SearchHit = {
-	kind: "company" | "contact" | "deal";
+	kind: "company" | "contact" | "deal" | "user";
 	id: string;
 	label: string;
 	detail: string | null;
@@ -23,7 +23,7 @@ export class SearchService {
 		const term = q.trim();
 		if (term.length < 2) return { hits: [] };
 
-		const [companies, contacts, deals] = await Promise.all([
+		const [companies, contacts, deals, productUsers] = await Promise.all([
 			this.db.company.findMany({
 				where: {
 					OR: [
@@ -78,6 +78,51 @@ export class SearchService {
 					},
 				},
 			}),
+			this.db.productUser.findMany({
+				where: {
+					OR: [
+						{ externalId: { contains: term, mode: "insensitive" } },
+						{ displayName: { contains: term, mode: "insensitive" } },
+						{ email: { contains: term, mode: "insensitive" } },
+						{
+							identities: {
+								some: {
+									normalizedValue: {
+										contains: term.toLowerCase(),
+									},
+								},
+							},
+						},
+						{
+							memberships: {
+								some: {
+									productOrganization: {
+										OR: [
+											{ name: { contains: term, mode: "insensitive" } },
+											{ externalId: { contains: term, mode: "insensitive" } },
+										],
+									},
+								},
+							},
+						},
+					],
+				},
+				take: PER_KIND,
+				orderBy: [{ displayName: "asc" }, { email: "asc" }],
+				select: {
+					id: true,
+					externalId: true,
+					displayName: true,
+					email: true,
+					avatarUrl: true,
+					memberships: {
+						take: 1,
+						select: {
+							productOrganization: { select: { name: true } },
+						},
+					},
+				},
+			}),
 		]);
 
 		return {
@@ -118,6 +163,21 @@ export class SearchService {
 						iconDarkUrl: deal.company.iconDarkUrl,
 						iconTone: deal.company.iconTone,
 						imageUrl: null,
+					}),
+				),
+				...productUsers.map(
+					(user): SearchHit => ({
+						kind: "user",
+						id: user.id,
+						label: user.displayName ?? user.email ?? user.externalId,
+						detail:
+							user.memberships[0]?.productOrganization.name ??
+							user.email ??
+							user.externalId,
+						iconUrl: null,
+						iconDarkUrl: null,
+						iconTone: null,
+						imageUrl: user.avatarUrl,
 					}),
 				),
 			],

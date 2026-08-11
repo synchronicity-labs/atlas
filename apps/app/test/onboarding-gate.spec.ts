@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "bun:test";
 import { AUTH_COOKIE_PREFIX } from "@crm/auth/cookies";
 import { NextRequest } from "next/server";
-import { readOnboardingGate, readResearchGate } from "../lib/onboarding";
+import { readOnboardingGate } from "../lib/onboarding";
 import { proxy } from "../proxy";
 
 const SESSION_COOKIE = `${AUTH_COOKIE_PREFIX}.session_token=abc.def`;
@@ -32,30 +32,18 @@ const workspace = (data: { onboarded: boolean; canRename: boolean }) => ({
 	result: { data },
 });
 
-const researchKey = (configured: boolean) => ({
-	result: { data: { configured, hint: configured ? "••••9876" : null } },
-});
-
-/** Answers both gate procedures, counting the calls to each. */
 function setup({
 	onboarded = true,
 	canRename = true,
-	configured = true,
 }: {
 	onboarded?: boolean;
 	canRename?: boolean;
-	configured?: boolean;
 } = {}) {
-	const calls = { workspace: 0, research: 0 };
+	const calls = { workspace: 0 };
 
-	stub(async (url) => {
-		if (url.includes("workspace.get")) {
-			calls.workspace += 1;
-			return json(workspace({ onboarded, canRename }));
-		}
-
-		calls.research += 1;
-		return json(researchKey(configured));
+	stub(async () => {
+		calls.workspace += 1;
+		return json(workspace({ onboarded, canRename }));
 	});
 
 	return calls;
@@ -110,30 +98,6 @@ describe("readOnboardingGate", () => {
 	});
 });
 
-describe("readResearchGate", () => {
-	it("is settled once a key is saved, and required until then", async () => {
-		answerWith(researchKey(true));
-		expect(await readResearchGate(request("/", [SESSION_COOKIE]))).toBe(
-			"settled",
-		);
-
-		answerWith(researchKey(false));
-		expect(await readResearchGate(request("/", [SESSION_COOKIE]))).toBe(
-			"required",
-		);
-	});
-
-	it("is unknown rather than required when the API cannot be read", async () => {
-		stub(async () => {
-			throw new Error("connect ECONNREFUSED");
-		});
-
-		expect(await readResearchGate(request("/", [SESSION_COOKIE]))).toBe(
-			"unknown",
-		);
-	});
-});
-
 describe("proxy", () => {
 	it("sends a stranger to sign in, and leaves them there", async () => {
 		expect(redirectedTo(await proxy(request("/companies")))).toBe("/sign-in");
@@ -157,7 +121,7 @@ describe("proxy", () => {
 		setup({ onboarded: false });
 
 		expect(
-			redirectedTo(await proxy(request("/companies", [SESSION_COOKIE]))),
+			redirectedTo(await proxy(request("/contacts", [SESSION_COOKIE]))),
 		).toBe("/onboarding");
 	});
 
@@ -172,41 +136,35 @@ describe("proxy", () => {
 	it("asks again on every request, and remembers nothing", async () => {
 		const calls = setup();
 
-		const first = await proxy(request("/companies", [SESSION_COOKIE]));
+		const first = await proxy(request("/contacts", [SESSION_COOKIE]));
 
 		expect([...first.cookies.getAll()]).toHaveLength(0);
-		expect(calls).toEqual({ workspace: 1, research: 1 });
+		expect(calls).toEqual({ workspace: 1 });
 
-		await proxy(request("/companies", [SESSION_COOKIE]));
+		await proxy(request("/contacts", [SESSION_COOKIE]));
 
-		expect(calls).toEqual({ workspace: 2, research: 2 });
+		expect(calls).toEqual({ workspace: 2 });
 	});
 
 	it("notices when the answer changes underneath it", async () => {
 		setup();
 		expect(
-			redirectedTo(await proxy(request("/companies", [SESSION_COOKIE]))),
+			redirectedTo(await proxy(request("/contacts", [SESSION_COOKIE]))),
 		).toBeNull();
 
 		// A reset database, a removed key: the browser is carrying nothing that
 		// could keep saying the gate was satisfied.
 		setup({ onboarded: false });
 		expect(
-			redirectedTo(await proxy(request("/companies", [SESSION_COOKIE]))),
+			redirectedTo(await proxy(request("/contacts", [SESSION_COOKIE]))),
 		).toBe("/onboarding");
 	});
 
-	it("takes a settled rep off both setup pages", async () => {
+	it("takes a settled rep off the required setup page", async () => {
 		setup();
 
 		expect(
 			redirectedTo(await proxy(request("/onboarding", [SESSION_COOKIE]))),
-		).toBe("/");
-
-		expect(
-			redirectedTo(
-				await proxy(request("/onboarding/research", [SESSION_COOKIE])),
-			),
 		).toBe("/");
 	});
 
@@ -216,6 +174,21 @@ describe("proxy", () => {
 		expect(
 			redirectedTo(await proxy(request("/grant-access", [SESSION_COOKIE]))),
 		).toBeNull();
+	});
+
+	it("opens Atlas surfaces without requiring CRM setup", async () => {
+		setup({ onboarded: false });
+
+		for (const path of [
+			"/dashboards/1",
+			"/questions",
+			"/users",
+			"/companies",
+		]) {
+			expect(
+				redirectedTo(await proxy(request(path, [SESSION_COOKIE]))),
+			).toBeNull();
+		}
 	});
 
 	it("leaves the agent bridge alone", async () => {
@@ -231,44 +204,8 @@ describe("proxy", () => {
 			throw new Error("connect ECONNREFUSED");
 		});
 
-		const response = await proxy(request("/companies", [SESSION_COOKIE]));
+		const response = await proxy(request("/contacts", [SESSION_COOKIE]));
 
 		expect(redirectedTo(response)).toBeNull();
-	});
-});
-
-describe("the research key gate", () => {
-	it("sends an onboarded rep with no key to the key form", async () => {
-		setup({ configured: false });
-
-		expect(
-			redirectedTo(await proxy(request("/companies", [SESSION_COOKIE]))),
-		).toBe("/onboarding/research");
-	});
-
-	it("lets that form render rather than looping onto itself", async () => {
-		setup({ configured: false });
-
-		expect(
-			redirectedTo(
-				await proxy(request("/onboarding/research", [SESSION_COOKIE])),
-			),
-		).toBeNull();
-	});
-
-	it("asks the first question first when both are outstanding", async () => {
-		setup({ onboarded: false, configured: false });
-
-		expect(
-			redirectedTo(await proxy(request("/companies", [SESSION_COOKIE]))),
-		).toBe("/onboarding");
-	});
-
-	it("sends them on to the key once the workspace is named", async () => {
-		setup({ onboarded: true, configured: false });
-
-		expect(
-			redirectedTo(await proxy(request("/onboarding", [SESSION_COOKIE]))),
-		).toBe("/onboarding/research");
 	});
 });

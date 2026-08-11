@@ -1,0 +1,150 @@
+import { createHash, randomUUID } from "node:crypto";
+import { type Db, type Prisma, SyncMode, SyncRunStatus } from "@crm/db";
+import { executeHubspotSalesQuery } from "@crm/db/hubspot-sales";
+import { Injectable, NotFoundException } from "@nestjs/common";
+import { InjectDatabase } from "../database/database.constants";
+
+const SOURCE_KEY = "hubspot:crm";
+
+function json(value: unknown): Prisma.InputJsonValue {
+	return JSON.parse(JSON.stringify(value ?? null)) as Prisma.InputJsonValue;
+}
+
+function hash(value: unknown): string {
+	return createHash("sha256").update(JSON.stringify(value)).digest("hex");
+}
+
+@Injectable()
+export class SalesService {
+	constructor(@InjectDatabase() private readonly db: Db) {}
+
+	async preview(queryText: string) {
+		let query: unknown;
+		try {
+			query = JSON.parse(queryText);
+		} catch {
+			throw new Error("HubSpot sales questions must contain valid JSON.");
+		}
+		return executeHubspotSalesQuery(this.db, query);
+	}
+
+	async syncDashboard(number = 4) {
+		const dashboard = await this.db.dashboard.findUnique({
+			where: { number },
+			select: {
+				cards: {
+					select: {
+						question: {
+							select: {
+								id: true,
+								number: true,
+								sourceId: true,
+								sourceExternalId: true,
+								versions: {
+									orderBy: { version: "desc" },
+									take: 1,
+									select: {
+										version: true,
+										queryLanguage: true,
+										queryText: true,
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		});
+		if (!dashboard)
+			throw new NotFoundException(`No Atlas dashboard ${number}.`);
+		const source = await this.db.dataSource.findUnique({
+			where: { key: SOURCE_KEY },
+		});
+		if (!source) throw new Error("HubSpot CRM has not been ingested yet.");
+		const questions = [
+			...new Map(
+				dashboard.cards.map((card) => [card.question.id, card.question]),
+			).values(),
+		];
+		const period = new Date().toISOString().slice(0, 7);
+		const run = await this.db.syncRun.create({
+			data: {
+				runKey: `atlas:sales:${period}:${new Date().toISOString()}:${randomUUID()}`,
+				sourceId: source.id,
+				mode: SyncMode.INCREMENTAL,
+				status: SyncRunStatus.RUNNING,
+				scope: `dashboard:${number}`,
+				period,
+			},
+		});
+		let cardsProcessed = 0;
+		let snapshotsCreated = 0;
+		const errors: Array<{ number: number; message: string }> = [];
+		for (const question of questions) {
+			const version = question.versions[0];
+			if (version?.queryLanguage !== "API") {
+				errors.push({
+					number: question.number,
+					message: "Question has no HubSpot API version.",
+				});
+				continue;
+			}
+			try {
+				const result = await this.preview(version.queryText);
+				const payload = { columns: result.columns, rows: result.rows };
+				const contentHash = hash(payload);
+				const externalId =
+					question.sourceExternalId ?? `sales:question:${question.number}`;
+				const created = await this.db.resultSnapshot.createMany({
+					data: [
+						{
+							idempotencyKey: `atlas:sales:${externalId}:v${version.version}:${period}:${contentHash}`,
+							sourceId: source.id,
+							dashboardExternalId: `atlas:${number}`,
+							questionExternalId: externalId,
+							reportingPeriod: period,
+							capturedAt: new Date(),
+							contentHash,
+							columns: json(result.columns),
+							rows: json(result.rows),
+							rowCount: result.rows.length,
+						},
+					],
+					skipDuplicates: true,
+				});
+				cardsProcessed += 1;
+				snapshotsCreated += created.count;
+			} catch (error) {
+				errors.push({
+					number: question.number,
+					message: error instanceof Error ? error.message : String(error),
+				});
+			}
+		}
+		const finishedAt = new Date();
+		await this.db.syncRun.update({
+			where: { id: run.id },
+			data: {
+				status:
+					errors.length > 0 ? SyncRunStatus.FAILED : SyncRunStatus.COMPLETED,
+				finishedAt,
+				cardsProcessed,
+				snapshotsCreated,
+				error:
+					errors.length > 0
+						? errors
+								.map((error) => `Q${error.number}: ${error.message}`)
+								.join(" | ")
+						: null,
+				checkpoint: json({ errors }),
+			},
+		});
+		return {
+			runId: run.id,
+			period,
+			cardsProcessed,
+			snapshotsCreated,
+			errors,
+		};
+	}
+}

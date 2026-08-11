@@ -20,8 +20,9 @@ import {
 	TooltipContent,
 	TooltipTrigger,
 } from "@crm/ui/components/tooltip";
-import { formatMoney } from "@crm/ui/lib/format";
+import { formatMoney, relativeTimeFromIso } from "@crm/ui/lib/format";
 import { useMutation, useQuery } from "@tanstack/react-query";
+import Link from "next/link";
 import { toast } from "sonner";
 import { AgentPanel } from "@/components/crm/agent-panel";
 import { OPEN_STAGES } from "@/components/crm/deal-stage";
@@ -111,6 +112,13 @@ const DEAL_COLUMNS = [
 	{ header: "Amount", width: "w-[16%]", align: "right" as const },
 	{ header: "Close date", width: "w-[14%]" },
 	{ header: "Owner", width: "w-[14%]" },
+];
+
+const PRODUCT_USER_COLUMNS = [
+	{ header: "Product user", width: "w-[38%]", className: "pl-5" },
+	{ header: "Workspaces", width: "w-[30%]" },
+	{ header: "Last seen", width: "w-[18%]" },
+	{ header: "Match", width: "w-[14%]" },
 ];
 
 const dateFormat = new Intl.DateTimeFormat(undefined, {
@@ -222,6 +230,12 @@ export function CompanySheet({ companyId }: { companyId: string }) {
 					),
 				},
 				{
+					value: "product",
+					label: "Product",
+					count: company.productUserLinks.length,
+					content: <CompanyProductFootprint company={company} />,
+				},
+				{
 					value: "deals",
 					label: "Deals",
 					count: company.deals.length,
@@ -307,6 +321,11 @@ export function CompanySheet({ companyId }: { companyId: string }) {
 						<DetailSheetStat label="Open deals">
 							<span className="tabular-nums">{openDeals.length}</span>
 						</DetailSheetStat>
+						<DetailSheetStat label="Product accounts">
+							<span className="tabular-nums">
+								{company.productUserLinks.length}
+							</span>
+						</DetailSheetStat>
 						<DetailSheetStat label="Next close">
 							{closing ? (
 								shortDateFormat.format(new Date(closing))
@@ -324,6 +343,106 @@ export function CompanySheet({ companyId }: { companyId: string }) {
 			tab={tab}
 			onTabChange={setTab}
 		/>
+	);
+}
+
+function CompanyProductFootprint({ company }: { company: Company }) {
+	if (
+		company.productUserLinks.length === 0 &&
+		company.productOrganizationLinks.length === 0
+	) {
+		return (
+			<DetailSheetEmpty
+				icon={UserMultiple}
+				title="No product identities linked"
+				description={`Atlas has not found an exact product identity or organization match for ${company.name} yet.`}
+			/>
+		);
+	}
+
+	return (
+		<DetailSheetBody>
+			{company.productOrganizationLinks.length > 0 ? (
+				<DetailSheetSection title="Product organizations">
+					<div className="flex flex-wrap gap-2">
+						{company.productOrganizationLinks.map((link) => (
+							<div
+								key={link.productOrganization.id}
+								className="rounded-md border bg-muted/30 px-3 py-2"
+							>
+								<p className="font-medium text-sm">
+									{link.productOrganization.name || "Unnamed workspace"}
+								</p>
+								<p className="text-muted-foreground text-xs">
+									{link.productOrganization.plan || "No plan"} ·{" "}
+									{link.method.toLowerCase().replaceAll("_", " ")}
+								</p>
+							</div>
+						))}
+					</div>
+				</DetailSheetSection>
+			) : null}
+
+			<DetailSheetSection title="Product users">
+				{company.productUserLinks.length > 0 ? (
+					<SimpleTable variant="panel" columns={PRODUCT_USER_COLUMNS}>
+						{company.productUserLinks.map((link) => {
+							const user = link.productUser;
+							const name = user.displayName || user.email || user.externalId;
+							return (
+								<SimpleTableRow key={user.id}>
+									<TableCell className="py-2.5 pr-3 pl-5">
+										<Link
+											href={`/users/${user.id}`}
+											className="flex min-w-0 items-center gap-2 hover:underline"
+										>
+											<PersonAvatar
+												src={user.avatarUrl}
+												name={name}
+												email={user.email}
+												size="sm"
+											/>
+											<span className="min-w-0">
+												<span className="block truncate font-medium">
+													{name}
+												</span>
+												<span className="block truncate text-muted-foreground text-xs">
+													{user.email}
+												</span>
+											</span>
+										</Link>
+									</TableCell>
+									<TableCell className="truncate px-3 py-2.5 text-muted-foreground">
+										{user.memberships
+											.flatMap((membership) => {
+												const name = membership.productOrganization.name;
+												return name ? [name] : [];
+											})
+											.join(", ") || <EmptyCellValue />}
+									</TableCell>
+									<TableCell className="px-3 py-2.5 text-muted-foreground">
+										{user.lastSeenAt ? (
+											relativeTimeFromIso(user.lastSeenAt)
+										) : (
+											<EmptyCellValue />
+										)}
+									</TableCell>
+									<TableCell className="px-3 py-2.5 text-muted-foreground text-xs">
+										{link.method.toLowerCase().replaceAll("_", " ")}
+									</TableCell>
+								</SimpleTableRow>
+							);
+						})}
+					</SimpleTable>
+				) : (
+					<DetailSheetEmpty
+						icon={UserMultiple}
+						title="No people linked"
+						description="A matching product organization exists, but no individual identities have been linked yet."
+					/>
+				)}
+			</DetailSheetSection>
+		</DetailSheetBody>
 	);
 }
 

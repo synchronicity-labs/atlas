@@ -23,22 +23,21 @@ import Link from "next/link";
 import { useTheme } from "next-themes";
 import { toast } from "sonner";
 import { useMobileNav } from "@/components/mobile-nav";
+import { RudyChatTrigger } from "@/components/rudy-chat";
+import { workspaceLabel } from "@/lib/app-label";
 import { useTRPC } from "@/lib/trpc/client";
 
 type User = { name: string; email: string; image: string | null };
 
-/**
- * The workspace arrives named `CRM` until somebody types something else — the
- * deliberate placeholder — so appending the product name to it read "CRM CRM".
- * A workspace genuinely called "Acme CRM" has the same problem, which is why
- * this tests the name rather than comparing it to the default.
- */
-export function workspaceLabel(name: string | undefined): string {
-	const trimmed = name?.trim();
+async function handleSignOut() {
+	const { error } = await signOut();
 
-	if (!trimmed) return "CRM";
+	if (error) {
+		toast.error(error.message ?? "Could not sign out.");
+		return;
+	}
 
-	return /\bcrm$/i.test(trimmed) ? trimmed : `${trimmed} CRM`;
+	window.location.assign("/sign-in");
 }
 
 export function AppHeader({ user }: { user: User }) {
@@ -46,17 +45,6 @@ export function AppHeader({ user }: { user: User }) {
 	const trpc = useTRPC();
 	const workspace = useQuery(trpc.workspace.get.queryOptions());
 	const label = workspaceLabel(workspace.data?.name);
-
-	async function handleSignOut() {
-		const { error } = await signOut();
-
-		if (error) {
-			toast.error(error.message ?? "Could not sign out.");
-			return;
-		}
-
-		window.location.assign("/sign-in");
-	}
 
 	return (
 		<header className="flex h-12 shrink-0 items-center gap-2 border-b px-3 [view-transition-name:app-header]">
@@ -82,6 +70,7 @@ export function AppHeader({ user }: { user: User }) {
 			</div>
 
 			<div className="ml-auto flex shrink-0 items-center gap-1.5">
+				<RudyChatTrigger record={{ kind: "workspace", id: "atlas" }} />
 				<UserMenu
 					user={user}
 					onSignOut={() => {

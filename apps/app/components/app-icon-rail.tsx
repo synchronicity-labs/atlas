@@ -1,11 +1,11 @@
 "use client";
 
-import Building from "@carbon/icons-react/es/Building";
 import type { CarbonIconType } from "@carbon/icons-react/es/CarbonIcon";
-import Dashboard from "@carbon/icons-react/es/Dashboard";
-import Partnership from "@carbon/icons-react/es/Partnership";
+import Catalog from "@carbon/icons-react/es/Catalog";
+import Customer from "@carbon/icons-react/es/Customer";
+import DashboardReference from "@carbon/icons-react/es/DashboardReference";
 import Settings from "@carbon/icons-react/es/Settings";
-import UserMultiple from "@carbon/icons-react/es/UserMultiple";
+import UserIdentification from "@carbon/icons-react/es/UserIdentification";
 import { Button } from "@crm/ui/components/button";
 import { Icon } from "@crm/ui/components/icon";
 import {
@@ -32,15 +32,25 @@ type RailItem = {
 };
 
 const ITEMS: RailItem[] = [
-	{ title: "Overview", href: "/", icon: Dashboard, match: "exact" },
-	{ title: "Companies", href: "/companies", icon: Building, match: "prefix" },
 	{
-		title: "Contacts",
-		href: "/contacts",
-		icon: UserMultiple,
+		title: "Dashboards",
+		href: "/dashboards",
+		icon: DashboardReference,
 		match: "prefix",
 	},
-	{ title: "Deals", href: "/deals", icon: Partnership, match: "prefix" },
+	{ title: "Questions", href: "/questions", icon: Catalog, match: "prefix" },
+	{
+		title: "Clients",
+		href: "/companies",
+		icon: Customer,
+		match: "prefix",
+	},
+	{
+		title: "Product users",
+		href: "/users",
+		icon: UserIdentification,
+		match: "prefix",
+	},
 	{ title: "Settings", href: "/settings", icon: Settings, match: "prefix" },
 ];
 

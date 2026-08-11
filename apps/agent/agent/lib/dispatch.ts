@@ -4,6 +4,7 @@ import { brandOutcome, runBrand } from "./brand";
 import { markRunning, settle } from "./enrichment";
 import { collapsing, runLimited } from "./pool";
 import { runPortrait } from "./portrait";
+import { syncPosthogProductUser } from "./posthog-users";
 import {
 	claimDue,
 	completeTask,
@@ -83,6 +84,19 @@ async function runDirect(task: LeasedTask): Promise<void> {
 			return;
 		}
 
+		if (task.kind === "posthog-profile" && task.productUserId) {
+			const result = await syncPosthogProductUser(task.productUserId);
+			await completeTask(
+				task.id,
+				!result.configured
+					? "PostHog is not configured."
+					: result.matched
+						? "PostHog behavior linked."
+						: "No exact PostHog person matched.",
+			);
+			return;
+		}
+
 		await completeTask(task.id, "The record this names is gone.");
 	} catch (error) {
 		const reason = error instanceof Error ? error.message : String(error);
@@ -125,6 +139,7 @@ export function taskAuth(task: LeasedTask, base: AppAuth = APP_AUTH): AppAuth {
 			budget: String(task.budget),
 			...(task.contactId ? { contactId: task.contactId } : {}),
 			...(task.companyId ? { companyId: task.companyId } : {}),
+			...(task.productUserId ? { productUserId: task.productUserId } : {}),
 		},
 	};
 }

@@ -1,21 +1,8 @@
-<p align="center">
-  <a href="https://link.context.dev/crm">
-    <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="./docs/images/powered-by-context-dark.png">
-      <img alt="Powered by Context" height="23" src="./docs/images/powered-by-context.png">
-    </picture>
-  </a>
-</p>
+<h1 align="center">Atlas</h1>
 
 <p align="center">
-  <img alt="stars" height="21" src="https://afterglow.watch/badge/trycompai/crm">
-</p>
-
-<h1 align="center">CRM</h1>
-
-<p align="center">
-  <strong>An open-source, agentic-first CRM.</strong><br>
-  A durable research agent is the product. The database is just where it writes things down.
+  <strong>Sync's internal company brain.</strong><br>
+  Deterministic metrics, source-backed questions, dashboards, and customer context in one place.
 </p>
 
 <p align="center">
@@ -44,6 +31,18 @@
 ---
 
 ## What this is
+
+Atlas builds on [CompAI CRM](https://github.com/trycompai/crm), preserving its
+agentic CRM foundation while adding a first-class analytics model. Questions have
+stable Atlas numbers, immutable versions, real source queries, and reusable
+visualizations. Dashboards compose those questions into URL-addressable tabs and a
+granular, editable grid. Governed metrics read source systems directly; Metabase is a
+discovery and reconciliation reference, not the canonical data path.
+
+The initial dashboard mirrors the Product 2026 Scoreboard and keeps local snapshots,
+freshness, sync-run, and checkpoint state in Postgres. Product users are ingested as
+source identities rather than deduplicated by email, so shared emails and multi-org
+memberships remain visible. See [the Atlas architecture](./docs/atlas.md).
 
 Most CRMs are a database with a form in front of it. The AI ones bolt a chat box onto
 the side of that form. Both leave the actual work — finding out what is true, and
@@ -206,6 +205,7 @@ reproduces the view.
 | `apps/app` | Next.js front end · :3000 |
 | `apps/api` | NestJS API — HTTP, auth, tRPC, Google sync · :3001 |
 | `packages/db` | Prisma schema, migrations, shared Postgres client |
+| `packages/metrics` | Metric contracts, UTC windows, watermark alignment, deterministic hashes |
 | `packages/auth` | Better Auth config and the sign-in allow-list |
 | `packages/ui` | shadcn/ui components, the Tailwind theme |
 | `packages/env` | Finds and loads the root `.env` |
@@ -225,14 +225,14 @@ Written up where the work happens, not in a style guide:
 
 ## Quick start
 
-You need [Bun](https://bun.com) and Docker.
+You need [Bun](https://bun.com), Docker, and the [Doppler CLI](https://docs.doppler.com/docs/install-cli).
 
 ```sh
-git clone https://github.com/trycompai/crm.git && cd crm
-cp .env.example .env          # then fill in the four values below
-bun install
+git clone https://github.com/synchronicity-labs/atlas.git && cd atlas
+doppler setup --project atlas --config local
+doppler run -- bun install
 
-docker compose up -d          # Postgres on :5432
+docker compose up -d          # Postgres on :5434
 
 bun run db:deploy             # apply migrations
 bun run db:seed               # optional: a believable pipeline to look at
@@ -242,15 +242,25 @@ bun run dev
 The app is on [localhost:3000](http://localhost:3000), the API on
 [localhost:3001](http://localhost:3001).
 
-### The four values
+### Configuration
 
-Open `.env` and set these. Everything else in the file is optional and commented out.
+Local development reads the shared `atlas/local` Doppler config. No secret belongs
+in this repository. `.env.example` remains a name-only contract for CI and self-hosted
+deployments that inject their own process environment.
 
-| Variable                                   | What to put in it                                                    |
+| Variable                                   | Purpose                                                              |
 | ------------------------------------------ | -------------------------------------------------------------------- |
-| `BETTER_AUTH_SECRET`                       | `openssl rand -base64 32`                                             |
-| `ALLOWED_SIGN_IN`                          | Your email domain, e.g. `acme.com`. Or one address, e.g. `you@gmail.com`. |
-| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`| A Google OAuth client — 2 minutes, below. Both or neither.             |
+| `DATABASE_URL`                             | Atlas Postgres connection                                            |
+| `BETTER_AUTH_SECRET`                       | Session signing                                                       |
+| `ALLOWED_SIGN_IN`                          | Set to `sync.so` for the internal app                                 |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`| Google sign-in; both are required                                     |
+| `METABASE_BASE_URL` / `METABASE_API_KEY`   | Read-only Metabase ingestion                                          |
+| `GOOGLE_SERVICE_ACCOUNT_JSON`              | Read-only GA4 and Search Console reporting                            |
+| `POSTHOG_HOST` / `POSTHOG_API_KEY`          | Read-only behavioral marketing queries                               |
+| `HUBSPOT_ACCESS_TOKEN` / `HUBSPOT_PORTAL_ID`| Read-only client, deal, sales-dashboard, and identity bridge          |
+| `CRON_SECRET`                              | Protects internal sync endpoints                                      |
+| `ATLAS_QUERY_SECRET`                       | Read-only Atlas catalog and snapshot access for trusted agents        |
+| `RUDY_API_URL` / `RUDY_API_KEY`            | Server-only Hermes session bridge for the Atlas Rudy client           |
 
 `DATABASE_URL` already matches the `docker compose` Postgres, so leave it alone unless
 you brought your own.
@@ -261,7 +271,7 @@ you brought your own.
 1. [Google Cloud console](https://console.cloud.google.com/apis/credentials) → **Credentials** → **Create credentials** → **OAuth client ID** → **Web application**.
 2. Under **Authorised redirect URIs**, add `http://localhost:3001/api/auth/callback/google`.
 3. Enable the [Gmail API](https://console.cloud.google.com/apis/library/gmail.googleapis.com) and the [Calendar API](https://console.cloud.google.com/apis/library/calendar-json.googleapis.com) for the project.
-4. Copy the client ID and secret into `.env`.
+4. Add the client ID and secret to the `atlas/local` Doppler config.
 
 Google is the sign-in method a clone starts with, and the same client reads Gmail and
 Calendar — so almost every install wants it. It is nonetheless the one of the four that
@@ -333,8 +343,9 @@ mismatch is a redirect loop rather than an error.
 Set `API_URL` and `APP_URL` to the real origins, and if the two are on different
 subdomains of one parent, set `AUTH_COOKIE_DOMAIN` to the parent so one cookie covers
 both. Add `http://your-api-host/api/auth/callback/google` to the OAuth client's
-redirect URIs. Set `CRON_SECRET` and point a scheduler at
-`POST /internal/sync/google` to keep the mailbox sync running.
+redirect URIs. Set `CRON_SECRET`; the generated API deployment schedules Google sync,
+Metabase incremental refresh, and progressive historical backfill against their
+guarded internal routes.
 
 `apps/api/src/generated/server.ts` is committed and `build` must never regenerate it —
 the generator needs a newer GLIBC than most build images have. Regenerate locally and

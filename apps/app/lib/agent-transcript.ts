@@ -3,6 +3,13 @@ import type { EveMessage, EveMessagePart } from "eve/react";
 export type TranscriptItem =
 	| { kind: "said"; id: string; mine: boolean; text: string }
 	| {
+			kind: "proposal";
+			id: string;
+			summary: string;
+			reviewUrl: string;
+			questionNumber: number;
+	  }
+	| {
 			kind: "did";
 			id: string;
 			label: string;
@@ -40,6 +47,8 @@ const VERBS: Record<string, string> = {
 	schedule_recheck: "Decided when to look again",
 	record_job_change: "Raised a job change",
 	list_outstanding_work: "Looked for outstanding work",
+	read_atlas: "Read Atlas",
+	propose_atlas_question_change: "Drafted a question change for review",
 
 	load_skill: "Read its instructions for this",
 	web_search: "Searched the web",
@@ -84,6 +93,8 @@ export function toTranscript(
 
 				if (part.type.startsWith("tool-") || part.type === "dynamic-tool") {
 					const state = "state" in part ? part.state : undefined;
+					const proposal = proposalOf(part, id);
+					if (proposal) return [proposal];
 
 					return [
 						{
@@ -102,6 +113,29 @@ export function toTranscript(
 			}),
 		}))
 		.filter((message) => message.items.length > 0);
+}
+
+function proposalOf(
+	part: EveMessagePart,
+	id: string,
+): Extract<TranscriptItem, { kind: "proposal" }> | null {
+	if (toolName(part) !== "propose_atlas_question_change") return null;
+	const result = output(part);
+	if (result?.written !== true) return null;
+	if (
+		typeof result.summary !== "string" ||
+		typeof result.reviewUrl !== "string" ||
+		typeof result.questionNumber !== "number"
+	) {
+		return null;
+	}
+	return {
+		kind: "proposal",
+		id,
+		summary: result.summary,
+		reviewUrl: result.reviewUrl,
+		questionNumber: result.questionNumber,
+	};
 }
 
 function partId(

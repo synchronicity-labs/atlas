@@ -36,6 +36,9 @@ type ProductMetricSpec = {
 	businessDefinition: Record<string, unknown>;
 	computation: Record<string, unknown>;
 	requiresCrossSourceEligibility: boolean;
+	ownerTeam?: string;
+	createdBy?: string;
+	cadenceMinutes?: number;
 };
 
 type PublishInput = {
@@ -312,11 +315,289 @@ export const PRODUCT_METRIC_SPECS: ProductMetricSpec[] = [
 	},
 ];
 
+export const REVENUE_METRIC_SPECS: ProductMetricSpec[] = [
+	{
+		questionNumber: 1101,
+		sourceExternalId: "weekly-revenue:overview",
+		key: "company.weekly_revenue_lite_overview",
+		name: "Weekly Revenue Lite overview",
+		description:
+			"Current self-serve licensed base, accrued usage pace, run-rate, annualized run-rate, and Stripe cash reconciliation at one UTC cutoff.",
+		grain: FactGrain.MONTH,
+		source: {
+			key: "tinybird:revenue",
+			kind: DataSourceKind.TINYBIRD,
+			label: "TinyBird usage and Stripe mirror",
+		},
+		eventTimeField: "generationEndedAt",
+		businessDefinition: {
+			licensedBase:
+				"latest active or past-due self-serve subscriptions at the current v2 or v3 plan price",
+			usageActual: "paid-plan generation value grouped by generationEndedAt",
+			usagePace:
+				"month-to-date accrued usage divided by exact elapsed UTC seconds and multiplied by seconds in the calendar month",
+			productRunRate: "licensed base plus projected accrued usage",
+			annualizedRunRate: "product run-rate multiplied by 12",
+			excluded: ["enterprise commitments", "Studio commitments"],
+		},
+		computation: {
+			aggregate: "run_rate_reconstruction",
+			outputs: [
+				"licensed_subscription_base",
+				"usage_accrual_mtd",
+				"projected_usage_accrual",
+				"product_run_rate",
+				"annualized_product_run_rate",
+			],
+		},
+		requiresCrossSourceEligibility: true,
+		ownerTeam: "Company",
+		createdBy: "atlas-revenue-registry",
+		cadenceMinutes: 8 * 60,
+	},
+	{
+		questionNumber: 1102,
+		sourceExternalId: "weekly-revenue:product-run-rate",
+		key: "company.product_run_rate",
+		name: "Current product run-rate",
+		description:
+			"Self-serve licensed subscription base plus current-month accrued usage pace at a shared UTC cutoff.",
+		grain: FactGrain.MONTH,
+		source: {
+			key: "tinybird:revenue",
+			kind: DataSourceKind.TINYBIRD,
+			label: "TinyBird usage and Stripe mirror",
+		},
+		eventTimeField: "generationEndedAt",
+		businessDefinition: {
+			formula: "licensed_subscription_base + projected_usage_accrual",
+			enterpriseCommitmentsIncluded: false,
+			studioCommitmentsIncluded: false,
+		},
+		computation: { aggregate: "sum", output: "product_run_rate" },
+		requiresCrossSourceEligibility: true,
+		ownerTeam: "Company",
+		createdBy: "atlas-revenue-registry",
+		cadenceMinutes: 8 * 60,
+	},
+	{
+		questionNumber: 1103,
+		sourceExternalId: "weekly-revenue:usage-history-pace",
+		key: "company.paid_plan_usage_accrual",
+		name: "Paid-plan usage accrual history and MTD pace",
+		description:
+			"Completed-month accrued usage plus current-month actual and projected pace, using generationEndedAt in UTC.",
+		grain: FactGrain.MONTH,
+		source: {
+			key: "tinybird:revenue",
+			kind: DataSourceKind.TINYBIRD,
+			label: "TinyBird usage and Stripe mirror",
+		},
+		eventTimeField: "generationEndedAt",
+		businessDefinition: {
+			valueBasis: "generationCostMillicents divided by 100000",
+			timeField: "generationEndedAt",
+			population: "non-empty organizationPlanType",
+		},
+		computation: {
+			aggregate: "monthly_sum_and_current_month_pace",
+			outputs: ["usage_accrual", "projected_usage_accrual"],
+		},
+		requiresCrossSourceEligibility: true,
+		ownerTeam: "Company",
+		createdBy: "atlas-revenue-registry",
+		cadenceMinutes: 8 * 60,
+	},
+	{
+		questionNumber: 1104,
+		sourceExternalId: "weekly-revenue:licensed-base-by-plan",
+		key: "company.active_licensed_subscription_base",
+		name: "Active licensed subscription base by plan",
+		description:
+			"Latest active or past-due self-serve Stripe subscription state multiplied by the current licensed monthly price for each v2 and v3 plan.",
+		grain: FactGrain.MONTH,
+		source: {
+			key: "tinybird:revenue",
+			kind: DataSourceKind.TINYBIRD,
+			label: "TinyBird usage and Stripe mirror",
+		},
+		eventTimeField: "createdAt",
+		businessDefinition: {
+			entity: "latest_subscription",
+			includedStatuses: ["active", "past_due"],
+			includedPlans: [
+				"hobbyist",
+				"creator",
+				"growth",
+				"scale",
+				"starter",
+				"pro",
+				"team",
+			],
+			excludedPlans: ["enterprise", "program", "partner"],
+		},
+		computation: {
+			aggregate: "subscription_count_times_current_plan_price",
+			output: "licensed_subscription_base",
+		},
+		requiresCrossSourceEligibility: true,
+		ownerTeam: "Company",
+		createdBy: "atlas-revenue-registry",
+		cadenceMinutes: 8 * 60,
+	},
+	{
+		questionNumber: 1105,
+		sourceExternalId: "weekly-revenue:complete-month-ndr",
+		key: "company.complete_month_usage_ndr",
+		name: "Latest complete-month usage NDR",
+		description:
+			"Current-period accrued usage from the fixed prior-month organization cohort divided by that cohort's starting accrued usage.",
+		grain: FactGrain.MONTH,
+		source: {
+			key: "tinybird:revenue",
+			kind: DataSourceKind.TINYBIRD,
+			label: "TinyBird usage and Stripe mirror",
+		},
+		eventTimeField: "generationEndedAt",
+		businessDefinition: {
+			cohort:
+				"organizations with paid-plan accrued usage in the starting month",
+			numerator: "next-month usage from the same starting organizations",
+			denominator: "starting-month usage",
+			missingCurrentUsage: 0,
+		},
+		computation: { aggregate: "cohort_ratio", output: "usage_ndr_pct" },
+		requiresCrossSourceEligibility: true,
+		ownerTeam: "Company",
+		createdBy: "atlas-revenue-registry",
+		cadenceMinutes: 8 * 60,
+	},
+	{
+		questionNumber: 1106,
+		sourceExternalId: "weekly-revenue:complete-month-ndr-tiers",
+		key: "company.complete_month_usage_ndr_by_starting_tier",
+		name: "Complete-month usage NDR by starting tier",
+		description:
+			"Latest complete-month usage NDR grouped by each organization's paid plan at the end of the starting month.",
+		grain: FactGrain.MONTH,
+		source: {
+			key: "tinybird:revenue",
+			kind: DataSourceKind.TINYBIRD,
+			label: "TinyBird usage and Stripe mirror",
+		},
+		eventTimeField: "generationEndedAt",
+		businessDefinition: {
+			cohort: "fixed starting-month organizations",
+			tierAssignment: "latest organizationPlanType in the starting month",
+		},
+		computation: {
+			aggregate: "cohort_ratio_by_dimension",
+			dimension: "starting_tier",
+			output: "usage_ndr_pct",
+		},
+		requiresCrossSourceEligibility: true,
+		ownerTeam: "Company",
+		createdBy: "atlas-revenue-registry",
+		cadenceMinutes: 8 * 60,
+	},
+	{
+		questionNumber: 1107,
+		sourceExternalId: "weekly-revenue:weekly-ndr-proxy",
+		key: "company.weekly_usage_ndr_proxy",
+		name: "Weekly usage NDR proxy",
+		description:
+			"Directional Monday-Sunday UTC usage retention from the fixed prior-week organization cohort; not finance-grade NDR.",
+		grain: FactGrain.WEEK,
+		source: {
+			key: "tinybird:revenue",
+			kind: DataSourceKind.TINYBIRD,
+			label: "TinyBird usage and Stripe mirror",
+		},
+		eventTimeField: "generationEndedAt",
+		businessDefinition: {
+			cohort: "organizations with paid-plan accrued usage in the starting week",
+			window: "complete Monday-Sunday UTC weeks",
+			classification: "directional_proxy",
+		},
+		computation: {
+			aggregate: "weekly_cohort_ratio",
+			output: "usage_ndr_proxy_pct",
+		},
+		requiresCrossSourceEligibility: true,
+		ownerTeam: "Company",
+		createdBy: "atlas-revenue-registry",
+		cadenceMinutes: 8 * 60,
+	},
+	{
+		questionNumber: 1108,
+		sourceExternalId: "weekly-revenue:weekly-retention-bridge",
+		key: "company.weekly_usage_retention_bridge",
+		name: "Weekly usage retention bridge",
+		description:
+			"Starting cohort spend, retained spend, total current-week spend, and spend from organizations outside the starting cohort.",
+		grain: FactGrain.WEEK,
+		source: {
+			key: "tinybird:revenue",
+			kind: DataSourceKind.TINYBIRD,
+			label: "TinyBird usage and Stripe mirror",
+		},
+		eventTimeField: "generationEndedAt",
+		businessDefinition: {
+			retained: "report-week usage from starting-week organizations",
+			outsideStartingCohort:
+				"total report-week usage minus retained starting-cohort usage",
+		},
+		computation: {
+			aggregate: "weekly_retention_bridge",
+			outputs: [
+				"starting_usage_accrual",
+				"retained_usage_accrual",
+				"report_total_usage",
+				"usage_outside_starting_cohort",
+			],
+		},
+		requiresCrossSourceEligibility: true,
+		ownerTeam: "Company",
+		createdBy: "atlas-revenue-registry",
+		cadenceMinutes: 8 * 60,
+	},
+	{
+		questionNumber: 1109,
+		sourceExternalId: "weekly-revenue:weekly-ndr-tiers",
+		key: "company.weekly_usage_ndr_proxy_by_starting_tier",
+		name: "Weekly usage NDR proxy by starting tier",
+		description:
+			"Directional complete-week usage retention grouped by the paid plan at the end of the starting week.",
+		grain: FactGrain.WEEK,
+		source: {
+			key: "tinybird:revenue",
+			kind: DataSourceKind.TINYBIRD,
+			label: "TinyBird usage and Stripe mirror",
+		},
+		eventTimeField: "generationEndedAt",
+		businessDefinition: {
+			cohort: "fixed starting-week organizations",
+			tierAssignment: "latest organizationPlanType in the starting week",
+			classification: "directional_proxy",
+		},
+		computation: {
+			aggregate: "weekly_cohort_ratio_by_dimension",
+			dimension: "starting_tier",
+			output: "usage_ndr_proxy_pct",
+		},
+		requiresCrossSourceEligibility: true,
+		ownerTeam: "Company",
+		createdBy: "atlas-revenue-registry",
+		cadenceMinutes: 8 * 60,
+	},
+];
+
+const ALL_METRIC_SPECS = [...PRODUCT_METRIC_SPECS, ...REVENUE_METRIC_SPECS];
 const specsByQuestion = new Map(
-	PRODUCT_METRIC_SPECS.map((spec) => [spec.questionNumber, spec]),
+	ALL_METRIC_SPECS.map((spec) => [spec.questionNumber, spec]),
 );
 const specsBySourceExternalId = new Map(
-	PRODUCT_METRIC_SPECS.map((spec) => [spec.sourceExternalId, spec]),
+	ALL_METRIC_SPECS.map((spec) => [spec.sourceExternalId, spec]),
 );
 
 export function preferredAtlasQuestionNumber(
@@ -335,6 +616,9 @@ export class ProductMetricPublisher {
 				? specsBySourceExternalId.get(input.question.sourceExternalId)
 				: undefined) ?? specsByQuestion.get(input.question.number);
 		if (!spec) return null;
+		const ownerTeam = spec.ownerTeam ?? "Product";
+		const createdBy = spec.createdBy ?? "atlas-product-registry";
+		const cadenceMinutes = spec.cadenceMinutes ?? 8 * 60;
 
 		const eligibilityVerified =
 			!spec.requiresCrossSourceEligibility &&
@@ -376,7 +660,7 @@ export class ProductMetricPublisher {
 				adapter: "metabase_read_transport",
 				eventTimeField: spec.eventTimeField,
 				watermarkField: spec.eventTimeField,
-				cadenceMinutes: 8 * 60,
+				cadenceMinutes,
 				freshnessSlaMinutes: FRESHNESS_SLA_MINUTES,
 				backfillWindowDays: 366,
 				config: json({
@@ -400,7 +684,7 @@ export class ProductMetricPublisher {
 		const contract: MetricContract = {
 			key: spec.key,
 			name: spec.name,
-			ownerTeam: "Product",
+			ownerTeam,
 			businessDefinition: spec.businessDefinition,
 			normalizationPolicy: {
 				...sharedNormalizationPolicy,
@@ -416,7 +700,7 @@ export class ProductMetricPublisher {
 					"exclude_banned_disabled_anonymous_internal",
 				],
 			},
-			cadence: { everyMinutes: 8 * 60, timeZone: "UTC" },
+			cadence: { everyMinutes: cadenceMinutes, timeZone: "UTC" },
 			inputs: [
 				{
 					alias: "source_rows",
@@ -436,13 +720,13 @@ export class ProductMetricPublisher {
 				key: spec.key,
 				name: spec.name,
 				description: spec.description,
-				ownerTeam: "Product",
+				ownerTeam,
 				status: lifecycleStatus,
 			},
 			update: {
 				name: spec.name,
 				description: spec.description,
-				ownerTeam: "Product",
+				ownerTeam,
 				status: lifecycleStatus,
 			},
 		});
@@ -465,7 +749,7 @@ export class ProductMetricPublisher {
 					verificationPolicy: json(contract.verificationPolicy),
 					cadence: json(contract.cadence),
 					contentHash: contractHash,
-					createdBy: "atlas-product-registry",
+					createdBy,
 					approvedBy: eligibilityVerified ? "atlas-policy" : null,
 					approvedAt: eligibilityVerified ? input.capturedAt : null,
 					inputs: {
@@ -685,19 +969,31 @@ export function inferMetricWindow(
 		const date = firstDateValue(record);
 		return date ? [date] : [];
 	});
+	const explicitStarts = namedDateValues(records, [
+		"period_start",
+		"window_start",
+	]);
+	const explicitEnds = namedDateValues(records, ["period_end", "window_end"]);
+	const explicitDataThrough = namedDateValues(records, ["data_through"]);
 	const fallbackStart = new Date(
 		Date.UTC(capturedAt.getUTCFullYear(), capturedAt.getUTCMonth(), 1),
 	);
-	const periodStart = dates.length
-		? new Date(Math.min(...dates.map((date) => date.getTime())))
-		: fallbackStart;
+	const periodStart = explicitStarts.length
+		? new Date(Math.min(...explicitStarts.map((date) => date.getTime())))
+		: dates.length
+			? new Date(Math.min(...dates.map((date) => date.getTime())))
+			: fallbackStart;
 	const latest = dates.length
 		? new Date(Math.max(...dates.map((date) => date.getTime())))
 		: capturedAt;
-	const periodEnd = dates.length ? incrementPeriod(latest, grain) : capturedAt;
-	const dataThrough = new Date(
-		Math.min(capturedAt.getTime(), periodEnd.getTime()),
-	);
+	const periodEnd = explicitEnds.length
+		? new Date(Math.max(...explicitEnds.map((date) => date.getTime())))
+		: dates.length
+			? incrementPeriod(latest, grain)
+			: capturedAt;
+	const dataThrough = explicitDataThrough.length
+		? new Date(Math.min(...explicitDataThrough.map((date) => date.getTime())))
+		: new Date(Math.min(capturedAt.getTime(), periodEnd.getTime()));
 	const labelInstant = new Date(
 		Math.max(
 			periodStart.getTime(),
@@ -710,6 +1006,21 @@ export function inferMetricWindow(
 		dataThrough,
 		reportingPeriod: labelInstant.toISOString().slice(0, 7),
 	};
+}
+
+function namedDateValues(
+	records: Record<string, unknown>[],
+	names: string[],
+): Date[] {
+	const allowed = new Set(names);
+	return records.flatMap((record) => {
+		for (const [key, value] of Object.entries(record)) {
+			if (!allowed.has(key.toLowerCase())) continue;
+			const date = parseDate(value);
+			if (date) return [date];
+		}
+		return [];
+	});
 }
 
 function firstDateValue(record: Record<string, unknown>): Date | null {

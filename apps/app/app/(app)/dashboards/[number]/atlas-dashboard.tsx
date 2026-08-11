@@ -243,6 +243,13 @@ function isPercent(name: string): boolean {
 }
 
 function isCurrency(name: string): boolean {
+	if (
+		/(^|_)(count|counts|customers|organizations|orgs|subscriptions|invoices|generations|contacts|users)($|_)/i.test(
+			name,
+		)
+	) {
+		return false;
+	}
 	return /revenue|spend|cost|value|amount|pipeline|booking|forecast|accrual|arr|ndr_usd|run.?rate|subscription|invoice|collection|billing/i.test(
 		name,
 	);
@@ -290,7 +297,15 @@ function chartData(card: DashboardCard): {
 	const cardColumns = columns(card.snapshot);
 	const sourceRows = rows(card.snapshot);
 	const xKey = cardColumns[0]?.name ?? "period";
-	const series = cardColumns.slice(1).map((column) => column.name);
+	const series = cardColumns
+		.slice(1)
+		.filter(
+			(column) =>
+				!/(^|_)(period_end|window_end|data_through|captured_at)$/i.test(
+					column.name,
+				),
+		)
+		.map((column) => column.name);
 	return {
 		xKey,
 		series,
@@ -1153,7 +1168,7 @@ export function AtlasDashboard({ number }: { number: number }) {
 
 	return (
 		<div className="flex flex-col gap-5">
-			<header className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
+			<header className="flex flex-col gap-4">
 				<div>
 					<p className="text-muted-foreground text-xs">
 						Atlas dashboard {data.number}
@@ -1166,7 +1181,7 @@ export function AtlasDashboard({ number }: { number: number }) {
 							"Questions arranged into a shared operating view."}
 					</p>
 				</div>
-				<div className="flex flex-wrap items-center gap-2 lg:justify-end">
+				<div className="flex flex-wrap items-center gap-2">
 					<span className="rounded-full border border-border/70 bg-muted/35 px-2.5 py-1 font-medium text-[11px] text-muted-foreground uppercase tracking-[0.12em]">
 						Calendar periods · UTC
 					</span>

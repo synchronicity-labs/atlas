@@ -361,6 +361,7 @@ export class RudyService {
 			`Authenticated Atlas user: ${user.name} <${user.email}> (user id ${user.id}).`,
 			`Attached Atlas context reference: ${context.kind}:${context.id}. Treat the attached governed Atlas definitions and immutable snapshots as the deterministic source of truth before querying raw sources.`,
 			"All Atlas day, week, and month boundaries are UTC and use half-open intervals. Be explicit about metric timeframe and freshness.",
+			"When citing a source that provides an http(s) URL, render it as a descriptive Markdown link. Never present a source identifier as if it were clickable. If retrieval does not provide a URL, label it as a source reference and state that its permalink is unavailable.",
 			"You may analyze, explain, and suggest changes. Never claim a question or dashboard was changed live from chat.",
 			'For a requested question edit, include exactly one machine-readable proposal after your human explanation using <atlas_proposal>{"type":"question.change","number":1,"summary":"...","queryText":"..."}</atlas_proposal>. Include only fields that change. Atlas will validate it, show a preview, and require a person to save a new immutable version.',
 			"Dashboard layout proposals are not applied directly; describe them clearly and wait for Atlas to offer a visual preview.",

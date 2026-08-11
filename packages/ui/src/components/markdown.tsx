@@ -1,7 +1,10 @@
 "use client";
 
 import { cn } from "@crm/ui/lib/utils";
+import { linkifyMarkdownUrls } from "@crm/ui/lib/markdown";
 import { Streamdown } from "streamdown";
+
+const linkSafety = { enabled: false } as const;
 
 export function Markdown({
 	children,
@@ -13,6 +16,7 @@ export function Markdown({
 	return (
 		<Streamdown
 			shikiTheme={["github-light", "github-dark"]}
+			linkSafety={linkSafety}
 			className={cn(
 				"min-w-0 space-y-2.5 text-xs/5 wrap-break-word",
 				"[&_h1]:font-medium [&_h1]:text-xs [&_h2]:font-medium [&_h2]:text-xs [&_h3]:font-medium [&_h3]:text-xs",
@@ -28,7 +32,7 @@ export function Markdown({
 				className,
 			)}
 		>
-			{children}
+			{linkifyMarkdownUrls(children)}
 		</Streamdown>
 	);
 }

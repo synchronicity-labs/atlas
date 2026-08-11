@@ -2,24 +2,8 @@
 	"$schema": "https://turborepo.dev/schema.json",
 	"ui": "tui",
 
-	"globalEnv": ["NODE_ENV"],
+	"globalEnv": ["NODE_ENV", "API_URL", "APP_URL", "NEXT_PUBLIC_API_URL"],
 
-	/**
-	 * Turborepo hides environment variables from tasks unless they are declared,
-	 * and the failure is silent: the build succeeds having read `undefined`.
-	 *
-	 * That is not hypothetical here. `API_URL` was stripped from the Next.js
-	 * build, so the browser bundle was compiled with the localhost fallback and
-	 * every request from a deployed page went to the reader's own machine; and
-	 * `DATABASE_URL` was stripped from the agent build, where `eve build`
-	 * evaluates the authored modules and `@crm/db` throws without it.
-	 *
-	 * `globalPassThroughEnv` is the right list for both, because none of these
-	 * change what a build *produces* — they are read at runtime, or inlined from
-	 * the separately-declared public copy — so they must not become part of the
-	 * cache key. A secret in the cache key means a cache miss every rotation and
-	 * a secret in the cache metadata.
-	 */
 	"globalPassThroughEnv": [
 		"DATABASE_URL",
 		"DATABASE_URL_UNPOOLED",
@@ -63,7 +47,10 @@
 		"POSTHOG_PROJECT_ID",
 		"HUBSPOT_ACCESS_TOKEN",
 		"HUBSPOT_BASE_URL",
-		"HUBSPOT_PORTAL_ID"
+		"HUBSPOT_PORTAL_ID",
+		"RUDY_API_URL",
+		"RUDY_API_KEY",
+		"ATLAS_QUERY_SECRET"
 	],
 
 	"tasks": {
@@ -72,13 +59,6 @@
 		},
 		"build": {
 			"dependsOn": ["^build"],
-			/**
-			 * These two *are* cache keys, because they are inlined into the
-			 * browser bundle at build time — the same source compiled against a
-			 * different `API_URL` is a different artefact, and reusing a cached
-			 * one would ship the wrong origin.
-			 */
-			"env": ["API_URL", "APP_URL", "NEXT_PUBLIC_API_URL"],
 			"inputs": ["$TURBO_DEFAULT$", ".env*"],
 			"outputs": [
 				".next/**",

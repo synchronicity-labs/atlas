@@ -19,6 +19,10 @@ import {
 	type MetabaseResult,
 } from "./metabase.client";
 import { type MetabaseConfig, metabaseConfig } from "./metabase.config";
+import {
+	ProductMetricPublisher,
+	preferredAtlasQuestionNumber,
+} from "./product-metric.publisher";
 
 const SOURCE_KEY = "metabase:sync";
 const DASHBOARD_SCOPE = "product-scoreboard";
@@ -108,7 +112,10 @@ function visualization(display: string | undefined): VisualizationType {
 export class MetabaseService {
 	private readonly logger = new Logger(MetabaseService.name);
 
-	constructor(@InjectDatabase() private readonly db: Db) {}
+	constructor(
+		@InjectDatabase() private readonly db: Db,
+		private readonly productMetrics: ProductMetricPublisher,
+	) {}
 
 	async status() {
 		const [source, latestRuns, users, organizations, questions, dashboards] =
@@ -326,6 +333,8 @@ export class MetabaseService {
 			let snapshots = 0;
 
 			for (const placement of batch) {
+				const fullCard = await client.card(placement.card.id);
+				const fullPlacement = { ...placement, card: fullCard };
 				const result = await client.dashboardCardResult(
 					placement.id,
 					placement.card.id,
@@ -335,7 +344,7 @@ export class MetabaseService {
 					sourceId: source.id,
 					dashboardId: storedDashboard.id,
 					dashboard,
-					placement,
+					placement: fullPlacement,
 					period,
 					result,
 				});
@@ -421,6 +430,7 @@ export class MetabaseService {
 								id: true,
 								number: true,
 								name: true,
+								description: true,
 								connector: true,
 								sourceId: true,
 								sourceExternalId: true,
@@ -429,6 +439,7 @@ export class MetabaseService {
 									orderBy: { version: "desc" },
 									take: 1,
 									select: {
+										id: true,
 										version: true,
 										queryLanguage: true,
 										queryText: true,
@@ -503,6 +514,7 @@ export class MetabaseService {
 				const contentHash = stableHash(payload);
 				const externalId =
 					question.sourceExternalId ?? `question:${question.number}`;
+				const capturedAt = new Date();
 				const created = await this.db.resultSnapshot.createMany({
 					data: [
 						{
@@ -511,7 +523,7 @@ export class MetabaseService {
 							dashboardExternalId: `atlas:${number}`,
 							questionExternalId: externalId,
 							reportingPeriod: period,
-							capturedAt: new Date(),
+							capturedAt,
 							contentHash,
 							columns: json(result.columns),
 							rows: json(result.rows),
@@ -519,6 +531,13 @@ export class MetabaseService {
 						},
 					],
 					skipDuplicates: true,
+				});
+				await this.productMetrics.publish({
+					question,
+					version,
+					result,
+					syncRunId: run.id,
+					capturedAt,
 				});
 				cardsProcessed += 1;
 				snapshotsCreated += created.count;
@@ -740,6 +759,7 @@ export class MetabaseService {
 	}
 
 	private async ensureQuestion(sourceId: string, card: MetabaseCardResponse) {
+		const definition = this.cardDefinition(card);
 		const existing = await this.db.question.findUnique({
 			where: {
 				connector_sourceExternalId: {
@@ -749,15 +769,57 @@ export class MetabaseService {
 			},
 		});
 
-		if (existing) return existing;
+		if (existing) {
+			await this.db.question.update({
+				where: { id: existing.id },
+				data: {
+					name: card.name,
+					description: card.description,
+					sourceId,
+					databaseExternalId: card.database_id
+						? String(card.database_id)
+						: null,
+				},
+			});
+			const latest = await this.db.questionVersion.findFirst({
+				where: { questionId: existing.id },
+				orderBy: { version: "desc" },
+			});
+			if (
+				latest?.createdBy === "metabase" &&
+				definition.queryText.trim() &&
+				latest.queryText.trim() !== definition.queryText.trim()
+			) {
+				await this.db.questionVersion.create({
+					data: {
+						questionId: existing.id,
+						version: latest.version + 1,
+						...definition,
+						sourceCardExternalId: String(card.id),
+						createdBy: "metabase",
+					},
+				});
+			}
+			return existing;
+		}
 
 		const latest = await this.db.question.findFirst({
 			orderBy: { number: "desc" },
 			select: { number: true },
 		});
+		const preferredNumber = preferredAtlasQuestionNumber(String(card.id));
+		const preferredAvailable = preferredNumber
+			? !(await this.db.question.findUnique({
+					where: { number: preferredNumber },
+					select: { id: true },
+				}))
+			: false;
 		const question = await this.db.question.create({
 			data: {
-				number: (latest?.number ?? 0) + 1,
+				number:
+					preferredNumber && preferredAvailable
+						? preferredNumber
+						: (latest?.number ?? 0) + 1,
 				name: card.name,
 				description: card.description,
 				connector: DataSourceKind.METABASE,
@@ -771,14 +833,7 @@ export class MetabaseService {
 			data: {
 				questionId: question.id,
 				version: 1,
-				queryLanguage:
-					card.query_type === "native" ? QueryLanguage.SQL : QueryLanguage.MBQL,
-				queryText:
-					card.query_type === "native"
-						? this.nativeQuery(card.dataset_query)
-						: JSON.stringify(card.dataset_query, null, 2),
-				display: card.display ?? "table",
-				visualization: json(card.visualization_settings ?? {}),
+				...definition,
 				sourceCardExternalId: String(card.id),
 				createdBy: "metabase",
 			},
@@ -842,8 +897,27 @@ export class MetabaseService {
 
 	private nativeQuery(datasetQuery: unknown): string {
 		if (!datasetQuery || typeof datasetQuery !== "object") return "";
-		const native = (datasetQuery as { native?: { query?: unknown } }).native;
-		return typeof native?.query === "string" ? native.query : "";
+		const query = datasetQuery as {
+			native?: { query?: unknown };
+			stages?: Array<{ native?: unknown }>;
+		};
+		if (typeof query.native?.query === "string") return query.native.query;
+		return typeof query.stages?.[0]?.native === "string"
+			? query.stages[0].native
+			: "";
+	}
+
+	private cardDefinition(card: MetabaseCardResponse) {
+		return {
+			queryLanguage:
+				card.query_type === "native" ? QueryLanguage.SQL : QueryLanguage.MBQL,
+			queryText:
+				card.query_type === "native"
+					? this.nativeQuery(card.dataset_query)
+					: JSON.stringify(card.dataset_query, null, 2),
+			display: card.display ?? "table",
+			visualization: json(card.visualization_settings ?? {}),
+		};
 	}
 
 	private validateUserCard(card: MetabaseCardResponse): void {
@@ -902,147 +976,150 @@ export class MetabaseService {
 	private async persistUsers(sourceId: string, rows: SafeUserRow[]) {
 		let snapshots = 0;
 
-		await this.db.$transaction(async (tx) => {
-			for (const row of rows) {
-				const email = identifierString(row.email, 320)?.toLowerCase() ?? null;
-				const user = await tx.productUser.upsert({
-					where: { sourceId_externalId: { sourceId, externalId: row.id } },
-					create: {
-						sourceId,
-						externalId: row.id,
-						email,
-						displayName: boundedString(row.display_name, 500),
-						role: boundedString(row.role, 128),
-						traits: json(row),
-						syncedAt: new Date(),
-					},
-					update: {
-						email,
-						displayName: boundedString(row.display_name, 500),
-						role: boundedString(row.role, 128),
-						traits: json(row),
-						syncedAt: new Date(),
-					},
-				});
-
-				await tx.productUserIdentity.upsert({
-					where: {
-						productUserId_kind_normalizedValue: {
-							productUserId: user.id,
-							kind: "user_id",
-							normalizedValue: row.id.toLowerCase(),
+		await this.db.$transaction(
+			async (tx) => {
+				for (const row of rows) {
+					const email = identifierString(row.email, 320)?.toLowerCase() ?? null;
+					const user = await tx.productUser.upsert({
+						where: { sourceId_externalId: { sourceId, externalId: row.id } },
+						create: {
+							sourceId,
+							externalId: row.id,
+							email,
+							displayName: boundedString(row.display_name, 500),
+							role: boundedString(row.role, 128),
+							traits: json(row),
+							syncedAt: new Date(),
 						},
-					},
-					create: {
-						productUserId: user.id,
-						kind: "user_id",
-						value: row.id,
-						normalizedValue: row.id.toLowerCase(),
-						source: "metabase",
-					},
-					update: { value: row.id },
-				});
+						update: {
+							email,
+							displayName: boundedString(row.display_name, 500),
+							role: boundedString(row.role, 128),
+							traits: json(row),
+							syncedAt: new Date(),
+						},
+					});
 
-				if (email) {
 					await tx.productUserIdentity.upsert({
 						where: {
 							productUserId_kind_normalizedValue: {
 								productUserId: user.id,
-								kind: "email",
-								normalizedValue: email,
+								kind: "user_id",
+								normalizedValue: row.id.toLowerCase(),
 							},
 						},
 						create: {
 							productUserId: user.id,
-							kind: "email",
-							value: email,
-							normalizedValue: email,
+							kind: "user_id",
+							value: row.id,
+							normalizedValue: row.id.toLowerCase(),
 							source: "metabase",
 						},
-						update: { value: email },
-					});
-				}
-
-				const organizationId = identifierString(row.organization_id, 255);
-				if (organizationId) {
-					const organization = await tx.productOrganization.upsert({
-						where: {
-							sourceId_externalId: { sourceId, externalId: organizationId },
-						},
-						create: {
-							sourceId,
-							externalId: organizationId,
-							name: boundedString(row.name, 500),
-							plan: boundedString(row.plan, 128),
-							paymentStatus: json(row.payment_status),
-							stripeSubscriptionId: identifierString(
-								row.stripe_subscription_id,
-								255,
-							),
-							stripeCustomerId: identifierString(row.stripe_customer_id, 255),
-							traits: json({
-								name: row.name,
-								plan: row.plan,
-								payment_status: row.payment_status,
-							}),
-							syncedAt: new Date(),
-						},
-						update: {
-							name: boundedString(row.name, 500),
-							plan: boundedString(row.plan, 128),
-							paymentStatus: json(row.payment_status),
-							stripeSubscriptionId: identifierString(
-								row.stripe_subscription_id,
-								255,
-							),
-							stripeCustomerId: identifierString(row.stripe_customer_id, 255),
-							traits: json({
-								name: row.name,
-								plan: row.plan,
-								payment_status: row.payment_status,
-							}),
-							syncedAt: new Date(),
-						},
+						update: { value: row.id },
 					});
 
-					await tx.productOrganizationMembership.upsert({
-						where: {
-							productUserId_productOrganizationId: {
+					if (email) {
+						await tx.productUserIdentity.upsert({
+							where: {
+								productUserId_kind_normalizedValue: {
+									productUserId: user.id,
+									kind: "email",
+									normalizedValue: email,
+								},
+							},
+							create: {
+								productUserId: user.id,
+								kind: "email",
+								value: email,
+								normalizedValue: email,
+								source: "metabase",
+							},
+							update: { value: email },
+						});
+					}
+
+					const organizationId = identifierString(row.organization_id, 255);
+					if (organizationId) {
+						const organization = await tx.productOrganization.upsert({
+							where: {
+								sourceId_externalId: { sourceId, externalId: organizationId },
+							},
+							create: {
+								sourceId,
+								externalId: organizationId,
+								name: boundedString(row.name, 500),
+								plan: boundedString(row.plan, 128),
+								paymentStatus: json(row.payment_status),
+								stripeSubscriptionId: identifierString(
+									row.stripe_subscription_id,
+									255,
+								),
+								stripeCustomerId: identifierString(row.stripe_customer_id, 255),
+								traits: json({
+									name: row.name,
+									plan: row.plan,
+									payment_status: row.payment_status,
+								}),
+								syncedAt: new Date(),
+							},
+							update: {
+								name: boundedString(row.name, 500),
+								plan: boundedString(row.plan, 128),
+								paymentStatus: json(row.payment_status),
+								stripeSubscriptionId: identifierString(
+									row.stripe_subscription_id,
+									255,
+								),
+								stripeCustomerId: identifierString(row.stripe_customer_id, 255),
+								traits: json({
+									name: row.name,
+									plan: row.plan,
+									payment_status: row.payment_status,
+								}),
+								syncedAt: new Date(),
+							},
+						});
+
+						await tx.productOrganizationMembership.upsert({
+							where: {
+								productUserId_productOrganizationId: {
+									productUserId: user.id,
+									productOrganizationId: organization.id,
+								},
+							},
+							create: {
 								productUserId: user.id,
 								productOrganizationId: organization.id,
+								role: boundedString(row.role, 128),
+								syncedAt: new Date(),
 							},
-						},
-						create: {
-							productUserId: user.id,
-							productOrganizationId: organization.id,
-							role: boundedString(row.role, 128),
-							syncedAt: new Date(),
-						},
-						update: {
-							role: boundedString(row.role, 128),
-							syncedAt: new Date(),
-						},
-					});
-				}
+							update: {
+								role: boundedString(row.role, 128),
+								syncedAt: new Date(),
+							},
+						});
+					}
 
-				const contentHash = stableHash(row);
-				const idempotencyKey = `metabase:user:${row.id}:${organizationId ?? "none"}:${contentHash}`;
-				const result = await tx.productUserSnapshot.createMany({
-					data: [
-						{
-							idempotencyKey,
-							sourceId,
-							productUserId: user.id,
-							capturedAt: new Date(),
-							contentHash,
-							payload: json(row),
-						},
-					],
-					skipDuplicates: true,
-				});
-				snapshots += result.count;
-			}
-		});
+					const contentHash = stableHash(row);
+					const idempotencyKey = `metabase:user:${row.id}:${organizationId ?? "none"}:${contentHash}`;
+					const result = await tx.productUserSnapshot.createMany({
+						data: [
+							{
+								idempotencyKey,
+								sourceId,
+								productUserId: user.id,
+								capturedAt: new Date(),
+								contentHash,
+								payload: json(row),
+							},
+						],
+						skipDuplicates: true,
+					});
+					snapshots += result.count;
+				}
+			},
+			{ maxWait: 15_000, timeout: 120_000 },
+		);
 
 		return { snapshots };
 	}

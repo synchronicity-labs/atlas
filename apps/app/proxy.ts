@@ -6,6 +6,7 @@ import { ONBOARDING_PATH, readOnboardingGate } from "@/lib/onboarding";
 const SIGN_IN_PATH = "/sign-in";
 
 const UNGATED = [
+	"/",
 	SIGN_IN_PATH,
 	"/grant-access",
 	"/eve",

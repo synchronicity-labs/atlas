@@ -180,6 +180,7 @@ describe("proxy", () => {
 		setup({ onboarded: false });
 
 		for (const path of [
+			"/",
 			"/dashboards/1",
 			"/questions",
 			"/users",

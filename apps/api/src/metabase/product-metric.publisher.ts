@@ -710,7 +710,7 @@ export class ProductMetricPublisher {
 					"read_only_query",
 					"source_snapshot",
 					"result_non_empty",
-					"exclude_banned_disabled_anonymous_internal",
+					"exclude_banned_anonymous_internal",
 				],
 			},
 			cadence: { everyMinutes: cadenceMinutes, timeZone: "UTC" },
@@ -1123,7 +1123,7 @@ function verificationRows(input: {
 			verifiedAt: input.capturedAt,
 		},
 		{
-			name: "exclude_banned_disabled_anonymous_internal",
+			name: "exclude_banned_anonymous_internal",
 			referenceType: "eligibility_policy",
 			referenceValue: json(sharedNormalizationPolicy),
 			actualValue: json({ enforced: input.eligibilityVerified }),

@@ -3,6 +3,7 @@ import { TrpcModule } from "../trpc/trpc.module";
 import { MetabaseRouter } from "./metabase.router";
 import { MetabaseService } from "./metabase.service";
 import { MetabaseSyncController } from "./metabase-sync.controller";
+import { ProductEligibilityService } from "./product-eligibility.service";
 import { ProductMetricPublisher } from "./product-metric.publisher";
 import { TinybirdEligibilityService } from "./tinybird-eligibility.service";
 
@@ -13,8 +14,13 @@ import { TinybirdEligibilityService } from "./tinybird-eligibility.service";
 		MetabaseService,
 		MetabaseRouter,
 		ProductMetricPublisher,
+		ProductEligibilityService,
 		TinybirdEligibilityService,
 	],
-	exports: [MetabaseService, TinybirdEligibilityService],
+	exports: [
+		MetabaseService,
+		ProductEligibilityService,
+		TinybirdEligibilityService,
+	],
 })
 export class MetabaseModule {}

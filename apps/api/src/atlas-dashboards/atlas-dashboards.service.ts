@@ -6,6 +6,7 @@ import { InjectDatabase } from "../database/database.constants";
 import { EconomicsService } from "../economics/economics.service";
 import { MarketingService } from "../marketing/marketing.service";
 import { MetabaseService } from "../metabase/metabase.service";
+import { ProductEligibilityService } from "../metabase/product-eligibility.service";
 import { SalesService } from "../sales/sales.service";
 import type { dashboardLayoutInput } from "./atlas-dashboards.contracts";
 
@@ -15,6 +16,7 @@ export class AtlasDashboardsService {
 		@InjectDatabase() private readonly db: Db,
 		private readonly billingExperiment: BillingExperimentService,
 		private readonly metabase: MetabaseService,
+		private readonly productEligibility: ProductEligibilityService,
 		private readonly marketing: MarketingService,
 		private readonly sales: SalesService,
 		private readonly economics: EconomicsService,
@@ -66,6 +68,9 @@ export class AtlasDashboardsService {
 		}
 		if (sourceKeys.has("atlas:marketing") || sourceKeys.has("atlas:abuse")) {
 			results.push(await this.marketing.syncDashboard(number));
+		}
+		if (sourceKeys.has("atlas:product-eligibility")) {
+			results.push(await this.productEligibility.syncDashboard(number));
 		}
 		if (results.length === 0) {
 			throw new Error("This dashboard has no executable question source.");

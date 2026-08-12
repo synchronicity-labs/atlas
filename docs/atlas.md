@@ -101,6 +101,15 @@ the source status reports `backfillFinished`. Retries are safe: run status and
 cursors are persisted, snapshots are idempotent, and a failed batch resumes from its
 last checkpoint.
 
+Every Atlas-owned TinyBird execution first reads the current product-user
+eligibility set from Product Postgres. Raw usage facts are filtered by `userId`;
+Stripe mirrors are filtered by the organization or customer linked to an excluded
+owner. Banned, disabled, anonymous, `@sync.so`, and `@sync.labs` identities are
+excluded. The exclusion is applied when a question runs, not when the immutable raw
+fact first arrives, so a later ban can change a historical metric on the next
+refresh. Previously published report snapshots remain unchanged. Each governed run
+stores the eligibility snapshot hash and capture time used for the calculation.
+
 Local operators can trigger the same paths without copying a secret:
 
 ```sh
@@ -200,6 +209,8 @@ Product-user ingestion whitelists only the fields Atlas uses. Email is searchabl
 is not unique. The stable source user ID is the identity key, and organization
 memberships are separate records, so one email may represent multiple product users
 and one user may appear in multiple organizations without destructive merging.
+The progressive sync also stores the current banned, disabled, and anonymous flags;
+these mutable fields inform new calculations but never rewrite an issued snapshot.
 
 ## Customer identity bridge
 

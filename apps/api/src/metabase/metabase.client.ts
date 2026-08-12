@@ -122,6 +122,45 @@ export class MetabaseClient {
 		if (!stage || !Array.isArray(fields) || fields.length === 0) {
 			throw new Error("The configured Metabase user question has no fields.");
 		}
+		const sourceTable = stage["source-table"];
+		const database = Number(datasetQuery.database ?? card.database_id);
+		if (
+			typeof sourceTable === "number" &&
+			Number.isSafeInteger(sourceTable) &&
+			Number.isSafeInteger(database)
+		) {
+			const metadata = await this.request<MetabaseTableMetadata>(
+				`/api/table/${sourceTable}/query_metadata`,
+			);
+			const existingIds = new Set(
+				fields.flatMap((entry) =>
+					Array.isArray(entry) && typeof entry[2] === "number"
+						? [entry[2]]
+						: [],
+				),
+			);
+			for (const metadataField of metadata.fields ?? []) {
+				if (
+					typeof metadataField.id !== "number" ||
+					typeof metadataField.name !== "string" ||
+					!["disabled", "banned", "is_anonymous"].includes(
+						metadataField.name,
+					) ||
+					existingIds.has(metadataField.id)
+				) {
+					continue;
+				}
+				fields.push([
+					"field",
+					{
+						"base-type": metadataField.base_type,
+						"effective-type": metadataField.base_type,
+						"lib/uuid": randomUUID(),
+					},
+					metadataField.id,
+				]);
+			}
+		}
 
 		delete stage.filters;
 		stage.limit = limit;
@@ -248,7 +287,15 @@ export class MetabaseClient {
 		const metadata = await this.request<MetabaseTableMetadata>(
 			`/api/table/${sourceTable}/query_metadata`,
 		);
-		const safeNames = new Set(["id", "email", "display_name", "role"]);
+		const safeNames = new Set([
+			"id",
+			"email",
+			"display_name",
+			"role",
+			"disabled",
+			"banned",
+			"is_anonymous",
+		]);
 		const fields = (metadata.fields ?? []).filter(
 			(field) =>
 				typeof field.id === "number" &&

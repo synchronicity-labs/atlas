@@ -23,6 +23,7 @@ import {
 	ProductMetricPublisher,
 	preferredAtlasQuestionNumber,
 } from "./product-metric.publisher";
+import { TinybirdEligibilityService } from "./tinybird-eligibility.service";
 
 const SOURCE_KEY = "metabase:sync";
 const DASHBOARD_SCOPE = "product-scoreboard";
@@ -34,6 +35,9 @@ const USER_COLUMNS = new Set([
 	"email",
 	"display_name",
 	"role",
+	"disabled",
+	"banned",
+	"is_anonymous",
 	"organization_id",
 	"plan",
 	"payment_status",
@@ -88,6 +92,16 @@ function identifierString(value: unknown, maxLength: number): string | null {
 	return result && result.length <= maxLength ? result : null;
 }
 
+function booleanValue(value: unknown): boolean | null {
+	if (value === true || value === 1 || value === "1" || value === "true") {
+		return true;
+	}
+	if (value === false || value === 0 || value === "0" || value === "false") {
+		return false;
+	}
+	return null;
+}
+
 function visualization(display: string | undefined): VisualizationType {
 	switch (display) {
 		case "scalar":
@@ -115,6 +129,7 @@ export class MetabaseService {
 	constructor(
 		@InjectDatabase() private readonly db: Db,
 		private readonly productMetrics: ProductMetricPublisher,
+		private readonly tinybirdEligibility: TinybirdEligibilityService,
 	) {}
 
 	async status() {
@@ -497,6 +512,13 @@ export class MetabaseService {
 		let snapshotsCreated = 0;
 		try {
 			const client = new MetabaseClient(config);
+			const eligibility = questions.some(
+				(question) =>
+					question.databaseExternalId === "166" &&
+					question.versions[0]?.queryLanguage === QueryLanguage.SQL,
+			)
+				? await this.tinybirdEligibility.current()
+				: null;
 			for (const question of questions) {
 				const version = question.versions[0];
 				if (!version) {
@@ -505,9 +527,19 @@ export class MetabaseService {
 				const language =
 					version.queryLanguage === QueryLanguage.SQL ? "SQL" : "MBQL";
 				assertReadOnlyQuery(language, version.queryText);
+				const governed = eligibility
+					? this.tinybirdEligibility.govern(
+							version.queryText,
+							question.databaseExternalId,
+							eligibility,
+						)
+					: null;
 				const result = await client.preview({
 					language,
-					queryText: version.queryText,
+					queryText:
+						language === "SQL" && governed
+							? governed.queryText
+							: version.queryText,
 					databaseExternalId: question.databaseExternalId,
 				});
 				const payload = { columns: result.columns, rows: result.rows };
@@ -538,6 +570,9 @@ export class MetabaseService {
 					result,
 					syncRunId: run.id,
 					capturedAt,
+					eligibility: governed
+						? { applied: governed.applied, ...governed.eligibility }
+						: undefined,
 				});
 				cardsProcessed += 1;
 				snapshotsCreated += created.count;
@@ -552,6 +587,12 @@ export class MetabaseService {
 						finishedAt,
 						cardsProcessed,
 						snapshotsCreated,
+						checkpoint: eligibility
+							? json({
+									eligibilityCapturedAt: eligibility.capturedAt.toISOString(),
+									eligibilityHash: eligibility.contentHash,
+								})
+							: undefined,
 					},
 				}),
 				this.db.dataSource.update({
@@ -988,6 +1029,9 @@ export class MetabaseService {
 							email,
 							displayName: boundedString(row.display_name, 500),
 							role: boundedString(row.role, 128),
+							disabled: booleanValue(row.disabled),
+							banned: booleanValue(row.banned),
+							isAnonymous: booleanValue(row.is_anonymous),
 							traits: json(row),
 							syncedAt: new Date(),
 						},
@@ -995,6 +1039,9 @@ export class MetabaseService {
 							email,
 							displayName: boundedString(row.display_name, 500),
 							role: boundedString(row.role, 128),
+							disabled: booleanValue(row.disabled),
+							banned: booleanValue(row.banned),
+							isAnonymous: booleanValue(row.is_anonymous),
 							traits: json(row),
 							syncedAt: new Date(),
 						},

@@ -47,7 +47,30 @@ describe("TinyBird eligibility", () => {
 		expect(snapshot.excludedUserIds).toEqual(["banned-user", "internal-user"]);
 		expect(snapshot.excludedOrganizationIds).toEqual(["blocked-org"]);
 		expect(snapshot.excludedCustomerIds).toEqual(["blocked-customer"]);
+		expect(snapshot.complete).toBe(true);
 		expect(snapshot.contentHash).toHaveLength(64);
+	});
+
+	test("observes disabled users without erasing their historical usage", () => {
+		const snapshot = buildTinybirdEligibility(
+			[
+				{
+					userId: "deleted-user",
+					email: "person@example.com",
+					banned: false,
+					disabled: true,
+					isAnonymous: false,
+					membershipRole: "owner",
+					organizationId: "historical-org",
+					customerId: "historical-customer",
+				},
+			],
+			capturedAt,
+		);
+
+		expect(snapshot.excludedUserIds).toEqual([]);
+		expect(snapshot.excludedOrganizationIds).toEqual([]);
+		expect(snapshot.excludedCustomerIds).toEqual([]);
 	});
 
 	test("filters raw usage and Stripe sources before aggregation", () => {
@@ -56,8 +79,8 @@ describe("TinyBird eligibility", () => {
 				{
 					userId: "blocked-user",
 					email: "blocked@example.com",
-					banned: false,
-					disabled: true,
+					banned: true,
+					disabled: false,
 					isAnonymous: false,
 					membershipRole: "owner",
 					organizationId: "blocked-org",
@@ -78,6 +101,9 @@ select count(*) from sync_prod.paid_customer_monthly_revenue`,
 		);
 
 		expect(governed.applied).toBe(true);
+		expect(governed.queryText).toContain(
+			`("userId" is null or "userId" = '' or "userId" not in ('blocked-user'))`,
+		);
 		expect(governed.queryText).toContain(`"userId" not in ('blocked-user')`);
 		expect(governed.queryText).toContain(
 			`"organizationId" not in ('blocked-org')`,
@@ -86,6 +112,36 @@ select count(*) from sync_prod.paid_customer_monthly_revenue`,
 			`customer_id not in ('blocked-customer')`,
 		);
 		expect(governed.eligibility.contentHash).toBe(snapshot.contentHash);
+	});
+
+	test("does not apply or certify a truncated eligibility snapshot", () => {
+		const snapshot = buildTinybirdEligibility(
+			[
+				{
+					userId: "first-page-user",
+					email: "person@example.com",
+					banned: true,
+					disabled: false,
+					isAnonymous: false,
+					membershipRole: "owner",
+					organizationId: "first-page-org",
+					customerId: "first-page-customer",
+				},
+			],
+			capturedAt,
+			2,
+		);
+		const queryText = "select count(*) from sync_prod.sync_usage3";
+		const governed = governTinybirdQuery(queryText, "166", snapshot);
+
+		expect(snapshot.complete).toBe(false);
+		expect(governed.applied).toBe(false);
+		expect(governed.queryText).toBe(queryText);
+		expect(governed.eligibility).toMatchObject({
+			complete: false,
+			sourceRows: 2,
+			returnedRows: 1,
+		});
 	});
 
 	test("does not rewrite a non-TinyBird database query", () => {

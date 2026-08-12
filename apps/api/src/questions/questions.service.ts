@@ -6,6 +6,7 @@ import { EconomicsService } from "../economics/economics.service";
 import { MarketingService } from "../marketing/marketing.service";
 import { MetabaseClient } from "../metabase/metabase.client";
 import { metabaseConfig } from "../metabase/metabase.config";
+import { TinybirdEligibilityService } from "../metabase/tinybird-eligibility.service";
 import { SalesService } from "../sales/sales.service";
 import { paginate, resolveOrderBy } from "../trpc/list-input";
 import type {
@@ -36,6 +37,7 @@ export class QuestionsService {
 		private readonly marketing: MarketingService,
 		private readonly sales: SalesService,
 		private readonly economics: EconomicsService,
+		private readonly tinybirdEligibility: TinybirdEligibilityService,
 	) {}
 
 	async list(input: QuestionListInput) {
@@ -353,9 +355,22 @@ export class QuestionsService {
 	) {
 		const config = metabaseConfig();
 		if (!config) throw new Error("Metabase is not configured.");
+		if (language !== "SQL" || databaseExternalId !== "166") {
+			return new MetabaseClient(config).preview({
+				language,
+				queryText,
+				databaseExternalId,
+			});
+		}
+		const eligibility = await this.tinybirdEligibility.current();
+		const governed = this.tinybirdEligibility.govern(
+			queryText,
+			databaseExternalId,
+			eligibility,
+		);
 		return new MetabaseClient(config).preview({
 			language,
-			queryText,
+			queryText: governed.queryText,
 			databaseExternalId,
 		});
 	}

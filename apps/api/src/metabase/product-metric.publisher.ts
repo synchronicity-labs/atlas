@@ -59,6 +59,14 @@ type PublishInput = {
 	result: MetabaseResult;
 	syncRunId: string;
 	capturedAt: Date;
+	eligibility?: {
+		applied: boolean;
+		capturedAt: string;
+		contentHash: string;
+		excludedUsers: number;
+		excludedOrganizations: number;
+		excludedCustomers: number;
+	};
 };
 
 const sharedNormalizationPolicy = {
@@ -621,8 +629,9 @@ export class ProductMetricPublisher {
 		const cadenceMinutes = spec.cadenceMinutes ?? 8 * 60;
 
 		const eligibilityVerified =
-			!spec.requiresCrossSourceEligibility &&
-			hasRequiredEligibilityPredicates(input.version.queryText);
+			input.eligibility?.applied === true ||
+			(!spec.requiresCrossSourceEligibility &&
+				hasRequiredEligibilityPredicates(input.version.queryText));
 		const lifecycleStatus = eligibilityVerified
 			? MetricLifecycleStatus.CERTIFIED
 			: MetricLifecycleStatus.DRAFT;
@@ -805,7 +814,10 @@ export class ProductMetricPublisher {
 					complete: true,
 					rowCount: input.result.rows.length,
 					contentHash: outputHash,
-					checkpoint: json({ reportingPeriod: window.reportingPeriod }),
+					checkpoint: json({
+						reportingPeriod: window.reportingPeriod,
+						eligibility: input.eligibility ?? null,
+					}),
 					observedAt: input.capturedAt,
 				},
 			],
@@ -819,6 +831,7 @@ export class ProductMetricPublisher {
 			result: input.result,
 			window,
 			eligibilityVerified,
+			eligibility: input.eligibility,
 		});
 
 		const snapshotKey = `${metricVersion.id}:${window.reportingPeriod}:${outputHash}`;
@@ -852,7 +865,11 @@ export class ProductMetricPublisher {
 				inputHash: hash(input.version.queryText),
 				outputHash,
 				rowCount: input.result.rows.length,
-				validation: json({ eligibilityVerified, resultPresent }),
+				validation: json({
+					eligibilityVerified,
+					eligibility: input.eligibility ?? null,
+					resultPresent,
+				}),
 				startedAt: input.capturedAt,
 				finishedAt: input.capturedAt,
 				verifications: {
@@ -892,6 +909,7 @@ export class ProductMetricPublisher {
 		result: MetabaseResult;
 		window: MetricWindow;
 		eligibilityVerified: boolean;
+		eligibility?: PublishInput["eligibility"];
 	}) {
 		const facts = input.result.rows.map((row, index) => {
 			const record = Object.fromEntries(
@@ -925,6 +943,7 @@ export class ProductMetricPublisher {
 				measures: json(measures),
 				eligibility: json({
 					policy: sharedNormalizationPolicy,
+					evidence: input.eligibility ?? null,
 					state: input.eligibilityVerified
 						? "enforced"
 						: "pending_cross_source_join",

@@ -14,6 +14,10 @@ import {
 } from "../metabase/metabase.client";
 import { metabaseConfig } from "../metabase/metabase.config";
 import {
+	TinybirdEligibilityService,
+	type TinybirdEligibilitySnapshot,
+} from "../metabase/tinybird-eligibility.service";
+import {
 	type BillingExperimentQuery,
 	billingExperimentQuery,
 } from "./billing-experiment.contracts";
@@ -304,7 +308,10 @@ export class BillingExperimentService {
 		| { expiresAt: number; promise: Promise<LiveReadout> }
 		| undefined;
 
-	constructor(@InjectDatabase() private readonly db: Db) {}
+	constructor(
+		@InjectDatabase() private readonly db: Db,
+		private readonly tinybirdEligibility: TinybirdEligibilityService,
+	) {}
 
 	async preview(queryText: string): Promise<Result> {
 		return this.execute(billingExperimentQuery.parse(JSON.parse(queryText)));
@@ -696,6 +703,7 @@ export class BillingExperimentService {
 		const config = metabaseConfig();
 		if (!config) throw new Error("Metabase is not configured.");
 		const client = new MetabaseClient(config);
+		const eligibility = await this.tinybirdEligibility.current();
 		const [assignmentRows, invoiceRows, paymentRows, cancellationRows] =
 			await Promise.all([
 				this.queryAll(
@@ -722,8 +730,11 @@ where a.flag = 'billing_v3_experiment'
   )
   and coalesce(u.banned, false) = false
   and coalesce(u.disabled, false) = false
+  and coalesce(u.is_anonymous, false) = false
   and lower(u.email) not like '%@sync.so'
+  and lower(u.email) not like '%@sync.labs'
 order by a.organization_id, a.created_at`,
+					eligibility,
 				),
 				this.queryAll(
 					client,
@@ -739,6 +750,7 @@ from sync_prod.sync_stripe_invoices_paid
 where "createdAt" >= toDateTime('${EXPERIMENT_START}')
   and "amountPaid" > 0
 order by "createdAt", id`,
+					eligibility,
 				),
 				this.queryAll(
 					client,
@@ -752,6 +764,7 @@ order by "createdAt", id`,
 from sync_prod.sync_stripe_payments
 where "createdAt" >= toDateTime('${EXPERIMENT_START}')
 order by "createdAt", id`,
+					eligibility,
 				),
 				this.queryAll(
 					client,
@@ -764,6 +777,7 @@ from sync_prod.sync_stripe_subscription_cancellations
 where "createdAt" >= toDateTime('${EXPERIMENT_START}')
   and "canceledAt" is not null
 order by "canceledAt", id`,
+					eligibility,
 				),
 			]);
 		const assignments = assignmentRows.flatMap((row): Assignment[] => {
@@ -833,12 +847,18 @@ order by "canceledAt", id`,
 		client: MetabaseClient,
 		databaseExternalId: string,
 		query: string,
+		eligibility: TinybirdEligibilitySnapshot,
 	): Promise<Array<Record<string, unknown>>> {
 		const rows: Array<Record<string, unknown>> = [];
 		for (let offset = 0; offset < MAX_ROWS; offset += PAGE_SIZE) {
+			const governed = this.tinybirdEligibility.govern(
+				`${query}\nlimit ${PAGE_SIZE} offset ${offset}`,
+				databaseExternalId,
+				eligibility,
+			);
 			const result = await client.preview({
 				language: "SQL",
-				queryText: `${query}\nlimit ${PAGE_SIZE} offset ${offset}`,
+				queryText: governed.queryText,
 				databaseExternalId,
 			});
 			rows.push(

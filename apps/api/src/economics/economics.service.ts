@@ -10,6 +10,10 @@ import { Injectable, NotFoundException } from "@nestjs/common";
 import { InjectDatabase } from "../database/database.constants";
 import { MetabaseClient } from "../metabase/metabase.client";
 import { metabaseConfig } from "../metabase/metabase.config";
+import {
+	TinybirdEligibilityService,
+	type TinybirdEligibilitySnapshot,
+} from "../metabase/tinybird-eligibility.service";
 import { assertReadOnlyQuery } from "../questions/read-only-query";
 import {
 	type EconomicsQuery,
@@ -88,7 +92,10 @@ function column(name: string, displayName: string, baseType = "type/Decimal") {
 
 @Injectable()
 export class EconomicsService {
-	constructor(@InjectDatabase() private readonly db: Db) {}
+	constructor(
+		@InjectDatabase() private readonly db: Db,
+		private readonly tinybirdEligibility: TinybirdEligibilityService,
+	) {}
 
 	async preview(queryText: string): Promise<Result> {
 		return this.execute(economicsQuery.parse(JSON.parse(queryText)));
@@ -224,11 +231,13 @@ export class EconomicsService {
 		let cardsProcessed = 0;
 		let snapshotsCreated = 0;
 		try {
+			const eligibility = await this.tinybirdEligibility.current();
 			for (const question of questions) {
 				const version = question.versions[0];
 				if (!version) continue;
 				const result = await this.execute(
 					economicsQuery.parse(JSON.parse(version.queryText)),
+					eligibility,
 				);
 				const payload = { columns: result.columns, rows: result.rows };
 				const contentHash = hash(payload);
@@ -263,6 +272,10 @@ export class EconomicsService {
 						finishedAt,
 						cardsProcessed,
 						snapshotsCreated,
+						checkpoint: json({
+							eligibilityCapturedAt: eligibility.capturedAt.toISOString(),
+							eligibilityHash: eligibility.contentHash,
+						}),
 					},
 				}),
 				this.db.dataSource.update({
@@ -301,7 +314,10 @@ export class EconomicsService {
 		}
 	}
 
-	private async execute(query: EconomicsQuery): Promise<Result> {
+	private async execute(
+		query: EconomicsQuery,
+		eligibility?: TinybirdEligibilitySnapshot,
+	): Promise<Result> {
 		const modal = await this.db.resultSnapshot.findFirst({
 			where: { questionExternalId: MODAL_RAW_QUESTION },
 			orderBy: { capturedAt: "desc" },
@@ -319,9 +335,16 @@ export class EconomicsService {
 		if (!config) throw new Error("Metabase is not configured.");
 		const warehouseSql = query.warehouseSql ?? ECONOMICS_WAREHOUSE_QUERY;
 		assertReadOnlyQuery("SQL", warehouseSql);
+		const currentEligibility =
+			eligibility ?? (await this.tinybirdEligibility.current());
+		const governed = this.tinybirdEligibility.govern(
+			warehouseSql,
+			"166",
+			currentEligibility,
+		);
 		const warehouse = await new MetabaseClient(config).preview({
 			language: "SQL",
-			queryText: warehouseSql,
+			queryText: governed.queryText,
 			databaseExternalId: "166",
 		});
 		const warehouseRows = warehouse.rows.map((row) => ({

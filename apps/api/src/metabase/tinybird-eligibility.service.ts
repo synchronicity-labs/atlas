@@ -11,12 +11,12 @@ const ELIGIBILITY_QUERY = `select
   coalesce(u.is_anonymous, false) as is_anonymous,
   lower(coalesce(uo.role, '')) as membership_role,
   o.id::text as organization_id,
-  o.stripe_customer_id::text as customer_id
+  o.stripe_customer_id::text as customer_id,
+  count(*) over()::bigint as source_row_count
 from auth.users u
 left join public.user_organizations uo on uo.user_id = u.id
 left join public.organizations o on o.id = uo.organization_id
 where coalesce(u.banned, false)
-  or coalesce(u.disabled, false)
   or coalesce(u.is_anonymous, false)
   or lower(coalesce(u.email, '')) like '%@sync.so'
   or lower(coalesce(u.email, '')) like '%@sync.labs'
@@ -46,6 +46,9 @@ export type TinybirdEligibilitySnapshot = {
 	excludedUserIds: string[];
 	excludedOrganizationIds: string[];
 	excludedCustomerIds: string[];
+	complete: boolean;
+	sourceRows: number;
+	returnedRows: number;
 };
 
 export type GovernedTinybirdQuery = {
@@ -57,6 +60,9 @@ export type GovernedTinybirdQuery = {
 		excludedUsers: number;
 		excludedOrganizations: number;
 		excludedCustomers: number;
+		complete: boolean;
+		sourceRows: number;
+		returnedRows: number;
 	};
 };
 
@@ -89,6 +95,7 @@ export class TinybirdEligibilityService {
 				]),
 			),
 		);
+		const sourceRows = number(rows[0]?.source_row_count, rows.length);
 		return buildTinybirdEligibility(
 			rows.map((row) => ({
 				userId: text(row.user_id),
@@ -101,6 +108,7 @@ export class TinybirdEligibilityService {
 				customerId: text(row.customer_id),
 			})),
 			new Date(),
+			sourceRows,
 		);
 	}
 
@@ -116,6 +124,7 @@ export class TinybirdEligibilityService {
 export function buildTinybirdEligibility(
 	rows: EligibilityRow[],
 	capturedAt: Date,
+	sourceRows = rows.length,
 ): TinybirdEligibilitySnapshot {
 	const excludedUserIds = sortedUnique(
 		rows.filter(isIneligible).map((row) => row.userId),
@@ -135,6 +144,9 @@ export function buildTinybirdEligibility(
 		excludedUserIds,
 		excludedOrganizationIds,
 		excludedCustomerIds,
+		complete: sourceRows === rows.length,
+		sourceRows,
+		returnedRows: rows.length,
 	};
 	return {
 		capturedAt,
@@ -150,6 +162,13 @@ export function governTinybirdQuery(
 	databaseExternalId: string | null,
 	eligibility: TinybirdEligibilitySnapshot,
 ): GovernedTinybirdQuery {
+	if (databaseExternalId !== "166" || !eligibility.complete) {
+		return {
+			queryText,
+			applied: false,
+			eligibility: eligibilityEvidence(eligibility),
+		};
+	}
 	let governed = queryText;
 	let applied = false;
 	for (const table of USER_TABLES) {
@@ -183,22 +202,15 @@ export function governTinybirdQuery(
 		applied ||= result.applied;
 	}
 	return {
-		queryText: databaseExternalId === "166" ? governed : queryText,
-		applied: databaseExternalId === "166" && applied,
-		eligibility: {
-			capturedAt: eligibility.capturedAt.toISOString(),
-			contentHash: eligibility.contentHash,
-			excludedUsers: eligibility.excludedUserIds.length,
-			excludedOrganizations: eligibility.excludedOrganizationIds.length,
-			excludedCustomers: eligibility.excludedCustomerIds.length,
-		},
+		queryText: governed,
+		applied,
+		eligibility: eligibilityEvidence(eligibility),
 	};
 }
 
 function isIneligible(row: EligibilityRow): boolean {
 	return (
 		row.banned ||
-		row.disabled ||
 		row.isAnonymous ||
 		row.email.endsWith("@sync.so") ||
 		row.email.endsWith("@sync.labs")
@@ -211,7 +223,20 @@ function sortedUnique(values: string[]): string[] {
 
 function userPredicate(values: string[]): string {
 	const known = knownExclusionPredicate('"userId"', values);
-	return `"userId" is not null and "userId" != '' and ${known}`;
+	return `("userId" is null or "userId" = '' or ${known})`;
+}
+
+function eligibilityEvidence(eligibility: TinybirdEligibilitySnapshot) {
+	return {
+		capturedAt: eligibility.capturedAt.toISOString(),
+		contentHash: eligibility.contentHash,
+		excludedUsers: eligibility.excludedUserIds.length,
+		excludedOrganizations: eligibility.excludedOrganizationIds.length,
+		excludedCustomers: eligibility.excludedCustomerIds.length,
+		complete: eligibility.complete,
+		sourceRows: eligibility.sourceRows,
+		returnedRows: eligibility.returnedRows,
+	};
 }
 
 function knownExclusionPredicate(column: string, values: string[]): string {
@@ -242,4 +267,9 @@ function text(value: unknown): string {
 
 function bool(value: unknown): boolean {
 	return value === true || value === 1 || value === "1" || value === "true";
+}
+
+function number(value: unknown, fallback: number): number {
+	const parsed = Number(value);
+	return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : fallback;
 }

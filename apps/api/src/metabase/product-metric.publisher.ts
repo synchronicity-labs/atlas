@@ -66,6 +66,9 @@ type PublishInput = {
 		excludedUsers: number;
 		excludedOrganizations: number;
 		excludedCustomers: number;
+		complete: boolean;
+		sourceRows: number;
+		returnedRows: number;
 	};
 };
 
@@ -73,7 +76,8 @@ const sharedNormalizationPolicy = {
 	timeZone: "UTC",
 	periodBoundaries: "half_open",
 	internalDomains: ["sync.so", "sync.labs"],
-	excludedUserStates: ["banned", "disabled", "anonymous"],
+	excludedUserStates: ["banned", "anonymous"],
+	observedLifecycleStates: ["disabled"],
 	retroactiveEligibility: "current_known_state",
 };
 

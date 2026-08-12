@@ -19,6 +19,7 @@ import {
 	type MetabaseResult,
 } from "./metabase.client";
 import { type MetabaseConfig, metabaseConfig } from "./metabase.config";
+import { ProductEligibilityService } from "./product-eligibility.service";
 import {
 	ProductMetricPublisher,
 	preferredAtlasQuestionNumber,
@@ -129,6 +130,7 @@ export class MetabaseService {
 	constructor(
 		@InjectDatabase() private readonly db: Db,
 		private readonly productMetrics: ProductMetricPublisher,
+		private readonly productEligibility: ProductEligibilityService,
 		private readonly tinybirdEligibility: TinybirdEligibilityService,
 	) {}
 
@@ -534,14 +536,38 @@ export class MetabaseService {
 							eligibility,
 						)
 					: null;
-				const result = await client.preview({
+				let result = await client.preview({
 					language,
 					queryText:
-						language === "SQL" && governed
+						language === "SQL" && governed && question.number !== 15
 							? governed.queryText
 							: version.queryText,
 					databaseExternalId: question.databaseExternalId,
 				});
+				let publishEligibility = governed
+					? { applied: governed.applied, ...governed.eligibility }
+					: undefined;
+				if (question.number === 15) {
+					try {
+						const joined =
+							await this.productEligibility.governProfessionalResult(result);
+						result = joined.result;
+						publishEligibility = joined.eligibility;
+					} catch (error) {
+						publishEligibility = publishEligibility
+							? {
+									...publishEligibility,
+									applied: false,
+									complete: false,
+								}
+							: undefined;
+						this.logger.warn({
+							message: "Product eligibility join did not complete",
+							questionNumber: question.number,
+							error: error instanceof Error ? error.message : String(error),
+						});
+					}
+				}
 				const payload = { columns: result.columns, rows: result.rows };
 				const contentHash = stableHash(payload);
 				const externalId =
@@ -570,9 +596,7 @@ export class MetabaseService {
 					result,
 					syncRunId: run.id,
 					capturedAt,
-					eligibility: governed
-						? { applied: governed.applied, ...governed.eligibility }
-						: undefined,
+					eligibility: publishEligibility,
 				});
 				cardsProcessed += 1;
 				snapshotsCreated += created.count;

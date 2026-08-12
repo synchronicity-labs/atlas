@@ -6,6 +6,7 @@ import { EconomicsService } from "../economics/economics.service";
 import { MarketingService } from "../marketing/marketing.service";
 import { MetabaseClient } from "../metabase/metabase.client";
 import { metabaseConfig } from "../metabase/metabase.config";
+import { ProductEligibilityService } from "../metabase/product-eligibility.service";
 import { TinybirdEligibilityService } from "../metabase/tinybird-eligibility.service";
 import { SalesService } from "../sales/sales.service";
 import { paginate, resolveOrderBy } from "../trpc/list-input";
@@ -37,6 +38,7 @@ export class QuestionsService {
 		private readonly marketing: MarketingService,
 		private readonly sales: SalesService,
 		private readonly economics: EconomicsService,
+		private readonly productEligibility: ProductEligibilityService,
 		private readonly tinybirdEligibility: TinybirdEligibilityService,
 	) {}
 
@@ -303,7 +305,9 @@ export class QuestionsService {
 						? await this.economics.preview(input.queryText)
 						: question.source?.key === "atlas:billing-experiment"
 							? await this.billingExperiment.preview(input.queryText)
-							: await this.marketing.preview(input.queryText)
+							: question.source?.key === "atlas:product-eligibility"
+								? await this.productEligibility.preview(input.queryText)
+								: await this.marketing.preview(input.queryText)
 				: await this.metabasePreview(
 						input.queryLanguage,
 						input.queryText,

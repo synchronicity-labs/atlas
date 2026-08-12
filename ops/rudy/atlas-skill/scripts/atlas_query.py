@@ -58,7 +58,7 @@ def main():
     elif args.command == "question":
         query = ""
         if args.period:
-            query = "?" + urllib.parse.urlencode({"period": args.period})
+            query = "?" + urllib.parse.urlencode({"reportingPeriod": args.period})
         result = request(f"/internal/atlas/questions/{args.number}{query}")
     else:
         result = search_catalog(request("/internal/atlas/catalog"), args.term)

@@ -19,11 +19,18 @@ describe("Product metric publication", () => {
 		expect(
 			hasRequiredEligibilityPredicates(`
 				where banned = false
-				and disabled = false
+				and is_anonymous = false
+				and email not like '%@sync.so'
+				and email not like '%@sync.labs'
+			`),
+		).toBe(true);
+		expect(
+			hasRequiredEligibilityPredicates(`
+				where banned = false
 				and is_anonymous = false
 				and email not like '%@sync.so'
 			`),
-		).toBe(true);
+		).toBe(false);
 		expect(
 			hasRequiredEligibilityPredicates(
 				"select count(*) from sync_prod.sync_usage3",

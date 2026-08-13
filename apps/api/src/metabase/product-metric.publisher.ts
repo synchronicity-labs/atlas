@@ -973,7 +973,7 @@ type MetricWindow = {
 
 export function hasRequiredEligibilityPredicates(queryText: string): boolean {
 	const normalized = queryText.toLowerCase();
-	return ["banned", "disabled", "is_anonymous", "@sync.so"].every((term) =>
+	return ["banned", "is_anonymous", "@sync.so", "@sync.labs"].every((term) =>
 		normalized.includes(term),
 	);
 }

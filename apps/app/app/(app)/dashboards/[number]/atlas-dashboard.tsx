@@ -25,6 +25,7 @@ import {
 	DropdownMenuTrigger,
 } from "@crm/ui/components/dropdown-menu";
 import { Icon } from "@crm/ui/components/icon";
+import { MetricTrustIndicator } from "@crm/ui/components/metric-trust-indicator";
 import { RelativeTimestamp } from "@crm/ui/components/relative-timestamp";
 import { StatusIndicator } from "@crm/ui/components/status-indicator";
 import {
@@ -880,6 +881,7 @@ function QuestionCard({
 						: "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100",
 				)}
 			>
+				<MetricTrustIndicator summary={card.verification} compact />
 				<RudyChatTrigger
 					record={{ kind: "question", id: String(card.question.number) }}
 					label={`Ask Rudy about question ${card.question.number}`}
@@ -1216,6 +1218,7 @@ export function AtlasDashboard({ number }: { number: number }) {
 						}
 						size="sm"
 					/>
+					<MetricTrustIndicator summary={data.verification} />
 					<RudyChatTrigger
 						record={{ kind: "dashboard", id: String(data.number) }}
 					/>

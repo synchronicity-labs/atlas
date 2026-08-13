@@ -8,6 +8,7 @@ import { MetabaseClient } from "../metabase/metabase.client";
 import { metabaseConfig } from "../metabase/metabase.config";
 import { ProductEligibilityService } from "../metabase/product-eligibility.service";
 import { TinybirdEligibilityService } from "../metabase/tinybird-eligibility.service";
+import { summarizeMetricVerification } from "../metric-verification";
 import { SalesService } from "../sales/sales.service";
 import { paginate, resolveOrderBy } from "../trpc/list-input";
 import type {
@@ -191,6 +192,19 @@ export class QuestionsService {
 							columns: true,
 							rows: true,
 							rowCount: true,
+							metricRun: {
+								select: {
+									verifications: {
+										orderBy: { name: "asc" },
+										select: {
+											name: true,
+											status: true,
+											evidence: true,
+											verifiedAt: true,
+										},
+									},
+								},
+							},
 						},
 					})
 					.then((rows) =>
@@ -203,6 +217,7 @@ export class QuestionsService {
 							columns: row.columns,
 							rows: row.rows,
 							rowCount: row.rowCount,
+							verification: summarizeMetricVerification(row),
 						})),
 					)
 			: question.sourceExternalId
@@ -229,6 +244,7 @@ export class QuestionsService {
 								...row,
 								dataThrough: null,
 								trustStatus: null,
+								verification: null,
 							})),
 						)
 				: [];
@@ -255,6 +271,7 @@ export class QuestionsService {
 				: null,
 			metricVersion: undefined,
 			metricVersionId: undefined,
+			verification: snapshots[0]?.verification ?? null,
 			sourceKey: question.source?.key ?? null,
 			source: undefined,
 			updatedAt: question.updatedAt.toISOString(),

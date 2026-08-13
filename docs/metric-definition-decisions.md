@@ -19,6 +19,35 @@ Atlas then stores that meaning in an immutable metric version.
 - Metabase cards are reconciliation references. Canonical metrics read the underlying
   source tables through a read-only transport.
 
+## Why the metric contract comes first
+
+A review of corrected Rudy analytics answers found one recurring failure: Rudy answered
+from the first plausible data surface before locking the business definition. The query
+could be technically valid and still answer the wrong question.
+
+| Failure pattern | What has gone wrong | Atlas and Rudy rule |
+| --- | --- | --- |
+| Wrong source of truth | Stripe cash was used for revenue run-rate; PostHog behavior was used for paid truth; Stripe metadata was used instead of the Product organization mapping; partial Pylon enrichment was treated as complete. | Resolve the governed metric first. Its source priority decides which system is canonical and which systems only reconcile it. |
+| Wrong metric definition | `Conversion` was interpreted as signup, checkout click, free-to-paid, generation completion, activation, second project, or revenue per signup. | Never query a loose metric label. Resolve the entity, event, numerator, denominator, and window first. |
+| Wrong cohort spine | Event presence replaced assignment tables; one global date window replaced each organization's post-assignment window; historical cohorts without a holdout were described as causal. | Store the cohort entry event, assignment source, eligibility rule, observation window, and comparison design in the metric version. |
+| Cash, usage, revenue, and credits blended | V2 postpaid usage accrual, V3 prepaid top-up cash, subscription cash, credit consumption, invoice cash, and booked commitments were treated as interchangeable. | Publish separate named measures. Never substitute one economic event for another because it is easier to query. |
+| Data-shape caveats found too late | Duplicate invoice lifecycle rows, stale metadata, missing attribution, low sample sizes, boolean-only PostHog fields, and a legacy TinyBird database produced believable but unsafe answers. | Verification must check deduplication, attribution coverage, sample size, expected columns, canonical dataset, source freshness, and immutable inputs before publication. |
+
+Two concrete examples already found:
+
+- A V2 uncollected-revenue analysis counted stale and open invoice events even when the
+  same Stripe invoice later had a paid event. The corrected rule deduplicates by Stripe
+  invoice ID, resolves the latest reliable state, and verifies material cases against
+  live Stripe.
+- A May run-rate answer used collected Stripe cash. The intended Product run-rate was
+  licensed subscription base plus usage incurred in the month, with Studio bookings
+  shown separately and enterprise commitments handled without double counting.
+
+Rudy's query order is therefore: resolve the Atlas metric contract, use its certified
+snapshot when available, disclose its trust and freshness state, and only query raw
+sources for verification or when no governed definition exists. If the contract is
+missing or ambiguous, Rudy asks the owner instead of choosing a plausible meaning.
+
 ## Shared glossary
 
 Metric names must be specific enough that two people cannot reasonably read them in

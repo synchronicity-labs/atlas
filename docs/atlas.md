@@ -104,9 +104,11 @@ last checkpoint.
 Every Atlas-owned TinyBird execution first reads the current product-user
 eligibility set from Product Postgres. Raw usage facts are filtered by `userId`;
 Stripe mirrors are filtered by the organization or customer linked to an excluded
-owner. Banned, disabled, anonymous, `@sync.so`, and `@sync.labs` identities are
-excluded. The exclusion is applied when a question runs, not when the immutable raw
-fact first arrives, so a later ban can change a historical metric on the next
+owner. Banned, anonymous, `@sync.so`, and `@sync.labs` identities are excluded.
+Disabled identities remain in historical KPI populations because deletion after
+qualification is a retention signal; question 6001 reports those organizations
+separately. The exclusion is applied when a question runs, not when the immutable
+raw fact first arrives, so a later ban can change a historical metric on the next
 refresh. Previously published report snapshots remain unchanged. Each governed run
 stores the eligibility snapshot hash and capture time used for the calculation.
 
@@ -203,6 +205,17 @@ Earlier question versions and immutable snapshots remain the audit trail for the
 July Rudy email behavior. That close used raw additive lifecycle rows and did not
 execute against a pinned warehouse as-of timestamp.
 
+Weekly Revenue Lite questions 1101 through 1109 can be replayed against an explicit
+UTC cutoff with `bun --filter api run replay:weekly-revenue <cutoff>`. The replay
+executes the stored question versions and emits the eligibility evidence without
+changing a published snapshot. Invoice cash uses one row per invoice and the Stripe
+`paid_at` transition, so an invoice created before the cutoff but paid later cannot
+leak into the close. Subscription lifecycle rows are reduced deterministically by
+external subscription ID. The TinyBird subscription mirror does not contain a
+webhook ingestion timestamp, so an old close cannot reconstruct subscription state
+exactly unless Atlas preserved the result at that close. New report deliveries must
+therefore point to their immutable Atlas snapshot.
+
 ## Product identities
 
 Product-user ingestion whitelists only the fields Atlas uses. Email is searchable but
@@ -242,9 +255,16 @@ project `atlas`, config `local`; never put it in `.env.local` or source control.
 
 Dashboard 4 mirrors HubSpot sales operations through stable Atlas questions. Deal,
 pipeline, owner, company, and contact associations are ingested into immutable,
-content-addressed source snapshots with independent retry-safe cursors. The sales
-questions execute against that ingested layer, so editing or previewing a question
-never exposes the HubSpot token to the browser.
+content-addressed source snapshots with independent retry-safe cursors. Deal records
+also preserve HubSpot history for amount, pipeline, stage, close date, and won state,
+which lets Atlas prove when a deal entered a stage instead of inferring it from the
+current record. The sales questions execute against that ingested layer, so editing
+or previewing a question never exposes the HubSpot token to the browser.
+
+Run `bun run hubspot:sales:sync` for the bounded sales-only path. It advances the deal
+cursor before pipeline and owner metadata and does not wait for the larger company
+and contact backfill. The full customer identity sync remains available through
+`bun run customer:sync`.
 
 The HubSpot mirror tab reproduces the source dashboard's rolling 30-day forecast,
 contact/deal totals, team activity, daily closed-won curve, and lead-stage views.

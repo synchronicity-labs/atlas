@@ -81,6 +81,14 @@ const DEAL_PROPERTIES = [
 	"closed_lost_reason",
 	"closed_won_reason",
 ];
+const DEAL_HISTORY_PROPERTIES = [
+	"amount",
+	"amount_in_home_currency",
+	"dealstage",
+	"pipeline",
+	"closedate",
+	"hs_is_closed_won",
+];
 
 type HubspotConfig = { baseUrl: string; accessToken: string };
 
@@ -90,6 +98,16 @@ type HubspotRecord = {
 	updatedAt?: string;
 	archived?: boolean;
 	properties?: Record<string, unknown>;
+	propertiesWithHistory?: Record<
+		string,
+		Array<{
+			value?: unknown;
+			timestamp?: string;
+			sourceType?: string;
+			sourceId?: string;
+			updatedByUserId?: number;
+		}>
+	>;
 	associations?: {
 		companies?: { results?: Array<{ id?: string }> };
 		contacts?: { results?: Array<{ id?: string }> };
@@ -167,10 +185,13 @@ class HubspotClient {
 		associations?: string[];
 	}): Promise<HubspotPage> {
 		const params = new URLSearchParams({
-			limit: "100",
+			limit: input.object === "deals" ? "50" : "100",
 			archived: "false",
 			properties: input.properties.join(","),
 		});
+		if (input.object === "deals") {
+			params.set("propertiesWithHistory", DEAL_HISTORY_PROPERTIES.join(","));
+		}
 		if (input.after) params.set("after", input.after);
 		if (input.associations?.length) {
 			params.set("associations", input.associations.join(","));
@@ -555,6 +576,7 @@ async function persistDeal(sourceId: string, record: HubspotRecord) {
 		properties: Object.fromEntries(
 			DEAL_PROPERTIES.map((key) => [key, values[key] ?? null]),
 		),
+		propertyHistory: record.propertiesWithHistory ?? {},
 		companyIds,
 		contactIds: associationIds(record, "contacts"),
 	};
@@ -1154,4 +1176,33 @@ export async function syncHubspot(maxPages = 10) {
 		owners,
 		reports,
 	};
+}
+
+export async function syncHubspotSales(maxPages = 10) {
+	const value = config();
+	const source = await ensureSource({
+		key: SOURCE_KEY,
+		kind: DataSourceKind.HUBSPOT,
+		label: "HubSpot CRM",
+		configured: value !== null,
+	});
+	if (!value) {
+		return {
+			configured: false,
+			deals: null,
+			pipelines: null,
+			owners: null,
+		};
+	}
+	const client = new HubspotClient(value);
+	const deals = await syncScope({
+		sourceId: source.id,
+		client,
+		object: "deals",
+		properties: DEAL_PROPERTIES,
+		maxPages,
+	});
+	const pipelines = await syncPipelines(source.id, client);
+	const owners = await syncOwners(source.id, client);
+	return { configured: true, deals, pipelines, owners };
 }

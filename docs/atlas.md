@@ -58,6 +58,13 @@ watermarks, run hashes, verification evidence, and trust status with each certif
 question. The browser and Rudy read this API; they do not query source systems
 directly.
 
+The stakeholder decision register is in
+[`docs/metric-definition-decisions.md`](./metric-definition-decisions.md). The
+current Product KPI source, normalization, and trust map is in
+[`docs/verification/product-scoreboard-data-layer.md`](./verification/product-scoreboard-data-layer.md).
+Business ambiguity remains a pending decision; it is never resolved by silently
+changing a timestamp or relabeling an amount.
+
 ## Reporting time policy
 
 Atlas uses UTC for every deterministic reporting boundary:

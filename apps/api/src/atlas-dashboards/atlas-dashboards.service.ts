@@ -7,6 +7,10 @@ import { EconomicsService } from "../economics/economics.service";
 import { MarketingService } from "../marketing/marketing.service";
 import { MetabaseService } from "../metabase/metabase.service";
 import { ProductEligibilityService } from "../metabase/product-eligibility.service";
+import {
+	summarizeDashboardVerification,
+	summarizeMetricVerification,
+} from "../metric-verification";
 import { SalesService } from "../sales/sales.service";
 import type { dashboardLayoutInput } from "./atlas-dashboards.contracts";
 
@@ -150,6 +154,7 @@ export class AtlasDashboardsService {
 								connector: true,
 								sourceId: true,
 								sourceExternalId: true,
+								metricVersionId: true,
 								versions: {
 									orderBy: { version: "desc" },
 									take: 1,
@@ -171,7 +176,7 @@ export class AtlasDashboardsService {
 		const externalIds = dashboard.cards.flatMap((card) =>
 			card.question.sourceExternalId ? [card.question.sourceExternalId] : [],
 		);
-		const snapshots = externalIds.length
+		const resultSnapshots = externalIds.length
 			? await this.db.$queryRaw<
 					Array<{
 						id: string;
@@ -191,10 +196,49 @@ export class AtlasDashboardsService {
 				ORDER BY "questionExternalId", "capturedAt" DESC
 			`)
 			: [];
-		const latest = new Map<string, (typeof snapshots)[number]>();
-		for (const snapshot of snapshots) {
-			if (!latest.has(snapshot.questionExternalId)) {
-				latest.set(snapshot.questionExternalId, snapshot);
+		const latestResult = new Map<string, (typeof resultSnapshots)[number]>();
+		for (const snapshot of resultSnapshots) {
+			if (!latestResult.has(snapshot.questionExternalId)) {
+				latestResult.set(snapshot.questionExternalId, snapshot);
+			}
+		}
+		const metricVersionIds = dashboard.cards.flatMap((card) =>
+			card.question.metricVersionId ? [card.question.metricVersionId] : [],
+		);
+		const metricSnapshots = metricVersionIds.length
+			? await this.db.metricSnapshot.findMany({
+					where: { metricVersionId: { in: metricVersionIds } },
+					orderBy: { computedAt: "desc" },
+					select: {
+						id: true,
+						metricVersionId: true,
+						reportingPeriod: true,
+						computedAt: true,
+						dataThrough: true,
+						trustStatus: true,
+						columns: true,
+						rows: true,
+						rowCount: true,
+						metricRun: {
+							select: {
+								verifications: {
+									orderBy: { name: "asc" },
+									select: {
+										name: true,
+										status: true,
+										evidence: true,
+										verifiedAt: true,
+									},
+								},
+							},
+						},
+					},
+				})
+			: [];
+		const latestMetric = new Map<string, (typeof metricSnapshots)[number]>();
+		for (const snapshot of metricSnapshots) {
+			if (!latestMetric.has(snapshot.metricVersionId)) {
+				latestMetric.set(snapshot.metricVersionId, snapshot);
 			}
 		}
 		const sourceIds = [
@@ -224,30 +268,56 @@ export class AtlasDashboardsService {
 				? `https://app-na2.hubspot.com/reports-dashboard/${hubspotPortalId}/view/15158250`
 				: null;
 
+		const cards = dashboard.cards.map((card) => {
+			const metricSnapshot = card.question.metricVersionId
+				? latestMetric.get(card.question.metricVersionId)
+				: undefined;
+			const resultSnapshot = card.question.sourceExternalId
+				? latestResult.get(card.question.sourceExternalId)
+				: undefined;
+			const verification = metricSnapshot
+				? summarizeMetricVerification(metricSnapshot)
+				: null;
+			return {
+				...card,
+				question: {
+					...card.question,
+					metricVersionId: undefined,
+					latestVersion: card.question.versions[0] ?? null,
+					versions: undefined,
+				},
+				snapshot: metricSnapshot
+					? {
+							id: metricSnapshot.id,
+							reportingPeriod: metricSnapshot.reportingPeriod,
+							capturedAt: metricSnapshot.computedAt.toISOString(),
+							dataThrough: metricSnapshot.dataThrough.toISOString(),
+							trustStatus: metricSnapshot.trustStatus,
+							columns: metricSnapshot.columns,
+							rows: metricSnapshot.rows,
+							rowCount: metricSnapshot.rowCount,
+						}
+					: resultSnapshot
+						? {
+								...resultSnapshot,
+								capturedAt: resultSnapshot.capturedAt.toISOString(),
+								dataThrough: null,
+								trustStatus: null,
+							}
+						: null,
+				verification,
+			};
+		});
+
 		return {
 			...dashboard,
 			updatedAt: dashboard.updatedAt.toISOString(),
 			sourceUrl,
 			sources: sources.map(serializeSource),
-			cards: dashboard.cards.map((card) => {
-				const snapshot = card.question.sourceExternalId
-					? latest.get(card.question.sourceExternalId)
-					: undefined;
-				return {
-					...card,
-					question: {
-						...card.question,
-						latestVersion: card.question.versions[0] ?? null,
-						versions: undefined,
-					},
-					snapshot: snapshot
-						? {
-								...snapshot,
-								capturedAt: snapshot.capturedAt.toISOString(),
-							}
-						: null,
-				};
-			}),
+			cards,
+			verification: summarizeDashboardVerification(
+				cards.map((card) => card.verification),
+			),
 			source: source ? serializeSource(source) : null,
 		};
 	}

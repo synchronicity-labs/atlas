@@ -25,6 +25,10 @@ import { YAxis } from "@crm/ui/components/dither-kit/y-axis";
 import { Icon } from "@crm/ui/components/icon";
 import { Input } from "@crm/ui/components/input";
 import {
+	MetricTrustIndicator,
+	type MetricTrustSummary,
+} from "@crm/ui/components/metric-trust-indicator";
+import {
 	Select,
 	SelectContent,
 	SelectItem,
@@ -77,6 +81,7 @@ type QuestionData = {
 	sourceKey: string | null;
 	sourceExternalId: string | null;
 	sourceUrl: string | null;
+	verification: MetricTrustSummary | null;
 	versions: QuestionVersion[];
 	snapshots: Array<{
 		columns: unknown;
@@ -446,6 +451,7 @@ export function QuestionEditor({ number }: { number: number }) {
 							label={`Version ${latest.version}`}
 							size="sm"
 						/>
+						<MetricTrustIndicator summary={data.verification} />
 					</div>
 				</div>
 				<div className="flex flex-wrap items-center gap-2 lg:justify-end">

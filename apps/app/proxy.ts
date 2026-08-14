@@ -11,6 +11,7 @@ const UNGATED = [
 	"/grant-access",
 	"/eve",
 	"/dashboards",
+	"/metrics",
 	"/questions",
 	"/users",
 	"/companies",

@@ -182,6 +182,7 @@ describe("proxy", () => {
 		for (const path of [
 			"/",
 			"/dashboards/1",
+			"/metrics",
 			"/questions",
 			"/users",
 			"/companies",

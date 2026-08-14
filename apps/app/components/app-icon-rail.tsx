@@ -1,5 +1,6 @@
 "use client";
 
+import Analytics from "@carbon/icons-react/es/Analytics";
 import type { CarbonIconType } from "@carbon/icons-react/es/CarbonIcon";
 import Catalog from "@carbon/icons-react/es/Catalog";
 import Customer from "@carbon/icons-react/es/Customer";
@@ -38,6 +39,7 @@ const ITEMS: RailItem[] = [
 		icon: DashboardReference,
 		match: "prefix",
 	},
+	{ title: "Metrics", href: "/metrics", icon: Analytics, match: "prefix" },
 	{ title: "Questions", href: "/questions", icon: Catalog, match: "prefix" },
 	{
 		title: "Clients",

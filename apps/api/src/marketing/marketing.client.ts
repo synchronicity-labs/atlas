@@ -1,5 +1,5 @@
-import { createSign } from "node:crypto";
-import type { GoogleServiceAccount, MarketingConfig } from "./marketing.config";
+import { GoogleServiceAccountClient } from "../google/google-service-account";
+import type { MarketingConfig } from "./marketing.config";
 import type { MarketingQuery } from "./marketing.contracts";
 
 export type MarketingResult = {
@@ -46,14 +46,6 @@ function displayName(value: string): string {
 		.replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
-function base64Url(value: string | Buffer): string {
-	return Buffer.from(value)
-		.toString("base64")
-		.replaceAll("+", "-")
-		.replaceAll("/", "_")
-		.replace(/=+$/, "");
-}
-
 function isoDate(value: Date): string {
 	return value.toISOString().slice(0, 10);
 }
@@ -87,12 +79,11 @@ function numericMetric(name: string, value: string | undefined): number {
 }
 
 export class MarketingClient {
-	private readonly googleTokens = new Map<
-		string,
-		{ value: string; expiresAt: number }
-	>();
+	private readonly google: GoogleServiceAccountClient;
 
-	constructor(private readonly config: MarketingConfig) {}
+	constructor(private readonly config: MarketingConfig) {
+		this.google = new GoogleServiceAccountClient(config.google);
+	}
 
 	async execute(query: MarketingQuery): Promise<MarketingResult> {
 		if (query.source === "ga4") return this.ga4(query);
@@ -103,7 +94,7 @@ export class MarketingClient {
 	private async ga4(
 		query: Extract<MarketingQuery, { source: "ga4" }>,
 	): Promise<MarketingResult> {
-		const token = await this.accessToken([
+		const token = await this.google.accessToken([
 			"https://www.googleapis.com/auth/analytics.readonly",
 		]);
 		const dateRanges = [dates(query.dateRange)];
@@ -244,7 +235,7 @@ export class MarketingClient {
 	private async searchConsole(
 		query: Extract<MarketingQuery, { source: "search_console" }>,
 	): Promise<MarketingResult> {
-		const token = await this.accessToken([
+		const token = await this.google.accessToken([
 			"https://www.googleapis.com/auth/webmasters.readonly",
 		]);
 		const site = this.config.searchConsole[query.site];
@@ -381,64 +372,5 @@ export class MarketingClient {
 			})),
 			rows: body.results ?? [],
 		};
-	}
-
-	private async accessToken(scopes: string[]): Promise<string> {
-		const scope = [...scopes].sort().join(" ");
-		const cached = this.googleTokens.get(scope);
-		if (cached && cached.expiresAt > Date.now() + 60_000) {
-			return cached.value;
-		}
-		const credential = this.config.google;
-		if (!credential) throw new Error("Google reporting is not configured.");
-		const now = Math.floor(Date.now() / 1000);
-		const assertion = this.jwt(credential, scopes, now);
-		const response = await fetch(
-			credential.token_uri ?? "https://oauth2.googleapis.com/token",
-			{
-				method: "POST",
-				headers: { "Content-Type": "application/x-www-form-urlencoded" },
-				body: new URLSearchParams({
-					grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
-					assertion,
-				}),
-			},
-		);
-		const body = (await response.json()) as {
-			access_token?: string;
-			expires_in?: number;
-		};
-		if (!response.ok || !body.access_token) {
-			throw new Error(`Google authorization failed (${response.status}).`);
-		}
-		const token = {
-			value: body.access_token,
-			expiresAt: Date.now() + Number(body.expires_in ?? 3600) * 1000,
-		};
-		this.googleTokens.set(scope, token);
-		return token.value;
-	}
-
-	private jwt(
-		credential: GoogleServiceAccount,
-		scopes: string[],
-		now: number,
-	): string {
-		const header = base64Url(JSON.stringify({ alg: "RS256", typ: "JWT" }));
-		const payload = base64Url(
-			JSON.stringify({
-				iss: credential.client_email,
-				scope: scopes.join(" "),
-				aud: credential.token_uri ?? "https://oauth2.googleapis.com/token",
-				iat: now,
-				exp: now + 3600,
-			}),
-		);
-		const unsigned = `${header}.${payload}`;
-		const signature = createSign("RSA-SHA256")
-			.update(unsigned)
-			.end()
-			.sign(credential.private_key);
-		return `${unsigned}.${base64Url(signature)}`;
 	}
 }

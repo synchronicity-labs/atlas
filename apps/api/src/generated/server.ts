@@ -37,6 +37,7 @@ import type { DashboardRouter } from "../dashboard/dashboard.router";
 import type { DealsRouter } from "../deals/deals.router";
 import type { GoogleRouter } from "../google/google.router";
 import type { MetabaseRouter } from "../metabase/metabase.router";
+import type { MetricCatalogRouter } from "../metric-catalog/metric-catalog.router";
 import type { ProductUsersRouter } from "../product-users/product-users.router";
 import type { QuestionsRouter } from "../questions/questions.router";
 import type { RudyRouter } from "../rudy/rudy.router";
@@ -199,6 +200,14 @@ const appRouter = t.router({
     syncDashboard: publicProcedure
       .input(metabaseDashboardSyncInput)
       .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<MetabaseRouter["syncDashboard"]>>)
+    }),
+  metricCatalog: t.router({
+    list: publicProcedure
+      .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<MetricCatalogRouter["list"]>>),
+    summary: publicProcedure
+      .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<MetricCatalogRouter["summary"]>>),
+    sync: publicProcedure
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<MetricCatalogRouter["sync"]>>)
     }),
   productUsers: t.router({
     list: publicProcedure

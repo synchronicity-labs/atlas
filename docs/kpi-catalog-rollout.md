@@ -17,7 +17,12 @@ Atlas treats the full [Q3 metrics and planning workbook](https://docs.google.com
 - gtme;
 - css.
 
-The initial audit found 43 typed rows in the consolidated `KPIs` tab: 36 top-level metrics and 7 breakdown views. The other tabs contain additional measures that must be reviewed rather than silently ignored. Importing the workbook therefore means reading every tab, preserving its source location, and deduplicating repeated definitions into one canonical metric.
+The live import currently finds 197 measurement records across 11 data tabs: 38
+top-level KPIs, 12 breakdown views, 3 diagnostics, and 144 roadmap measures. The
+`overview` tab is read as workbook metadata but is not turned into fake metrics.
+Importing the workbook therefore means reading every tab, preserving each useful
+row's source location, and deduplicating repeated definitions into one canonical
+metric.
 
 The workbook is not a live reporting source. It tells Atlas what the business wants to measure. Certified values still come from governed source data and immutable metric versions.
 
@@ -36,7 +41,10 @@ This prevents roadmap checklists from inflating KPI coverage and prevents the sa
 
 ## Readiness is not one percentage
 
-Atlas must not report one misleading completion percentage. Each catalog entry has a lifecycle stage and separate evidence axes.
+Atlas must not report one unlabeled completion percentage across unlike records.
+The catalog may show an explicit KPI verification rate, such as “10 of 38 KPIs,”
+alongside separate lifecycle counts for views, diagnostics, and roadmap measures.
+Each catalog entry has a lifecycle stage and separate evidence axes.
 
 ### Lifecycle stage
 
@@ -108,11 +116,18 @@ The current `DRAFT`, `CERTIFIED`, and `DEPRECATED` lifecycle enum is too coarse 
 3. Classify each measurable row and match it to an existing canonical metric or create a `CATALOGED` draft.
 4. Never overwrite an approved metric version from a sheet edit. Create a reviewable proposed revision instead.
 5. Preserve rows that disappear from the workbook and mark the source reference missing. Do not delete metric history.
-6. Run the catalog import on a low-frequency schedule and on demand. Metric data ingestion keeps its own source-specific cadence.
+6. Run the catalog import daily at 05:13 UTC and on demand with
+   `bun catalog:sync`. Metric data ingestion keeps its own source-specific cadence.
+
+The importer uses the existing read-only Google service account. The workbook is
+shared to that account; no user OAuth token is stored. `GET` and `POST`
+`/internal/sync/metric-catalog` are guarded by `CRON_SECRET` and record a sync run,
+content hash, source freshness, and missing rows without deleting history.
 
 ## Progress shown in Atlas
 
-The registry page should show separate counts, not one green percentage:
+The `/metrics` registry shows the exact workbook row, declared source, KPI-only
+mapping and verification rates, and separate lifecycle counts:
 
 - cataloged measurements;
 - top-level KPIs versus views, diagnostics, and roadmap measures;

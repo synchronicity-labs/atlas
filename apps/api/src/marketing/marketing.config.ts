@@ -1,8 +1,7 @@
-export type GoogleServiceAccount = {
-	client_email: string;
-	private_key: string;
-	token_uri?: string;
-};
+import {
+	type GoogleServiceAccount,
+	googleServiceAccount,
+} from "../google/google-service-account";
 
 export type MarketingConfig = {
 	google: GoogleServiceAccount | null;
@@ -10,20 +9,6 @@ export type MarketingConfig = {
 	searchConsole: Record<string, string>;
 	posthog: { host: string; apiKey: string; projectId: string } | null;
 };
-
-function googleCredential(): GoogleServiceAccount | null {
-	const value = process.env.GOOGLE_SERVICE_ACCOUNT_JSON?.trim();
-	if (!value) return null;
-	const parsed = JSON.parse(value) as Partial<GoogleServiceAccount>;
-	if (!parsed.client_email || !parsed.private_key) {
-		throw new Error("The Google service account configuration is invalid.");
-	}
-	return {
-		client_email: parsed.client_email,
-		private_key: parsed.private_key,
-		token_uri: parsed.token_uri,
-	};
-}
 
 function env(name: string): string {
 	return process.env[name]?.trim() ?? "";
@@ -34,7 +19,7 @@ export function marketingConfig(): MarketingConfig {
 	const posthogApiKey = env("POSTHOG_API_KEY");
 	const posthogProjectId = env("POSTHOG_PROJECT_ID");
 	return {
-		google: googleCredential(),
+		google: googleServiceAccount(),
 		ga4: {
 			landing: { id: env("GA4_LANDING_PROPERTY_ID"), label: "sync.so" },
 			blog: { id: env("GA4_BLOG_PROPERTY_ID"), label: "Blog" },

@@ -23,6 +23,7 @@
 		"metabase:sync": "doppler run -- sh -c 'curl -fsS -X POST -H \"Authorization: Bearer $CRON_SECRET\" http://localhost:3001/internal/sync/metabase/incremental'",
 		"metabase:backfill": "doppler run -- sh -c 'curl -fsS -X POST -H \"Authorization: Bearer $CRON_SECRET\" http://localhost:3001/internal/sync/metabase/backfill'",
 		"marketing:sync": "doppler run -- sh -c 'curl -fsS -X POST -H \"Authorization: Bearer $CRON_SECRET\" http://localhost:3001/internal/sync/marketing'",
+		"catalog:sync": "doppler run -- sh -c 'curl -fsS -X POST -H \"Authorization: Bearer $CRON_SECRET\" http://localhost:3001/internal/sync/metric-catalog'",
 		"abuse:sync": "doppler run -- sh -c 'curl -fsS -X POST -H \"Authorization: Bearer $CRON_SECRET\" http://localhost:3001/internal/sync/atlas/5'",
 		"modal:import:rudy": "doppler run -- bun apps/agent/scripts/import-rudy-modal-costs.ts",
 		"economics:sync": "doppler run -- sh -c 'curl -fsS -X POST -H \"Authorization: Bearer $CRON_SECRET\" http://localhost:3001/internal/sync/atlas/6'",

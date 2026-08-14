@@ -159,6 +159,7 @@ enum DataSourceKind {
   POSTHOG
   GOOGLE_ANALYTICS
   GOOGLE_SEARCH_CONSOLE
+  GOOGLE_SHEETS
   ATLAS
 
   @@schema("public")
@@ -261,6 +262,29 @@ enum MetricLifecycleStatus {
   DRAFT
   CERTIFIED
   DEPRECATED
+
+  @@schema("metrics")
+}
+
+enum MetricCatalogKind {
+  KPI
+  VIEW
+  DIAGNOSTIC
+  ROADMAP_MEASURE
+  UNCLASSIFIED
+
+  @@schema("metrics")
+}
+
+enum MetricReadinessStatus {
+  CATALOGED
+  NEEDS_DEFINITION
+  NEEDS_SOURCE
+  READY_TO_IMPLEMENT
+  IMPLEMENTING
+  RECONCILING
+  VERIFIED
+  BLOCKED
 
   @@schema("metrics")
 }
@@ -869,6 +893,7 @@ model DataSource {
   ingestionDatasets     IngestionDataset[]
   sourceWatermarks      SourceWatermark[]
   normalizedFacts       NormalizedFact[]
+  metricCatalogEntries  MetricCatalogEntry[]
 
   @@map("dataSource")
   @@schema("public")
@@ -1064,10 +1089,49 @@ model MetricDefinition {
   createdAt   DateTime              @default(now())
   updatedAt   DateTime              @updatedAt
 
-  versions MetricVersion[]
+  versions       MetricVersion[]
+  catalogEntries MetricCatalogEntry[]
 
   @@index([status, ownerTeam])
   @@map("metricDefinition")
+  @@schema("metrics")
+}
+
+model MetricCatalogEntry {
+  id               String                @id @default(cuid())
+  sourceId         String
+  source           DataSource            @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  sourceDocumentId String
+  sourceTabId      Int
+  sourceTabName    String
+  sourceTabIndex   Int
+  sourceRange      String
+  sourceRow        Int
+  externalKey      String
+  title            String
+  description      String?
+  ownerTeam        String?
+  sourceHint       String?
+  trackability     String?
+  kind             MetricCatalogKind     @default(UNCLASSIFIED)
+  readiness        MetricReadinessStatus @default(CATALOGED)
+  metricId         String?
+  metric            MetricDefinition?     @relation(fields: [metricId], references: [id], onDelete: SetNull)
+  rawRow           Json
+  ambiguities      Json
+  contentHash      String
+  firstSeenAt      DateTime               @default(now())
+  lastSeenAt       DateTime
+  missingAt        DateTime?
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
+
+  @@unique([sourceDocumentId, externalKey])
+  @@index([kind, readiness])
+  @@index([ownerTeam, readiness])
+  @@index([metricId])
+  @@index([sourceId, sourceTabIndex, sourceRow])
+  @@map("metricCatalogEntry")
   @@schema("metrics")
 }
 

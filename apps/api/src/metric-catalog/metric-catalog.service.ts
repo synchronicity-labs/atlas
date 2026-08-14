@@ -25,6 +25,7 @@ const SOURCE_KEY = "google-sheets:q3-metrics-planning";
 const FRESHNESS_MS = 24 * 60 * 60 * 1000;
 
 const METRIC_ALIASES: Record<string, string> = {
+	"website visitors": "marketing.website_visitors",
 	"active professional org": "product.monthly_professional_organizations",
 	"active professional orgs": "product.monthly_professional_organizations",
 	"activated org": "product.monthly_activated_organizations",
@@ -307,11 +308,37 @@ export class MetricCatalogService {
 				readiness: true,
 				ambiguities: true,
 				lastSeenAt: true,
-				metric: { select: { key: true, name: true, status: true } },
+				metric: {
+					select: {
+						key: true,
+						name: true,
+						status: true,
+						versions: {
+							orderBy: { version: "desc" },
+							take: 1,
+							select: {
+								questions: {
+									orderBy: { number: "asc" },
+									take: 1,
+									select: { number: true },
+								},
+							},
+						},
+					},
+				},
 			},
 		});
 		return entries.map((entry) => ({
 			...entry,
+			metric: entry.metric
+				? {
+						key: entry.metric.key,
+						name: entry.metric.name,
+						status: entry.metric.status,
+						questionNumber:
+							entry.metric.versions[0]?.questions[0]?.number ?? null,
+					}
+				: null,
 			lastSeenAt: entry.lastSeenAt.toISOString(),
 		}));
 	}

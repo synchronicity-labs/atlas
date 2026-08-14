@@ -4,10 +4,15 @@ import Renew from "@carbon/icons-react/es/Renew";
 import { Button } from "@crm/ui/components/button";
 import { Icon } from "@crm/ui/components/icon";
 import { Input } from "@crm/ui/components/input";
+import {
+	Tooltip,
+	TooltipContent,
+	TooltipTrigger,
+} from "@crm/ui/components/tooltip";
 import { relativeTimeFromIso } from "@crm/ui/lib/format";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { type ReactNode, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { useTRPC } from "@/lib/trpc/client";
 import type { RouterOutputs } from "@/lib/trpc/types";
@@ -24,6 +29,24 @@ const READINESS_LABELS: Record<Entry["readiness"], string> = {
 	RECONCILING: "Reconciling",
 	VERIFIED: "Verified",
 	BLOCKED: "Blocked",
+};
+
+const READINESS_DESCRIPTIONS: Record<Entry["readiness"], string> = {
+	CATALOGED:
+		"The workbook row is saved in Atlas. Its definition and source have not been checked yet.",
+	NEEDS_DEFINITION:
+		"The business owner still needs to confirm exactly what this measure means.",
+	NEEDS_SOURCE:
+		"The intended measure is known, but Atlas does not yet have a usable source or access path.",
+	READY_TO_IMPLEMENT:
+		"The definition and source are clear enough to build a deterministic Atlas metric.",
+	IMPLEMENTING:
+		"The Atlas question and metric contract are being wired into the governed data layer.",
+	RECONCILING:
+		"Atlas returns data, but it is still being compared with an approved source or report.",
+	VERIFIED: "The definition, source, query, and required checks have passed.",
+	BLOCKED:
+		"A specific external decision or dependency currently prevents progress.",
 };
 
 const KIND_LABELS: Record<Entry["kind"], string> = {
@@ -53,6 +76,71 @@ function readinessTone(readiness: Entry["readiness"]): string {
 		return "text-info";
 	}
 	return "text-warning";
+}
+
+function displayTeam(value: string | null): string {
+	if (!value) return "—";
+	const normalized = value.trim().toLowerCase();
+	const labels: Record<string, string> = {
+		cs: "Customer Success",
+		css: "Customer Success",
+		gtm: "GTM",
+		gtme: "GTM",
+		marketing: "Marketing",
+		"marketing new": "Marketing",
+		ops: "Operations",
+		product: "Product",
+		productions: "Productions",
+		research: "Research",
+		sales: "Sales",
+		engineering: "Engineering",
+		"sync.": "Sync",
+	};
+	return (
+		labels[normalized] ??
+		normalized.replace(/\b\w/g, (letter) => letter.toUpperCase())
+	);
+}
+
+function ReadinessTooltip({
+	readiness,
+	children,
+}: {
+	readiness: Entry["readiness"];
+	children: ReactNode;
+}) {
+	return (
+		<Tooltip>
+			<TooltipTrigger asChild>{children}</TooltipTrigger>
+			<TooltipContent variant="surface" className="max-w-72 text-pretty">
+				{READINESS_DESCRIPTIONS[readiness]}
+			</TooltipContent>
+		</Tooltip>
+	);
+}
+
+function HeaderTooltip({
+	label,
+	description,
+}: {
+	label: string;
+	description: string;
+}) {
+	return (
+		<Tooltip>
+			<TooltipTrigger asChild>
+				<button
+					type="button"
+					className="cursor-help border-b border-dotted border-current"
+				>
+					{label}
+				</button>
+			</TooltipTrigger>
+			<TooltipContent variant="surface" className="max-w-72 text-pretty">
+				{description}
+			</TooltipContent>
+		</Tooltip>
+	);
 }
 
 function Stat({
@@ -170,18 +258,23 @@ export function MetricCatalog() {
 			</div>
 
 			<div className="flex flex-wrap gap-2">
-				{Object.entries(READINESS_LABELS).map(([key, label]) => (
-					<span
-						key={key}
-						className="inline-flex items-center gap-1.5 rounded-full border bg-muted/25 px-2.5 py-1 text-xs"
-					>
-						<span className={readinessTone(key as Entry["readiness"])}>●</span>
-						{label}
-						<span className="text-muted-foreground tabular-nums">
-							{count(summary.data, key as Entry["readiness"])}
-						</span>
-					</span>
-				))}
+				{Object.entries(READINESS_LABELS).map(([key, label]) => {
+					const readiness = key as Entry["readiness"];
+					return (
+						<ReadinessTooltip key={key} readiness={readiness}>
+							<button
+								type="button"
+								className="inline-flex cursor-help items-center gap-1.5 rounded-full border bg-muted/25 px-2.5 py-1 text-xs"
+							>
+								<span className={readinessTone(readiness)}>●</span>
+								{label}
+								<span className="text-muted-foreground tabular-nums">
+									{count(summary.data, readiness)}
+								</span>
+							</button>
+						</ReadinessTooltip>
+					);
+				})}
 			</div>
 
 			<Input
@@ -200,8 +293,18 @@ export function MetricCatalog() {
 								<th className="px-4 py-3 font-medium">Measure</th>
 								<th className="px-4 py-3 font-medium">Kind</th>
 								<th className="px-4 py-3 font-medium">Team</th>
-								<th className="px-4 py-3 font-medium">Readiness</th>
-								<th className="px-4 py-3 font-medium">Atlas metric</th>
+								<th className="px-4 py-3 font-medium">
+									<HeaderTooltip
+										label="Readiness"
+										description="How far this workbook measure has moved from an idea to a trusted, repeatable Atlas metric."
+									/>
+								</th>
+								<th className="px-4 py-3 font-medium">
+									<HeaderTooltip
+										label="Atlas metric"
+										description="The canonical Atlas metric mapped to this workbook row. Select its name to open the live question."
+									/>
+								</th>
 							</tr>
 						</thead>
 						<tbody>
@@ -244,15 +347,29 @@ export function MetricCatalog() {
 											</span>
 										</td>
 										<td className="px-4 py-3 align-top text-muted-foreground">
-											{entry.ownerTeam ?? "—"}
+											{displayTeam(entry.ownerTeam)}
 										</td>
 										<td className="px-4 py-3 align-top">
-											<span className={readinessTone(entry.readiness)}>
-												{READINESS_LABELS[entry.readiness]}
-											</span>
+											<ReadinessTooltip readiness={entry.readiness}>
+												<button
+													type="button"
+													className={`${readinessTone(entry.readiness)} cursor-help border-b border-dotted border-current`}
+												>
+													{READINESS_LABELS[entry.readiness]}
+												</button>
+											</ReadinessTooltip>
 										</td>
 										<td className="px-4 py-3 align-top text-muted-foreground">
-											{entry.metric?.name ?? "—"}
+											{entry.metric?.questionNumber ? (
+												<Link
+													href={`/questions/${entry.metric.questionNumber}`}
+													className="text-foreground underline decoration-border underline-offset-4 hover:decoration-foreground"
+												>
+													{entry.metric.name}
+												</Link>
+											) : (
+												(entry.metric?.name ?? "—")
+											)}
 										</td>
 									</tr>
 								);

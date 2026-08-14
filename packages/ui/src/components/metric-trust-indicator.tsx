@@ -95,7 +95,7 @@ export function MetricTrustIndicator({
 					)}
 				</span>
 			</TooltipTrigger>
-			<TooltipContent>
+			<TooltipContent variant="surface">
 				<span className="flex max-w-xs flex-col gap-2">
 					<span className="font-medium">{state.label}</span>
 					<span className="opacity-80">
@@ -103,7 +103,7 @@ export function MetricTrustIndicator({
 							"This question does not have a governed metric snapshot yet."}
 					</span>
 					{summary?.checks.length ? (
-						<span className="flex flex-col gap-1 border-t border-background/20 pt-2">
+						<span className="flex flex-col gap-1 border-t border-border pt-2">
 							{summary.checks.map((check) => (
 								<span key={check.name} className="flex items-start gap-2">
 									<IndicatorDot
@@ -121,7 +121,7 @@ export function MetricTrustIndicator({
 						</span>
 					) : null}
 					{summary?.dataThrough ? (
-						<span className="border-t border-background/20 pt-2 opacity-65">
+						<span className="border-t border-border pt-2 opacity-65">
 							Data through {new Date(summary.dataThrough).toLocaleString("en-US", {
 								timeZone: "UTC",
 								timeZoneName: "short",

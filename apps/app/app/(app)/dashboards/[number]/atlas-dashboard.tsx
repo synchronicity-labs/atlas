@@ -351,8 +351,8 @@ function ScalarCard({ card }: { card: DashboardCard }) {
 			: null;
 
 	return (
-		<div className="atlas-scalar-card flex h-full flex-col justify-between gap-3 p-4 sm:p-5">
-			<div className="min-h-5 pr-16">
+		<div className="atlas-scalar-card grid h-full grid-rows-[auto_minmax(0,1fr)] gap-2 p-4">
+			<div className="shrink-0 pr-16">
 				<p className="line-clamp-2 font-medium text-sm leading-5">
 					{card.question.name}
 				</p>
@@ -367,19 +367,19 @@ function ScalarCard({ card }: { card: DashboardCard }) {
 				</div>
 			</div>
 			{typeof currentValue === "number" ? (
-				<div className="flex flex-1 flex-col items-center justify-center py-2 text-center">
+				<div className="flex min-h-0 flex-col items-center justify-center text-center">
 					<p className="atlas-scalar-value max-w-full font-medium tracking-tight tabular-nums">
 						{formattedCurrent}
 					</p>
 					{period ? (
-						<p className="mt-2 text-muted-foreground text-sm">
+						<p className="mt-1 text-muted-foreground text-sm">
 							{formatMonthPeriod(period, { includeMtd: true })}
 						</p>
 					) : null}
 					{change != null && typeof previousValue === "number" ? (
 						<p
 							className={cn(
-								"mt-1 text-xs",
+								"mt-0.5 text-xs",
 								change >= 0 ? "text-success" : "text-destructive",
 							)}
 						>
@@ -994,6 +994,17 @@ function toLayout(cards: DashboardCard[]): Layout {
 	}));
 }
 
+function stackLayout(layout: Layout): Layout {
+	let nextY = 0;
+	return [...layout]
+		.sort((left, right) => left.y - right.y || left.x - right.x)
+		.map((item) => {
+			const stacked = { ...item, x: 0, y: nextY, w: 24 };
+			nextY += item.h;
+			return stacked;
+		});
+}
+
 function AtlasGrid({
 	cards,
 	editing,
@@ -1012,6 +1023,11 @@ function AtlasGrid({
 	const { width, containerRef, mounted } = useContainerWidth({
 		initialWidth: 1200,
 	});
+	const isStacked = width < 768;
+	const renderedLayout = useMemo(
+		() => (isStacked ? stackLayout(layout) : layout),
+		[isStacked, layout],
+	);
 	const dragStart = useRef<Layout>(layout);
 	const latest = useRef<Layout>(layout);
 
@@ -1050,7 +1066,7 @@ function AtlasGrid({
 			{mounted ? (
 				<ReactGridLayout
 					width={width}
-					layout={layout}
+					layout={renderedLayout}
 					gridConfig={{
 						cols: 24,
 						rowHeight: 38,
@@ -1058,16 +1074,19 @@ function AtlasGrid({
 						containerPadding: [0, 0],
 					}}
 					dragConfig={{
-						enabled: editing,
+						enabled: editing && !isStacked,
 						handle: ".atlas-card-drag",
 						bounded: true,
 					}}
-					resizeConfig={{ enabled: editing, handles: ["se"] }}
+					resizeConfig={{
+						enabled: editing && !isStacked,
+						handles: ["se"],
+					}}
 					className="atlas-grid"
 					data-editing={editing}
 					onLayoutChange={(next) => {
 						latest.current = next;
-						if (editing) onLayout(next);
+						if (editing && !isStacked) onLayout(next);
 					}}
 					onDragStart={() => {
 						dragStart.current = latest.current;
@@ -1191,86 +1210,94 @@ export function AtlasDashboard({ number }: { number: number }) {
 							"Questions arranged into a shared operating view."}
 					</p>
 				</div>
-				<div className="flex flex-wrap items-center gap-2">
-					<span className="rounded-full border border-border/70 bg-muted/35 px-2.5 py-1 font-medium text-[11px] text-muted-foreground uppercase tracking-[0.12em]">
-						Calendar periods · UTC
-					</span>
-					<StatusIndicator
-						tone={
-							data.source?.state === "ERROR"
-								? "error"
-								: fresh
-									? "success"
-									: "warning"
-						}
-						label={
-							data.source?.state === "ERROR" ? (
-								`${sourceLabel} sync error`
-							) : fresh ? (
-								sourceUpdatedAt ? (
+				<div className="flex flex-col gap-3 2xl:flex-row 2xl:items-center 2xl:justify-between">
+					<div className="flex min-w-0 flex-wrap items-center gap-2">
+						<span className="rounded-full border border-border/70 bg-muted/35 px-2.5 py-1 font-medium text-[11px] text-muted-foreground uppercase tracking-[0.12em]">
+							Calendar periods · UTC
+						</span>
+						<StatusIndicator
+							tone={
+								data.source?.state === "ERROR"
+									? "error"
+									: fresh
+										? "success"
+										: "warning"
+							}
+							label={
+								data.source?.state === "ERROR" ? (
+									`${sourceLabel} sync error`
+								) : fresh ? (
+									sourceUpdatedAt ? (
+										<>
+											{sourceLabel} snapshot ·{" "}
+											<RelativeTimestamp value={sourceUpdatedAt} prefix="" />
+										</>
+									) : (
+										`${sourceLabel} snapshot is fresh`
+									)
+								) : sourceUpdatedAt ? (
 									<>
-										{sourceLabel} snapshot ·{" "}
-										<RelativeTimestamp value={sourceUpdatedAt} prefix="" />
+										{sourceLabel} data is stale ·{" "}
+										<RelativeTimestamp value={sourceUpdatedAt} />
 									</>
 								) : (
-									`${sourceLabel} snapshot is fresh`
+									`${sourceLabel} data is stale`
 								)
-							) : sourceUpdatedAt ? (
-								<>
-									{sourceLabel} data is stale ·{" "}
-									<RelativeTimestamp value={sourceUpdatedAt} />
-								</>
-							) : (
-								`${sourceLabel} data is stale`
-							)
-						}
-						size="sm"
-					/>
-					<MetricTrustIndicator summary={data.verification} />
-					<RudyChatTrigger
-						record={{ kind: "dashboard", id: String(data.number) }}
-					/>
-					<Button asChild variant="outline" size="sm">
-						<Link href="/questions">Browse questions</Link>
-					</Button>
-					{data.sourceUrl ? (
-						<Button asChild variant="outline" size="sm">
-							<Link href={data.sourceUrl} target="_blank" rel="noreferrer">
-								Open in HubSpot
-							</Link>
-						</Button>
-					) : null}
-					{data.source ? (
-						<Button
-							variant="outline"
+							}
 							size="sm"
-							disabled={refresh.isPending}
-							onClick={() => refresh.mutate({ number })}
-						>
-							<Icon icon={Renew} />
-							{refresh.isPending ? "Running questions" : "Run questions"}
+						/>
+						<MetricTrustIndicator summary={data.verification} />
+					</div>
+					<div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
+						<RudyChatTrigger
+							record={{ kind: "dashboard", id: String(data.number) }}
+						/>
+						<Button asChild variant="outline" size="sm">
+							<Link href="/questions">Browse questions</Link>
 						</Button>
-					) : null}
-					{editing ? (
-						<>
+						{data.sourceUrl ? (
+							<Button asChild variant="outline" size="sm">
+								<Link href={data.sourceUrl} target="_blank" rel="noreferrer">
+									Open in HubSpot
+								</Link>
+							</Button>
+						) : null}
+						{data.source ? (
 							<Button
 								variant="outline"
 								size="sm"
-								onClick={() => setEditing(false)}
+								disabled={refresh.isPending}
+								onClick={() => refresh.mutate({ number })}
 							>
-								Cancel
+								<Icon icon={Renew} />
+								{refresh.isPending ? "Running questions" : "Run questions"}
 							</Button>
-							<Button size="sm" disabled={save.isPending} onClick={saveLayout}>
-								<Icon icon={Save} />
-								{save.isPending ? "Saving" : "Save layout"}
+						) : null}
+						{editing ? (
+							<>
+								<Button
+									variant="outline"
+									size="sm"
+									onClick={() => setEditing(false)}
+								>
+									Cancel
+								</Button>
+								<Button
+									size="sm"
+									disabled={save.isPending}
+									onClick={saveLayout}
+								>
+									<Icon icon={Save} />
+									{save.isPending ? "Saving" : "Save layout"}
+								</Button>
+							</>
+						) : (
+							<Button variant="outline" size="sm" onClick={beginEditing}>
+								<Icon icon={Edit} />
+								Edit layout
 							</Button>
-						</>
-					) : (
-						<Button variant="outline" size="sm" onClick={beginEditing}>
-							<Icon icon={Edit} />
-							Edit layout
-						</Button>
-					)}
+						)}
+					</div>
 				</div>
 			</header>
 

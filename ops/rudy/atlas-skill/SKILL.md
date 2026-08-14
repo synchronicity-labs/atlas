@@ -30,7 +30,7 @@ The gateway loads `ATLAS_API_URL` and `ATLAS_QUERY_SECRET`. Never print either v
 
 ## Product policy
 
-The canonical user population excludes banned, disabled, anonymous, and internal Sync users. A Product metric that cannot enforce this rule across its inputs must remain pending. Calendar periods use UTC and half-open boundaries. Multi-source metrics use the oldest complete required-source watermark.
+The canonical user population excludes banned, anonymous, and internal Sync users. Disabled or self-deleted users remain in historical KPI populations and are reported as a separate outcome signal. A Product metric that cannot enforce this rule across its inputs must remain pending. Calendar periods use UTC and half-open boundaries. Multi-source metrics use the oldest complete required-source watermark.
 
 ## Answer format
 

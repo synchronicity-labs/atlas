@@ -69,7 +69,7 @@ export function RudyChatHost() {
 								<span className="flex size-8 items-center justify-center rounded-md bg-foreground text-background">
 									<Logo className="size-4" />
 								</span>
-								<div className="min-w-0">
+								<div className="min-w-0 flex-1 text-left">
 									<SheetTitle>Rudy</SheetTitle>
 									<SheetDescription className="truncate">
 										{contextLabel(record)} · Atlas context attached

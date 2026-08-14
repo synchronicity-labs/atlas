@@ -130,4 +130,35 @@ describe("metric catalog parser", () => {
 			"NEEDS_SOURCE",
 		]);
 	});
+
+	test("does not mistake a named source for a complete business definition", () => {
+		const candidates = catalogCandidates([
+			{
+				id: 5,
+				title: "KPIs",
+				index: 0,
+				rows: [
+					["Domain", "KPI", "type", "what it means", "Source"],
+					["Sales", "New Logos Closed (by segment)", "lagging", "", "HubSpot"],
+					["Marketing", "SEO / GEO Breakdown", "input", "", "GA4 + PostHog"],
+					[
+						"CS",
+						"Enterprise Usage",
+						"primary",
+						"Generation volume relative to committed contract value",
+						"TinyBird / Metabase",
+					],
+				],
+			},
+		]);
+
+		expect(candidates.map((candidate) => candidate.readinessHint)).toEqual([
+			"NEEDS_DEFINITION",
+			"NEEDS_DEFINITION",
+			"NEEDS_DEFINITION",
+		]);
+		expect(
+			candidates.every((candidate) => candidate.ambiguities.length > 0),
+		).toBe(true);
+	});
 });

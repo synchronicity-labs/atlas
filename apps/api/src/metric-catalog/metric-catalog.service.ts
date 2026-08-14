@@ -19,6 +19,7 @@ import {
 	catalogCandidates,
 	normalizedMetricName,
 } from "./metric-catalog.parser";
+import { resolveCatalogSources } from "./metric-catalog.sources";
 
 const DEFAULT_SPREADSHEET_ID = "17oWmJqYGxWwHEbdVhvo1OCHLAUEv03bljDuPHaqGHwU";
 const SOURCE_KEY = "google-sheets:q3-metrics-planning";
@@ -45,6 +46,9 @@ const METRIC_ALIASES: Record<string, string> = {
 	"generation completion rate": "product.generation_completion_rate",
 	"accrued professional org months paid qualified":
 		"product.accrued_professional_paid_qualified",
+	"generation upvote rate the percentage of rated generations that users mark positively":
+		"product.generation_upvote_rate",
+	"feedback coverage rate": "product.feedback_coverage_rate",
 };
 
 type MetricMatch = {
@@ -290,46 +294,50 @@ export class MetricCatalogService {
 	}
 
 	async list() {
-		const entries = await this.db.metricCatalogEntry.findMany({
-			where: { missingAt: null },
-			orderBy: [{ sourceTabIndex: "asc" }, { sourceRow: "asc" }],
-			select: {
-				id: true,
-				sourceTabId: true,
-				sourceTabName: true,
-				sourceRange: true,
-				sourceRow: true,
-				title: true,
-				description: true,
-				ownerTeam: true,
-				sourceHint: true,
-				trackability: true,
-				kind: true,
-				readiness: true,
-				ambiguities: true,
-				lastSeenAt: true,
-				metric: {
-					select: {
-						key: true,
-						name: true,
-						status: true,
-						versions: {
-							orderBy: { version: "desc" },
-							take: 1,
-							select: {
-								questions: {
-									orderBy: { number: "asc" },
-									take: 1,
-									select: { number: true },
+		const [entries, sourceStates] = await Promise.all([
+			this.db.metricCatalogEntry.findMany({
+				where: { missingAt: null },
+				orderBy: [{ sourceTabIndex: "asc" }, { sourceRow: "asc" }],
+				select: {
+					id: true,
+					sourceTabId: true,
+					sourceTabName: true,
+					sourceRange: true,
+					sourceRow: true,
+					title: true,
+					description: true,
+					ownerTeam: true,
+					sourceHint: true,
+					trackability: true,
+					kind: true,
+					readiness: true,
+					ambiguities: true,
+					lastSeenAt: true,
+					metric: {
+						select: {
+							key: true,
+							name: true,
+							status: true,
+							versions: {
+								orderBy: { version: "desc" },
+								take: 1,
+								select: {
+									questions: {
+										orderBy: { number: "asc" },
+										take: 1,
+										select: { number: true },
+									},
 								},
 							},
 						},
 					},
 				},
-			},
-		});
+			}),
+			this.db.dataSource.findMany({ select: { key: true, state: true } }),
+		]);
 		return entries.map((entry) => ({
 			...entry,
+			sourceCandidates: resolveCatalogSources(entry, sourceStates),
 			metric: entry.metric
 				? {
 						key: entry.metric.key,
@@ -344,10 +352,14 @@ export class MetricCatalogService {
 	}
 
 	async summary() {
-		const [entries, source] = await Promise.all([
+		const [entries, source, sourceStates] = await Promise.all([
 			this.db.metricCatalogEntry.findMany({
 				where: { missingAt: null },
 				select: {
+					title: true,
+					description: true,
+					ownerTeam: true,
+					sourceHint: true,
 					kind: true,
 					readiness: true,
 					metricId: true,
@@ -364,6 +376,7 @@ export class MetricCatalogService {
 					freshnessDeadlineAt: true,
 				},
 			}),
+			this.db.dataSource.findMany({ select: { key: true, state: true } }),
 		]);
 		const byKind = countBy(entries.map((entry) => entry.kind));
 		const byReadiness = countBy(entries.map((entry) => entry.readiness));
@@ -375,6 +388,22 @@ export class MetricCatalogService {
 			(entry) =>
 				Array.isArray(entry.ambiguities) && entry.ambiguities.length > 0,
 		).length;
+		const sourceCandidates = entries.map((entry) =>
+			resolveCatalogSources(entry, sourceStates),
+		);
+		const sourceConnected = sourceCandidates.filter((candidates) =>
+			candidates.some((candidate) => candidate.state === "CONNECTED"),
+		).length;
+		const sourceAttention = sourceCandidates.filter(
+			(candidates) =>
+				!candidates.some((candidate) => candidate.state === "CONNECTED") &&
+				candidates.some((candidate) => candidate.state === "ATTENTION"),
+		).length;
+		const sourceMissing = sourceCandidates.filter(
+			(candidates) =>
+				candidates.length > 0 &&
+				candidates.every((candidate) => candidate.state === "MISSING"),
+		).length;
 		return {
 			total: entries.length,
 			tabs: tabs.size,
@@ -385,6 +414,20 @@ export class MetricCatalogService {
 				(entry) => entry.readiness === MetricReadinessStatus.VERIFIED,
 			).length,
 			ambiguous,
+			kpiNeedsSource: kpis.filter(
+				(entry) => entry.readiness === MetricReadinessStatus.NEEDS_SOURCE,
+			).length,
+			roadmapNeedsSource: entries.filter(
+				(entry) =>
+					entry.kind === MetricCatalogKind.ROADMAP_MEASURE &&
+					entry.readiness === MetricReadinessStatus.NEEDS_SOURCE,
+			).length,
+			sourceConnected,
+			sourceAttention,
+			sourceMissing,
+			sourceUnclassified: sourceCandidates.filter(
+				(candidates) => candidates.length === 0,
+			).length,
 			byKind,
 			byReadiness,
 			source: source
@@ -447,7 +490,8 @@ export class MetricCatalogService {
 		if (
 			current &&
 			current !== MetricReadinessStatus.CATALOGED &&
-			current !== MetricReadinessStatus.NEEDS_DEFINITION
+			current !== MetricReadinessStatus.NEEDS_DEFINITION &&
+			current !== MetricReadinessStatus.NEEDS_SOURCE
 		) {
 			return current;
 		}

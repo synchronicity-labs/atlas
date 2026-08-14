@@ -125,6 +125,56 @@ function descriptionFrom(values: string[], title: string): string | null {
 function ambiguitiesFor(title: string, description: string | null) {
 	const value = `${title} ${description ?? ""}`.toLowerCase();
 	const ambiguities: CatalogAmbiguity[] = [];
+	if (
+		/\b(sows?|msas?)\b.*\bsigned\b|\bsigned\b.*\b(sows?|msas?)\b/.test(value)
+	) {
+		ambiguities.push({
+			key: "signed_document_event",
+			label:
+				"Confirm which document and signature event counts, its effective date, and deduplication rule.",
+		});
+	}
+	if (
+		/\b(breakdown|classification|classified|segment(?:ation)?)\b/.test(value)
+	) {
+		ambiguities.push({
+			key: "classification_dimensions",
+			label:
+				"Confirm the categories, classification rules, and which records can remain unclassified.",
+		});
+	}
+	if (/\bnew logos?\b/.test(value)) {
+		ambiguities.push({
+			key: "new_logo_identity",
+			label:
+				"Confirm the canonical company identity, close event, segment source, and duplicate-account rule.",
+		});
+	}
+	if (/\benterprise usage\b/.test(value)) {
+		ambiguities.push({
+			key: "enterprise_usage_contract",
+			label:
+				"Confirm the account join, usage unit, commitment basis, contract window, and comparison method.",
+		});
+	}
+	if (/\bmanual health|qualitative read|health check\b/.test(value)) {
+		ambiguities.push({
+			key: "qualitative_health_scale",
+			label:
+				"Confirm the health scale, required evidence, scoring owner, and update cadence before automating it.",
+		});
+	}
+	if (
+		/\bhuman qc\b|\bhuman readable pattern\b|\bfailure case\b|\bpipeline failure\b/.test(
+			value,
+		)
+	) {
+		ambiguities.push({
+			key: "failure_taxonomy_ground_truth",
+			label:
+				"Confirm the failure taxonomy, ground-truth label, evaluation set, and acceptance threshold.",
+		});
+	}
 	if (/\b(active|activated|professional|used)\b/.test(value)) {
 		ambiguities.push({
 			key: "qualifying_event",

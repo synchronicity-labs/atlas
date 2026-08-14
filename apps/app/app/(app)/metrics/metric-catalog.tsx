@@ -19,6 +19,7 @@ import type { RouterOutputs } from "@/lib/trpc/types";
 
 type Entry = RouterOutputs["metricCatalog"]["list"][number];
 type Summary = RouterOutputs["metricCatalog"]["summary"];
+type SourceCandidate = Entry["sourceCandidates"][number];
 
 const READINESS_LABELS: Record<Entry["readiness"], string> = {
 	CATALOGED: "Cataloged",
@@ -101,7 +102,6 @@ function displayTeam(value: string | null): string {
 		normalized.replace(/\b\w/g, (letter) => letter.toUpperCase())
 	);
 }
-
 function ReadinessTooltip({
 	readiness,
 	children,
@@ -138,6 +138,63 @@ function HeaderTooltip({
 			</TooltipTrigger>
 			<TooltipContent variant="surface" className="max-w-72 text-pretty">
 				{description}
+			</TooltipContent>
+		</Tooltip>
+	);
+}
+
+function sourceTone(state: SourceCandidate["state"]): string {
+	if (state === "CONNECTED") return "text-success";
+	if (state === "ATTENTION") return "text-warning";
+	return "text-muted-foreground";
+}
+
+function sourceStateLabel(state: SourceCandidate["state"]): string {
+	if (state === "CONNECTED") return "Connected";
+	if (state === "ATTENTION") return "Needs attention";
+	return "Not connected";
+}
+
+function SourcePath({ candidates }: { candidates: SourceCandidate[] }) {
+	const primary = candidates[0];
+	if (!primary) return <span className="text-muted-foreground">—</span>;
+
+	return (
+		<Tooltip>
+			<TooltipTrigger asChild>
+				<button
+					type="button"
+					className="flex max-w-52 cursor-help items-start gap-1.5 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
+				>
+					<span className={`${sourceTone(primary.state)} mt-0.5`}>●</span>
+					<span>
+						<span className="line-clamp-2 text-foreground text-xs">
+							{primary.label}
+						</span>
+						{candidates.length > 1 ? (
+							<span className="text-muted-foreground text-xs">
+								+{candidates.length - 1} candidate
+								{candidates.length === 2 ? "" : "s"}
+							</span>
+						) : null}
+					</span>
+				</button>
+			</TooltipTrigger>
+			<TooltipContent
+				variant="surface"
+				className="max-w-80 space-y-3 text-pretty"
+			>
+				{candidates.slice(0, 4).map((candidate) => (
+					<div key={candidate.key}>
+						<p className="font-medium">
+							<span className={sourceTone(candidate.state)}>●</span>{" "}
+							{candidate.label} · {sourceStateLabel(candidate.state)}
+						</p>
+						<p className="mt-0.5 text-muted-foreground text-xs">
+							{candidate.reason}
+						</p>
+					</div>
+				))}
 			</TooltipContent>
 		</Tooltip>
 	);
@@ -196,6 +253,7 @@ export function MetricCatalog() {
 				entry.ownerTeam,
 				entry.sourceTabName,
 				entry.metric?.name,
+				...entry.sourceCandidates.map((candidate) => candidate.label),
 			]
 				.filter(Boolean)
 				.some((value) => String(value).toLowerCase().includes(needle)),
@@ -234,7 +292,7 @@ export function MetricCatalog() {
 				</Button>
 			</div>
 
-			<div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+			<div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
 				<Stat
 					label="Cataloged"
 					value={summary.data.total}
@@ -255,7 +313,19 @@ export function MetricCatalog() {
 					value={summary.data.ambiguous}
 					detail="Potential ambiguity needs owner review"
 				/>
+				<Stat
+					label="KPI source gaps"
+					value={summary.data.kpiNeedsSource}
+					detail={`${summary.data.roadmapNeedsSource} roadmap evidence gaps tracked separately`}
+				/>
 			</div>
+
+			<p className="text-muted-foreground text-xs">
+				Source map: {summary.data.sourceConnected} connected ·{" "}
+				{summary.data.sourceAttention} need connector attention ·{" "}
+				{summary.data.sourceMissing} need a new connection ·{" "}
+				{summary.data.sourceUnclassified} still unclassified
+			</p>
 
 			<div className="flex flex-wrap gap-2">
 				{Object.entries(READINESS_LABELS).map(([key, label]) => {
@@ -264,7 +334,7 @@ export function MetricCatalog() {
 						<ReadinessTooltip key={key} readiness={readiness}>
 							<button
 								type="button"
-								className="inline-flex cursor-help items-center gap-1.5 rounded-full border bg-muted/25 px-2.5 py-1 text-xs"
+								className="inline-flex cursor-help items-center gap-1.5 rounded-full border bg-muted/25 px-2.5 py-1 text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
 							>
 								<span className={readinessTone(readiness)}>●</span>
 								{label}
@@ -286,13 +356,19 @@ export function MetricCatalog() {
 
 			<div className="overflow-hidden rounded-lg border bg-card">
 				<div className="overflow-x-auto">
-					<table className="w-full min-w-[920px] text-sm">
+					<table className="w-full min-w-[1160px] text-sm">
 						<thead className="border-b bg-muted/30 text-left text-muted-foreground text-xs">
 							<tr>
-								<th className="px-4 py-3 font-medium">Source</th>
+								<th className="px-4 py-3 font-medium">Planning row</th>
 								<th className="px-4 py-3 font-medium">Measure</th>
 								<th className="px-4 py-3 font-medium">Kind</th>
 								<th className="px-4 py-3 font-medium">Team</th>
+								<th className="px-4 py-3 font-medium">
+									<HeaderTooltip
+										label="Likely data source"
+										description="The strongest source Atlas can identify from the metric text and existing connectors. Hover a row to see alternatives and connection status."
+									/>
+								</th>
 								<th className="px-4 py-3 font-medium">
 									<HeaderTooltip
 										label="Readiness"
@@ -348,6 +424,9 @@ export function MetricCatalog() {
 										</td>
 										<td className="px-4 py-3 align-top text-muted-foreground">
 											{displayTeam(entry.ownerTeam)}
+										</td>
+										<td className="px-4 py-3 align-top">
+											<SourcePath candidates={entry.sourceCandidates} />
 										</td>
 										<td className="px-4 py-3 align-top">
 											<ReadinessTooltip readiness={entry.readiness}>

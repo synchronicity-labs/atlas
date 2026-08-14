@@ -87,4 +87,47 @@ describe("metric catalog parser", () => {
 			normalizedMetricName("Average monthly active professional orgs"),
 		).toBe("active professional orgs");
 	});
+
+	test("requires a concrete connector before marking a metric ready", () => {
+		const candidates = catalogCandidates([
+			{
+				id: 4,
+				title: "KPIs",
+				index: 0,
+				rows: [
+					[
+						"Domain",
+						"KPI",
+						"type",
+						"what it means",
+						"Source",
+						"Trackable Today?",
+					],
+					[
+						"Finance",
+						"net burn + runway",
+						"lagging",
+						"",
+						"finance (matt hobbs)",
+						"Yes",
+					],
+					[
+						"Marketing",
+						"Website Visitors",
+						"primary",
+						"",
+						"GA4 / PostHog",
+						"Yes",
+					],
+					["", "Social Media Growth", "input", "", "Platform analytics", "Yes"],
+				],
+			},
+		]);
+
+		expect(candidates.map((candidate) => candidate.readinessHint)).toEqual([
+			"NEEDS_SOURCE",
+			"READY_TO_IMPLEMENT",
+			"NEEDS_SOURCE",
+		]);
+	});
 });

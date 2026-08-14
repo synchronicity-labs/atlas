@@ -46,6 +46,8 @@ const TAG_PATTERN =
 	/\[(primary|input|lagging|guardrail|view|analysis|diagnostic)\]/i;
 const SECTION_PATTERN =
 	/^(gtm|sales|marketing|customer success(?: \(enterprise\))?|cs|productions|engineering|research|operations|people ops|finance|legal|physical operations|platform|ml)$/i;
+const CONNECTED_SOURCE_PATTERN =
+	/\b(ga4|google analytics|posthog|metabase|tinybird|stripe|hubspot|search console|postgres|database|data warehouse)\b/i;
 
 function text(value: unknown): string {
 	if (value === null || value === undefined) return "";
@@ -187,6 +189,7 @@ function readinessHint(
 	) {
 		return "NEEDS_SOURCE";
 	}
+	if (!CONNECTED_SOURCE_PATTERN.test(source)) return "NEEDS_SOURCE";
 	return "READY_TO_IMPLEMENT";
 }
 

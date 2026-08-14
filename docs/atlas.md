@@ -62,6 +62,8 @@ The stakeholder decision register is in
 [`docs/metric-definition-decisions.md`](./metric-definition-decisions.md). The
 current Product KPI source, normalization, and trust map is in
 [`docs/verification/product-scoreboard-data-layer.md`](./verification/product-scoreboard-data-layer.md).
+The workbook-wide inventory, readiness stages, and verification rollout are in
+[`docs/kpi-catalog-rollout.md`](./kpi-catalog-rollout.md).
 Business ambiguity remains a pending decision; it is never resolved by silently
 changing a timestamp or relabeling an amount.
 

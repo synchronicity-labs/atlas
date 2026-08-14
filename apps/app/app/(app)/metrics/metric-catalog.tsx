@@ -107,16 +107,30 @@ function displayTeam(value: string | null): string {
 }
 function ReadinessTooltip({
 	readiness,
+	candidates = [],
 	children,
 }: {
 	readiness: Entry["readiness"];
+	candidates?: SourceCandidate[];
 	children: ReactNode;
 }) {
+	const next = nextSourceCandidate(readiness, candidates);
 	return (
 		<Tooltip>
 			<TooltipTrigger asChild>{children}</TooltipTrigger>
-			<TooltipContent variant="surface" className="max-w-72 text-pretty">
-				{READINESS_DESCRIPTIONS[readiness]}
+			<TooltipContent
+				variant="surface"
+				className="max-w-80 space-y-2 text-pretty"
+			>
+				<p>{READINESS_DESCRIPTIONS[readiness]}</p>
+				{next ? (
+					<div>
+						<p className="font-medium">Next: {sourceAction(next)}</p>
+						<p className="mt-0.5 text-muted-foreground text-xs">
+							{next.reason}
+						</p>
+					</div>
+				) : null}
 			</TooltipContent>
 		</Tooltip>
 	);
@@ -156,6 +170,36 @@ function sourceStateLabel(state: SourceCandidate["state"]): string {
 	if (state === "CONNECTED") return "Connected";
 	if (state === "ATTENTION") return "Needs attention";
 	return "Not connected";
+}
+
+function nextSourceCandidate(
+	readiness: Entry["readiness"],
+	candidates: SourceCandidate[],
+): SourceCandidate | null {
+	if (readiness === "NEEDS_EVIDENCE") {
+		return (
+			candidates.find((candidate) => candidate.key === "linear:projects") ??
+			candidates.find((candidate) => candidate.state !== "CONNECTED") ??
+			null
+		);
+	}
+
+	const unresolved = candidates.filter(
+		(candidate) => candidate.state !== "CONNECTED",
+	);
+	return (
+		unresolved.find((candidate) => candidate.confidence === "EXPLICIT") ??
+		unresolved[0] ??
+		null
+	);
+}
+
+function sourceAction(candidate: SourceCandidate): string {
+	if (candidate.state === "ATTENTION") {
+		return `Fix access to ${candidate.label}`;
+	}
+	if (candidate.state === "MISSING") return `Connect ${candidate.label}`;
+	return `Use ${candidate.label}`;
 }
 
 function SourcePath({ candidates }: { candidates: SourceCandidate[] }) {
@@ -262,6 +306,18 @@ export function MetricCatalog() {
 				.some((value) => String(value).toLowerCase().includes(needle)),
 		);
 	}, [entries.data, query]);
+	const accessNeeded = useMemo(
+		() =>
+			(entries.data ?? []).flatMap((entry) => {
+				if (entry.readiness !== "NEEDS_SOURCE") return [];
+				const candidate = nextSourceCandidate(
+					entry.readiness,
+					entry.sourceCandidates,
+				);
+				return candidate ? [{ entry, candidate }] : [];
+			}),
+		[entries.data],
+	);
 
 	if (!summary.data || !entries.data) {
 		return <div className="h-72 animate-pulse rounded-lg bg-muted" />;
@@ -329,6 +385,32 @@ export function MetricCatalog() {
 				{summary.data.sourceMissing} need a new connection ·{" "}
 				{summary.data.sourceUnclassified} still unclassified
 			</p>
+
+			{accessNeeded.length > 0 ? (
+				<div className="rounded-lg border bg-card p-4">
+					<p className="font-medium">Data access needed</p>
+					<p className="mt-1 text-muted-foreground text-sm">
+						These are the permissions or connections you can provide to unblock
+						KPI work.
+					</p>
+					<div className="mt-3 divide-y">
+						{accessNeeded.map(({ entry, candidate }) => (
+							<div
+								key={entry.id}
+								className="grid gap-1 py-3 first:pt-0 last:pb-0 md:grid-cols-[minmax(0,1fr)_minmax(0,2fr)] md:gap-4"
+							>
+								<p className="font-medium text-sm">{entry.title}</p>
+								<div>
+									<p className="text-sm">{sourceAction(candidate)}</p>
+									<p className="mt-0.5 text-muted-foreground text-xs">
+										{candidate.reason}
+									</p>
+								</div>
+							</div>
+						))}
+					</div>
+				</div>
+			) : null}
 
 			<div className="flex flex-wrap gap-2">
 				{Object.entries(READINESS_LABELS).map(([key, label]) => {
@@ -432,7 +514,10 @@ export function MetricCatalog() {
 											<SourcePath candidates={entry.sourceCandidates} />
 										</td>
 										<td className="px-4 py-3 align-top">
-											<ReadinessTooltip readiness={entry.readiness}>
+											<ReadinessTooltip
+												readiness={entry.readiness}
+												candidates={entry.sourceCandidates}
+											>
 												<button
 													type="button"
 													className={`${readinessTone(entry.readiness)} cursor-help border-b border-dotted border-current`}

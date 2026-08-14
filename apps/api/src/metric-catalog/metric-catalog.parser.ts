@@ -9,6 +9,7 @@ export type CatalogReadinessHint =
 	| "CATALOGED"
 	| "NEEDS_DEFINITION"
 	| "NEEDS_SOURCE"
+	| "NEEDS_EVIDENCE"
 	| "READY_TO_IMPLEMENT";
 
 export type CatalogAmbiguity = {
@@ -230,6 +231,7 @@ function readinessHint(
 ): CatalogReadinessHint {
 	if (ambiguities.length > 0) return "NEEDS_DEFINITION";
 	if (kind === "VIEW") return "CATALOGED";
+	if (kind === "ROADMAP_MEASURE") return "NEEDS_EVIDENCE";
 	const source = sourceHint?.toLowerCase() ?? "";
 	const availability = trackability?.toLowerCase() ?? "";
 	if (

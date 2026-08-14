@@ -76,6 +76,7 @@ describe("metric catalog parser", () => {
 			title: "SEO / GEO",
 			description: "Own the category in search and LLM answers",
 			kind: "ROADMAP_MEASURE",
+			readinessHint: "NEEDS_EVIDENCE",
 		});
 	});
 

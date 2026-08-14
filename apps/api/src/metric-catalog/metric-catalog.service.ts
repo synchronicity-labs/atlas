@@ -417,10 +417,10 @@ export class MetricCatalogService {
 			kpiNeedsSource: kpis.filter(
 				(entry) => entry.readiness === MetricReadinessStatus.NEEDS_SOURCE,
 			).length,
-			roadmapNeedsSource: entries.filter(
+			roadmapNeedsEvidence: entries.filter(
 				(entry) =>
 					entry.kind === MetricCatalogKind.ROADMAP_MEASURE &&
-					entry.readiness === MetricReadinessStatus.NEEDS_SOURCE,
+					entry.readiness === MetricReadinessStatus.NEEDS_EVIDENCE,
 			).length,
 			sourceConnected,
 			sourceAttention,
@@ -491,7 +491,8 @@ export class MetricCatalogService {
 			current &&
 			current !== MetricReadinessStatus.CATALOGED &&
 			current !== MetricReadinessStatus.NEEDS_DEFINITION &&
-			current !== MetricReadinessStatus.NEEDS_SOURCE
+			current !== MetricReadinessStatus.NEEDS_SOURCE &&
+			current !== MetricReadinessStatus.NEEDS_EVIDENCE
 		) {
 			return current;
 		}

@@ -25,6 +25,7 @@ const READINESS_LABELS: Record<Entry["readiness"], string> = {
 	CATALOGED: "Cataloged",
 	NEEDS_DEFINITION: "Needs definition",
 	NEEDS_SOURCE: "Needs source",
+	NEEDS_EVIDENCE: "Needs evidence",
 	READY_TO_IMPLEMENT: "Ready to build",
 	IMPLEMENTING: "Implementing",
 	RECONCILING: "Reconciling",
@@ -39,6 +40,8 @@ const READINESS_DESCRIPTIONS: Record<Entry["readiness"], string> = {
 		"The business owner still needs to confirm exactly what this measure means.",
 	NEEDS_SOURCE:
 		"The intended measure is known, but Atlas does not yet have a usable source or access path.",
+	NEEDS_EVIDENCE:
+		"This is a roadmap outcome. Atlas needs proof that the milestone happened, rather than a new KPI data connector.",
 	READY_TO_IMPLEMENT:
 		"The definition and source are clear enough to build a deterministic Atlas metric.",
 	IMPLEMENTING:
@@ -316,7 +319,7 @@ export function MetricCatalog() {
 				<Stat
 					label="KPI source gaps"
 					value={summary.data.kpiNeedsSource}
-					detail={`${summary.data.roadmapNeedsSource} roadmap evidence gaps tracked separately`}
+					detail={`${summary.data.roadmapNeedsEvidence} roadmap evidence gaps tracked separately`}
 				/>
 			</div>
 

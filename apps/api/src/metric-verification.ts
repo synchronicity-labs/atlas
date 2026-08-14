@@ -64,6 +64,20 @@ export function summarizeMetricVerification(
 	};
 }
 
+export function summarizePendingMetricVerification(): MetricVerificationSummary {
+	return {
+		status: "PENDING",
+		reason:
+			"This governed question does not have an immutable metric snapshot yet.",
+		reportingPeriod: null,
+		dataThrough: null,
+		computedAt: null,
+		checks: [],
+		verifiedQuestions: null,
+		totalQuestions: null,
+	};
+}
+
 export function summarizeDashboardVerification(
 	questions: Array<MetricVerificationSummary | null>,
 ): MetricVerificationSummary | null {

@@ -229,6 +229,7 @@ function CardHeading({ card }: { card: DashboardCard }) {
 						· <RelativeTimestamp value={capturedAt} />
 					</span>
 				) : null}
+				<MetricTrustIndicator summary={card.verification} compact />
 			</div>
 		</div>
 	);
@@ -362,6 +363,7 @@ function ScalarCard({ card }: { card: DashboardCard }) {
 							· <RelativeTimestamp value={card.snapshot.capturedAt} />
 						</span>
 					) : null}
+					<MetricTrustIndicator summary={card.verification} compact />
 				</div>
 			</div>
 			{typeof currentValue === "number" ? (
@@ -705,11 +707,13 @@ function ReportCardHeader({
 	period,
 	comparison,
 	updatedAt,
+	verification,
 }: {
 	title: string;
 	period?: string | null;
 	comparison?: string | null;
 	updatedAt?: string | null;
+	verification: DashboardCard["verification"];
 }) {
 	return (
 		<div className="absolute inset-x-0 top-0 z-10 px-5 pt-4">
@@ -731,6 +735,9 @@ function ReportCardHeader({
 					) : null}
 				</div>
 			) : null}
+			<div className="mt-1">
+				<MetricTrustIndicator summary={verification} compact />
+			</div>
 		</div>
 	);
 }
@@ -744,6 +751,7 @@ function MetricStripCard({ card }: { card: DashboardCard }) {
 				period={setting(card, "periodLabel")}
 				comparison={setting(card, "comparisonLabel")}
 				updatedAt={card.snapshot?.capturedAt}
+				verification={card.verification}
 			/>
 			{sourceRows.length ? (
 				<div
@@ -807,6 +815,7 @@ function ForecastStageCard({ card }: { card: DashboardCard }) {
 				title={card.question.name}
 				period={setting(card, "periodLabel")}
 				updatedAt={card.snapshot?.capturedAt}
+				verification={card.verification}
 			/>
 			{values.length ? (
 				<>
@@ -881,7 +890,6 @@ function QuestionCard({
 						: "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100",
 				)}
 			>
-				<MetricTrustIndicator summary={card.verification} compact />
 				<RudyChatTrigger
 					record={{ kind: "question", id: String(card.question.number) }}
 					label={`Ask Rudy about question ${card.question.number}`}

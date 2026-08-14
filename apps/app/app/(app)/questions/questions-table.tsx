@@ -2,6 +2,7 @@
 
 import { DataTable, type DataTableColumn } from "@crm/ui/components/data-table";
 import { EmptyCellValue } from "@crm/ui/components/empty-cell";
+import { MetricTrustIndicator } from "@crm/ui/components/metric-trust-indicator";
 import { relativeTimeFromIso } from "@crm/ui/lib/format";
 import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
@@ -19,7 +20,7 @@ const COLUMNS: DataTableColumn<QuestionRow>[] = [
 		header: "Question",
 		sortable: true,
 		hideable: false,
-		width: "w-[42%]",
+		width: "w-[34%]",
 		cell: (question) => (
 			<span className="flex min-w-0 items-center gap-3">
 				<span className="w-8 shrink-0 font-mono text-muted-foreground text-xs tabular-nums">
@@ -32,7 +33,7 @@ const COLUMNS: DataTableColumn<QuestionRow>[] = [
 	{
 		id: "source",
 		header: "Source question",
-		width: "w-[20%]",
+		width: "w-[18%]",
 		cell: (question) =>
 			question.sourceExternalId ? (
 				<span className="font-mono text-muted-foreground text-xs">
@@ -46,7 +47,7 @@ const COLUMNS: DataTableColumn<QuestionRow>[] = [
 	{
 		id: "query",
 		header: "Query",
-		width: "w-[14%]",
+		width: "w-[12%]",
 		hideBelow: "md",
 		cell: (question) => (
 			<span className="text-muted-foreground text-xs">
@@ -57,10 +58,18 @@ const COLUMNS: DataTableColumn<QuestionRow>[] = [
 		),
 	},
 	{
+		id: "verification",
+		header: "Trust",
+		width: "w-[16%]",
+		cell: (question) => (
+			<MetricTrustIndicator summary={question.verification} />
+		),
+	},
+	{
 		id: "dashboards",
 		header: "Dashboards",
 		align: "right",
-		width: "w-[12%]",
+		width: "w-[8%]",
 		hideBelow: "lg",
 		cell: (question) => (
 			<span className="tabular-nums">{question.dashboardCount}</span>

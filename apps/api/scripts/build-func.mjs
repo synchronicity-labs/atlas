@@ -181,6 +181,10 @@ writeFileSync(
 				schedule: "37 */8 * * *",
 			},
 			{
+				path: "/internal/sync/metric-catalog",
+				schedule: "13 5 * * *",
+			},
+			{
 				path: "/internal/sync/atlas/5",
 				schedule: "47 */6 * * *",
 			},

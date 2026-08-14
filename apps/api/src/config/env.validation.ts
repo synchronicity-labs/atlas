@@ -168,6 +168,10 @@ export class EnvironmentVariables {
 
 	@IsOptional()
 	@IsString()
+	KPI_CATALOG_SPREADSHEET_ID?: string;
+
+	@IsOptional()
+	@IsString()
 	GA4_LANDING_PROPERTY_ID?: string;
 
 	@IsOptional()

@@ -163,7 +163,8 @@ Required Doppler variable names are:
 - `METABASE_BASE_URL`, `METABASE_API_KEY`, `METABASE_DASHBOARD_ID`
 - `METABASE_USER_QUESTION_ID`, `METABASE_SYNC_BATCH_SIZE`
 - `METABASE_USER_BATCH_SIZE`, `METABASE_MAX_BACKFILL_MONTHS`
-- `GOOGLE_SERVICE_ACCOUNT_JSON` and the six `GA4_*_PROPERTY_ID` values
+- `GOOGLE_SERVICE_ACCOUNT_JSON`, `KPI_CATALOG_SPREADSHEET_ID`, and the six
+  `GA4_*_PROPERTY_ID` values
 - `GOOGLE_SEARCH_CONSOLE_SYNC_SITE`, `GOOGLE_SEARCH_CONSOLE_LIPSYNC_SITE`
 - `POSTHOG_HOST`, `POSTHOG_API_KEY`, `POSTHOG_PROJECT_ID`
 - `HUBSPOT_ACCESS_TOKEN` with read-only company, contact, deal, pipeline, owner,
@@ -173,6 +174,19 @@ Required Doppler variable names are:
 `ALLOWED_SIGN_IN` is `sync.so` for Atlas. The Google client needs the localhost
 redirect URI `http://localhost:3001/api/auth/callback/google` and the equivalent
 deployed API callback before users can sign in.
+
+## Metric catalog import
+
+Atlas reads the Q3 metrics workbook with the same read-only Google service account
+used for reporting. `KPI_CATALOG_SPREADSHEET_ID` selects the workbook. The importer
+preserves the tab ID, row, range, declared source, trackability note, raw row, and a
+content hash. It classifies canonical KPIs, breakdown views, diagnostics, and
+roadmap measures without treating the workbook as a reporting database.
+
+`GET` or `POST /internal/sync/metric-catalog` refreshes the catalog behind
+`CRON_SECRET`; production runs it daily at 05:13 UTC. `bun catalog:sync` runs the
+same path locally. The `/metrics` page shows KPI mapping and verification coverage,
+source gaps, definition questions, and links back to exact workbook rows.
 
 ## Marketing ingestion
 

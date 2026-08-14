@@ -24,6 +24,7 @@ import { LoggingModule } from "./logging/logging.module";
 import { logAuthRoute } from "./logging/request-logger.middleware";
 import { MarketingModule } from "./marketing/marketing.module";
 import { MetabaseModule } from "./metabase/metabase.module";
+import { MetricCatalogModule } from "./metric-catalog/metric-catalog.module";
 import { ProductUsersModule } from "./product-users/product-users.module";
 import { QuestionsModule } from "./questions/questions.module";
 import { RudyModule } from "./rudy/rudy.module";
@@ -64,6 +65,7 @@ import { WorkspaceModule } from "./workspace/workspace.module";
 		GoogleModule,
 		MetabaseModule,
 		MarketingModule,
+		MetricCatalogModule,
 		ProductUsersModule,
 		QuestionsModule,
 		RudyModule,

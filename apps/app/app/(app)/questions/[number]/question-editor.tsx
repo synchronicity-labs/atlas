@@ -447,7 +447,7 @@ export function QuestionEditor({ number }: { number: number }) {
 							</span>
 						)}
 						<StatusIndicator
-							tone="success"
+							tone="neutral"
 							label={`Version ${latest.version}`}
 							size="sm"
 						/>

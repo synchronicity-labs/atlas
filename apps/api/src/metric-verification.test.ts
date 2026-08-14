@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
 	summarizeDashboardVerification,
 	summarizeMetricVerification,
+	summarizePendingMetricVerification,
 } from "./metric-verification";
 
 describe("metric verification summaries", () => {
@@ -41,5 +42,12 @@ describe("metric verification summaries", () => {
 		expect(summarizeDashboardVerification([verified, null])?.status).toBe(
 			"PENDING",
 		);
+	});
+
+	test("keeps governed questions pending before their first snapshot", () => {
+		const pending = summarizePendingMetricVerification();
+
+		expect(pending.status).toBe("PENDING");
+		expect(summarizeDashboardVerification([pending])?.status).toBe("PENDING");
 	});
 });

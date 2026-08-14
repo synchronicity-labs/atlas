@@ -8,7 +8,10 @@ import { MetabaseClient } from "../metabase/metabase.client";
 import { metabaseConfig } from "../metabase/metabase.config";
 import { ProductEligibilityService } from "../metabase/product-eligibility.service";
 import { TinybirdEligibilityService } from "../metabase/tinybird-eligibility.service";
-import { summarizeMetricVerification } from "../metric-verification";
+import {
+	summarizeMetricVerification,
+	summarizePendingMetricVerification,
+} from "../metric-verification";
 import { SalesService } from "../sales/sales.service";
 import { paginate, resolveOrderBy } from "../trpc/list-input";
 import type {
@@ -87,6 +90,29 @@ export class QuestionsService {
 							metric: {
 								select: { key: true, name: true, status: true },
 							},
+							snapshots: {
+								orderBy: { computedAt: "desc" },
+								take: 1,
+								select: {
+									trustStatus: true,
+									reportingPeriod: true,
+									computedAt: true,
+									dataThrough: true,
+									metricRun: {
+										select: {
+											verifications: {
+												orderBy: { name: "asc" },
+												select: {
+													name: true,
+													status: true,
+													evidence: true,
+													verifiedAt: true,
+												},
+											},
+										},
+									},
+								},
+							},
 						},
 					},
 					versions: {
@@ -101,14 +127,28 @@ export class QuestionsService {
 		]);
 
 		return {
-			rows: rows.map((row) => ({
-				...row,
-				latestVersion: row.versions[0] ?? null,
-				versions: undefined,
-				dashboardCount: row._count.dashboardCards,
-				_count: undefined,
-				updatedAt: row.updatedAt.toISOString(),
-			})),
+			rows: rows.map((row) => {
+				const snapshot = row.metricVersion?.snapshots[0];
+				return {
+					...row,
+					metricVersion: row.metricVersion
+						? {
+								version: row.metricVersion.version,
+								metric: row.metricVersion.metric,
+							}
+						: null,
+					verification: snapshot
+						? summarizeMetricVerification(snapshot)
+						: row.metricVersion
+							? summarizePendingMetricVerification()
+							: null,
+					latestVersion: row.versions[0] ?? null,
+					versions: undefined,
+					dashboardCount: row._count.dashboardCards,
+					_count: undefined,
+					updatedAt: row.updatedAt.toISOString(),
+				};
+			}),
 			total,
 			facetCounts: {},
 		};
@@ -271,7 +311,9 @@ export class QuestionsService {
 				: null,
 			metricVersion: undefined,
 			metricVersionId: undefined,
-			verification: snapshots[0]?.verification ?? null,
+			verification: question.metricVersionId
+				? (snapshots[0]?.verification ?? summarizePendingMetricVerification())
+				: null,
 			sourceKey: question.source?.key ?? null,
 			source: undefined,
 			updatedAt: question.updatedAt.toISOString(),

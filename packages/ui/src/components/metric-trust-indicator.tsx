@@ -1,11 +1,13 @@
 "use client";
 
+import CheckmarkFilled from "@carbon/icons-react/es/CheckmarkFilled";
+import HelpFilled from "@carbon/icons-react/es/HelpFilled";
+import Misuse from "@carbon/icons-react/es/Misuse";
+import PendingFilled from "@carbon/icons-react/es/PendingFilled";
+import WarningAltFilled from "@carbon/icons-react/es/WarningAltFilled";
+import { Icon, type CarbonIcon } from "@crm/ui/components/icon";
 import { RelativeTimestamp } from "@crm/ui/components/relative-timestamp";
-import {
-	IndicatorDot,
-	StatusIndicator,
-	type StatusTone,
-} from "@crm/ui/components/status-indicator";
+import { IndicatorDot, type StatusTone } from "@crm/ui/components/status-indicator";
 import {
 	Tooltip,
 	TooltipContent,
@@ -34,15 +36,32 @@ export type MetricTrustSummary = {
 
 const STATUS: Record<
 	TrustStatus,
-	{ label: string; tone: StatusTone }
+	{ label: string; tone: StatusTone; icon: CarbonIcon; iconClass: string }
 > = {
-	VERIFIED: { label: "Verified", tone: "success" },
+	VERIFIED: {
+		label: "Verified",
+		tone: "success",
+		icon: CheckmarkFilled,
+		iconClass: "text-success",
+	},
 	PENDING: {
 		label: "Verification pending",
 		tone: "warning",
+		icon: PendingFilled,
+		iconClass: "text-warning",
 	},
-	FAILED: { label: "Verification failed", tone: "error" },
-	STALE: { label: "Verification stale", tone: "warning" },
+	FAILED: {
+		label: "Verification failed",
+		tone: "error",
+		icon: Misuse,
+		iconClass: "text-destructive",
+	},
+	STALE: {
+		label: "Verification stale",
+		tone: "warning",
+		icon: WarningAltFilled,
+		iconClass: "text-warning",
+	},
 };
 
 export function MetricTrustIndicator({
@@ -54,7 +73,12 @@ export function MetricTrustIndicator({
 }) {
 	const state = summary
 		? STATUS[summary.status]
-		: { label: "Not governed", tone: "neutral" as const };
+		: {
+				label: "Not governed",
+				tone: "neutral" as const,
+				icon: HelpFilled,
+				iconClass: "text-muted-foreground",
+			};
 	return (
 		<Tooltip>
 			<TooltipTrigger asChild>
@@ -63,10 +87,11 @@ export function MetricTrustIndicator({
 					tabIndex={0}
 					aria-label={state.label}
 				>
-					{compact ? (
-						<IndicatorDot tone={state.tone} />
-					) : (
-						<StatusIndicator tone={state.tone} label={state.label} size="sm" />
+					<Icon icon={state.icon} className={state.iconClass} size={compact ? 14 : 16} />
+					{compact ? null : (
+						<span className="ml-1.5 truncate text-muted-foreground text-xs">
+							{state.label}
+						</span>
 					)}
 				</span>
 			</TooltipTrigger>

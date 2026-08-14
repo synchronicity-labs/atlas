@@ -10,6 +10,7 @@ import { ProductEligibilityService } from "../metabase/product-eligibility.servi
 import {
 	summarizeDashboardVerification,
 	summarizeMetricVerification,
+	summarizePendingMetricVerification,
 } from "../metric-verification";
 import { SalesService } from "../sales/sales.service";
 import type { dashboardLayoutInput } from "./atlas-dashboards.contracts";
@@ -277,7 +278,9 @@ export class AtlasDashboardsService {
 				: undefined;
 			const verification = metricSnapshot
 				? summarizeMetricVerification(metricSnapshot)
-				: null;
+				: card.question.metricVersionId
+					? summarizePendingMetricVerification()
+					: null;
 			return {
 				...card,
 				question: {

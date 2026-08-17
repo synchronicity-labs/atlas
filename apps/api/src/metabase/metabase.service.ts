@@ -435,7 +435,7 @@ export class MetabaseService {
 		}
 	}
 
-	async syncAtlasDashboard(number: number) {
+	async syncAtlasDashboard(number: number, sourceIdFilter?: string) {
 		const config = await this.requireConfig();
 		const dashboard = await this.db.dashboard.findUnique({
 			where: { number },
@@ -483,6 +483,7 @@ export class MetabaseService {
 			.filter(
 				(question) =>
 					question.connector === DataSourceKind.METABASE &&
+					(!sourceIdFilter || question.sourceId === sourceIdFilter) &&
 					Boolean(question.versions[0]?.queryText.trim()),
 			)
 			.sort((left, right) => left.number - right.number);

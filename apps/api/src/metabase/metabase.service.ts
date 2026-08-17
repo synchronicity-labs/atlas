@@ -30,6 +30,7 @@ const SOURCE_KEY = "metabase:sync";
 const DASHBOARD_SCOPE = "product-scoreboard";
 const USERS_SCOPE = "product-users";
 const FRESHNESS_MS = 8 * 60 * 60 * 1000;
+const ATLAS_DASHBOARD_BATCH_SIZE = 4;
 
 const USER_COLUMNS = new Set([
 	"id",
@@ -521,85 +522,105 @@ export class MetabaseService {
 			)
 				? await this.tinybirdEligibility.current()
 				: null;
-			for (const question of questions) {
-				const version = question.versions[0];
-				if (!version) {
-					throw new Error(`Question ${question.number} has no saved version.`);
-				}
-				const language =
-					version.queryLanguage === QueryLanguage.SQL ? "SQL" : "MBQL";
-				assertReadOnlyQuery(language, version.queryText);
-				const governed = eligibility
-					? this.tinybirdEligibility.govern(
-							version.queryText,
-							question.databaseExternalId,
-							eligibility,
-						)
-					: null;
-				let result = await client.preview({
-					language,
-					queryText:
-						language === "SQL" && governed && question.number !== 15
-							? governed.queryText
-							: version.queryText,
-					databaseExternalId: question.databaseExternalId,
-				});
-				let publishEligibility = governed
-					? { applied: governed.applied, ...governed.eligibility }
-					: undefined;
-				if (question.number === 15) {
-					try {
-						const joined =
-							await this.productEligibility.governProfessionalResult(result);
-						result = joined.result;
-						publishEligibility = joined.eligibility;
-					} catch (error) {
-						publishEligibility = publishEligibility
-							? {
-									...publishEligibility,
-									applied: false,
-									complete: false,
-								}
-							: undefined;
-						this.logger.warn({
-							message: "Product eligibility join did not complete",
-							questionNumber: question.number,
-							error: error instanceof Error ? error.message : String(error),
+			for (
+				let offset = 0;
+				offset < questions.length;
+				offset += ATLAS_DASHBOARD_BATCH_SIZE
+			) {
+				const batch = questions.slice(
+					offset,
+					offset + ATLAS_DASHBOARD_BATCH_SIZE,
+				);
+				const createdCounts = await Promise.all(
+					batch.map(async (question) => {
+						const version = question.versions[0];
+						if (!version) {
+							throw new Error(
+								`Question ${question.number} has no saved version.`,
+							);
+						}
+						const language =
+							version.queryLanguage === QueryLanguage.SQL ? "SQL" : "MBQL";
+						assertReadOnlyQuery(language, version.queryText);
+						const governed = eligibility
+							? this.tinybirdEligibility.govern(
+									version.queryText,
+									question.databaseExternalId,
+									eligibility,
+								)
+							: null;
+						let result = await client.preview({
+							language,
+							queryText:
+								language === "SQL" && governed && question.number !== 15
+									? governed.queryText
+									: version.queryText,
+							databaseExternalId: question.databaseExternalId,
 						});
-					}
-				}
-				const payload = { columns: result.columns, rows: result.rows };
-				const contentHash = stableHash(payload);
-				const externalId =
-					question.sourceExternalId ?? `question:${question.number}`;
-				const capturedAt = new Date();
-				const created = await this.db.resultSnapshot.createMany({
-					data: [
-						{
-							idempotencyKey: `atlas:dashboard:${number}:${externalId}:v${version.version}:${period}:${contentHash}`,
-							sourceId,
-							dashboardExternalId: `atlas:${number}`,
-							questionExternalId: externalId,
-							reportingPeriod: period,
+						let publishEligibility = governed
+							? { applied: governed.applied, ...governed.eligibility }
+							: undefined;
+						if (question.number === 15) {
+							try {
+								const joined =
+									await this.productEligibility.governProfessionalResult(
+										result,
+									);
+								result = joined.result;
+								publishEligibility = joined.eligibility;
+							} catch (error) {
+								publishEligibility = publishEligibility
+									? {
+											...publishEligibility,
+											applied: false,
+											complete: false,
+										}
+									: undefined;
+								this.logger.warn({
+									message: "Product eligibility join did not complete",
+									questionNumber: question.number,
+									error: error instanceof Error ? error.message : String(error),
+								});
+							}
+						}
+						const payload = { columns: result.columns, rows: result.rows };
+						const contentHash = stableHash(payload);
+						const externalId =
+							question.sourceExternalId ?? `question:${question.number}`;
+						const capturedAt = new Date();
+						const created = await this.db.resultSnapshot.createMany({
+							data: [
+								{
+									idempotencyKey: `atlas:dashboard:${number}:${externalId}:v${version.version}:${period}:${contentHash}`,
+									sourceId,
+									dashboardExternalId: `atlas:${number}`,
+									questionExternalId: externalId,
+									reportingPeriod: period,
+									capturedAt,
+									contentHash,
+									columns: json(result.columns),
+									rows: json(result.rows),
+									rowCount: result.rows.length,
+								},
+							],
+							skipDuplicates: true,
+						});
+						await this.productMetrics.publish({
+							question,
+							version,
+							result,
+							syncRunId: run.id,
 							capturedAt,
-							contentHash,
-							columns: json(result.columns),
-							rows: json(result.rows),
-							rowCount: result.rows.length,
-						},
-					],
-					skipDuplicates: true,
-				});
-				await this.productMetrics.publish({
-					question,
-					version,
-					result,
-					syncRunId: run.id,
-					capturedAt,
-					eligibility: publishEligibility,
-				});
-				cardsProcessed += 1;
-				snapshotsCreated += created.count;
+							eligibility: publishEligibility,
+						});
+						return created.count;
+					}),
+				);
+				cardsProcessed += batch.length;
+				snapshotsCreated += createdCounts.reduce(
+					(total, count) => total + count,
+					0,
+				);
 			}
 
 			const finishedAt = new Date();

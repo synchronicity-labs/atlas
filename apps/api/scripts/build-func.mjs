@@ -170,7 +170,7 @@ writeFileSync(
 			},
 			{
 				path: "/internal/sync/atlas/1",
-				schedule: "27 */8 * * *",
+				schedule: "27 */4 * * *",
 			},
 			{
 				path: "/internal/sync/metabase/backfill",

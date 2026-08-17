@@ -105,8 +105,10 @@ the most recent available month and advances the persisted cursor toward older
 periods. All endpoints require `Authorization: Bearer $CRON_SECRET`.
 
 The generated Vercel configuration schedules the users-only continuation hourly,
-incremental scoreboard sync every eight hours, and backfill every 15 minutes until
-the source status reports `backfillFinished`. Retries are safe: run status and
+the source Metabase mirror every eight hours, the Atlas scoreboard every 15 minutes,
+and historical backfill every 15 minutes until the source status reports
+`backfillFinished`. The Atlas scoreboard advances by at most twelve questions per
+request and runs at most four queries at once. Retries are safe: run status and
 cursors are persisted, snapshots are idempotent, and a failed batch resumes from its
 last checkpoint.
 
@@ -150,9 +152,10 @@ ten-week trend, model and input-type cuts with volume, hourly failure rate, and 
 rolling 24-hour failed-generation ledger. Every card displays its window and grain;
 the ledger exposes all snapshot rows in a scrollable table and downloadable CSV. A
 successful generation is any row whose status is not `FAILED`, including null, which
-preserves the source Metabase definition. These Atlas-owned queries refresh
-eight-hourly through `/internal/sync/atlas/1`; the normal Metabase incremental job
-continues to mirror source dashboard metadata and cards.
+preserves the source Metabase definition. These Atlas-owned queries refresh in
+checkpointed batches every 15 minutes through `/internal/sync/atlas/1`; the normal
+Metabase incremental job continues to mirror source dashboard metadata and cards
+every eight hours.
 
 Required Doppler variable names are:
 

@@ -1293,6 +1293,7 @@ model Question {
   purpose                   QuestionPurpose @default(EXPLORATORY)
   metricVersionId           String?
   metricVersion             MetricVersion?  @relation(fields: [metricVersionId], references: [id], onDelete: SetNull)
+  lastCheckedAt             DateTime?
   createdAt                 DateTime        @default(now())
   updatedAt                 DateTime        @updatedAt
 

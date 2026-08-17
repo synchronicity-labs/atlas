@@ -218,15 +218,15 @@ function timeframeLabel(card: DashboardCard): string | null {
 
 function CardHeading({ card }: { card: DashboardCard }) {
 	const timeframe = timeframeLabel(card);
-	const capturedAt = card.snapshot?.capturedAt;
+	const checkedAt = card.question.lastCheckedAt ?? card.snapshot?.capturedAt;
 	return (
 		<div className="absolute top-3 right-16 left-4 z-10">
 			<p className="truncate font-medium text-sm">{card.question.name}</p>
 			<div className="mt-0.5 flex min-w-0 items-center gap-1 text-[11px] text-muted-foreground">
 				<span className="min-w-0 truncate">{timeframe}</span>
-				{capturedAt ? (
+				{checkedAt ? (
 					<span className="shrink-0">
-						· <RelativeTimestamp value={capturedAt} />
+						· <RelativeTimestamp value={checkedAt} prefix="Checked" />
 					</span>
 				) : null}
 				<MetricTrustIndicator summary={card.verification} compact />
@@ -358,9 +358,15 @@ function ScalarCard({ card }: { card: DashboardCard }) {
 				</p>
 				<div className="mt-0.5 flex min-w-0 items-center gap-1 text-[11px] text-muted-foreground">
 					<span className="min-w-0 truncate">{timeframeLabel(card)}</span>
-					{card.snapshot?.capturedAt ? (
+					{card.question.lastCheckedAt || card.snapshot?.capturedAt ? (
 						<span className="shrink-0">
-							· <RelativeTimestamp value={card.snapshot.capturedAt} />
+							·{" "}
+							<RelativeTimestamp
+								value={
+									card.question.lastCheckedAt ?? card.snapshot?.capturedAt ?? ""
+								}
+								prefix="Checked"
+							/>
 						</span>
 					) : null}
 					<MetricTrustIndicator summary={card.verification} compact />

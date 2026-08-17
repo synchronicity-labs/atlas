@@ -638,6 +638,10 @@ export class MetabaseService {
 							capturedAt,
 							eligibility: publishEligibility,
 						});
+						await this.db.question.update({
+							where: { id: question.id },
+							data: { lastCheckedAt: capturedAt },
+						});
 						return created.count;
 					}),
 				);

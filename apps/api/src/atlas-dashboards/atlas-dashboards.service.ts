@@ -166,6 +166,7 @@ export class AtlasDashboardsService {
 								number: true,
 								name: true,
 								description: true,
+								lastCheckedAt: true,
 								connector: true,
 								sourceId: true,
 								sourceExternalId: true,
@@ -299,6 +300,7 @@ export class AtlasDashboardsService {
 				...card,
 				question: {
 					...card.question,
+					lastCheckedAt: card.question.lastCheckedAt?.toISOString() ?? null,
 					metricVersionId: undefined,
 					latestVersion: card.question.versions[0] ?? null,
 					versions: undefined,

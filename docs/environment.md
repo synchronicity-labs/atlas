@@ -359,12 +359,12 @@ Two things to do in Google Cloud before this works:
   Internal app needs no further review. Going External later means the full
   review, so this is a decision, not a checkbox.
 
-The generated API deployment declares Google sync every five minutes, Metabase,
-marketing, and inference-economics sync every eight hours, abuse sync every six
-hours, and progressive Metabase backfill every 15 minutes. The definitions live in
-`apps/api/scripts/build-func.mjs`. Minute-level schedules need a Pro plan; on Hobby
-they silently become daily. The separate aggregate Modal collector must run on Rudy
-at least daily before the economics refresh.
+The generated API deployment declares Google sync every five minutes, the Atlas
+scoreboard and progressive Metabase backfill every 15 minutes, marketing and
+inference-economics sync every eight hours, and abuse sync every six hours. The
+definitions live in `apps/api/scripts/build-func.mjs`. Minute-level schedules need
+a Pro plan; on Hobby they silently become daily. The separate aggregate Modal
+collector must run on Rudy at least daily before the economics refresh.
 
 ## Database
 

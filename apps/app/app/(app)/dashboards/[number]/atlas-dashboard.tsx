@@ -1144,7 +1144,11 @@ export function AtlasDashboard({ number }: { number: number }) {
 				await queryClient.invalidateQueries(
 					trpc.atlasDashboards.byNumber.queryFilter({ number }),
 				);
-				toast.success(`${result.cardsProcessed} questions ran successfully`);
+				toast.success(
+					result.completed
+						? `${result.cardsProcessed} questions ran and the dashboard is fresh`
+						: `${result.cardsProcessed} questions ran · ${result.remainingQuestions} remaining`,
+				);
 			},
 			onError: (error) => toast.error(error.message),
 		}),

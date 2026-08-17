@@ -30,7 +30,8 @@ const SOURCE_KEY = "metabase:sync";
 const DASHBOARD_SCOPE = "product-scoreboard";
 const USERS_SCOPE = "product-users";
 const FRESHNESS_MS = 8 * 60 * 60 * 1000;
-const ATLAS_DASHBOARD_BATCH_SIZE = 4;
+const ATLAS_DASHBOARD_CONCURRENCY = 4;
+const ATLAS_DASHBOARD_QUESTION_BATCH_SIZE = 12;
 
 const USER_COLUMNS = new Set([
 	"id",
@@ -477,11 +478,13 @@ export class MetabaseService {
 			...new Map(
 				dashboard.cards.map((card) => [card.question.id, card.question]),
 			).values(),
-		].filter(
-			(question) =>
-				question.connector === DataSourceKind.METABASE &&
-				Boolean(question.versions[0]?.queryText.trim()),
-		);
+		]
+			.filter(
+				(question) =>
+					question.connector === DataSourceKind.METABASE &&
+					Boolean(question.versions[0]?.queryText.trim()),
+			)
+			.sort((left, right) => left.number - right.number);
 		const sourceIds = new Set(
 			questions.flatMap((question) =>
 				question.sourceId ? [question.sourceId] : [],
@@ -496,13 +499,35 @@ export class MetabaseService {
 		if (!sourceId) throw new Error("This dashboard has no configured source.");
 
 		const period = currentMonth();
+		const runScope = `dashboard:${number}`;
+		const cursor = await this.db.syncCursor.upsert({
+			where: {
+				sourceId_mode_scope: {
+					sourceId,
+					mode: SyncMode.INCREMENTAL,
+					scope: runScope,
+				},
+			},
+			create: {
+				sourceId,
+				mode: SyncMode.INCREMENTAL,
+				scope: runScope,
+				period,
+			},
+			update: {},
+		});
+		const batchOffset = cursor.period === period ? cursor.offset : 0;
+		const questionsToProcess = questions.slice(
+			batchOffset,
+			batchOffset + ATLAS_DASHBOARD_QUESTION_BATCH_SIZE,
+		);
 		const run = await this.db.syncRun.create({
 			data: {
 				runKey: `atlas:dashboard:${number}:${period}:${randomUUID()}`,
 				sourceId,
 				mode: SyncMode.INCREMENTAL,
 				status: SyncRunStatus.RUNNING,
-				scope: `dashboard:${number}`,
+				scope: runScope,
 				period,
 			},
 		});
@@ -524,12 +549,12 @@ export class MetabaseService {
 				: null;
 			for (
 				let offset = 0;
-				offset < questions.length;
-				offset += ATLAS_DASHBOARD_BATCH_SIZE
+				offset < questionsToProcess.length;
+				offset += ATLAS_DASHBOARD_CONCURRENCY
 			) {
-				const batch = questions.slice(
+				const batch = questionsToProcess.slice(
 					offset,
-					offset + ATLAS_DASHBOARD_BATCH_SIZE,
+					offset + ATLAS_DASHBOARD_CONCURRENCY,
 				);
 				const createdCounts = await Promise.all(
 					batch.map(async (question) => {
@@ -624,7 +649,30 @@ export class MetabaseService {
 			}
 
 			const finishedAt = new Date();
+			const processedThrough = batchOffset + questionsToProcess.length;
+			const completed = processedThrough >= questions.length;
+			const nextOffset = completed ? 0 : processedThrough;
+			const remainingQuestions = completed
+				? 0
+				: questions.length - processedThrough;
 			await this.db.$transaction([
+				this.db.syncCursor.update({
+					where: { id: cursor.id },
+					data: {
+						period,
+						offset: nextOffset,
+						completedPeriods: completed
+							? cursor.completedPeriods + 1
+							: cursor.completedPeriods,
+						lastSuccessAt: finishedAt,
+						checkpoint: json({
+							completed,
+							nextOffset,
+							questionCount: questions.length,
+							remainingQuestions,
+						}),
+					},
+				}),
 				this.db.syncRun.update({
 					where: { id: run.id },
 					data: {
@@ -632,21 +680,27 @@ export class MetabaseService {
 						finishedAt,
 						cardsProcessed,
 						snapshotsCreated,
-						checkpoint: eligibility
-							? json({
-									eligibilityCapturedAt: eligibility.capturedAt.toISOString(),
-									eligibilityHash: eligibility.contentHash,
-								})
-							: undefined,
+						checkpoint: json({
+							batchOffset,
+							completed,
+							nextOffset,
+							questionCount: questions.length,
+							remainingQuestions,
+							eligibilityCapturedAt:
+								eligibility?.capturedAt.toISOString() ?? null,
+							eligibilityHash: eligibility?.contentHash ?? null,
+						}),
 					},
 				}),
 				this.db.dataSource.update({
 					where: { id: sourceId },
 					data: {
-						state: SourceStatus.HEALTHY,
-						lastSyncAt: finishedAt,
+						state: completed ? SourceStatus.HEALTHY : SourceStatus.SYNCING,
+						lastSyncAt: completed ? finishedAt : undefined,
 						lastError: null,
-						freshnessDeadlineAt: new Date(Date.now() + FRESHNESS_MS),
+						freshnessDeadlineAt: completed
+							? new Date(Date.now() + FRESHNESS_MS)
+							: undefined,
 					},
 				}),
 			]);
@@ -656,6 +710,9 @@ export class MetabaseService {
 				period,
 				cardsProcessed,
 				snapshotsCreated,
+				completed,
+				nextOffset,
+				remainingQuestions,
 			};
 		} catch (error) {
 			await this.fail(run.id, sourceId, error);

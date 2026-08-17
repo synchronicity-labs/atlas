@@ -35,7 +35,10 @@ export class AtlasDashboardsService {
 					select: {
 						question: {
 							select: {
+								id: true,
+								number: true,
 								connector: true,
+								sourceId: true,
 								source: { select: { key: true } },
 							},
 						},
@@ -53,6 +56,16 @@ export class AtlasDashboardsService {
 				card.question.source?.key ? [card.question.source.key] : [],
 			),
 		);
+		const metabaseSourceIds = [
+			...new Set(
+				dashboard.cards.flatMap((card) =>
+					card.question.connector === DataSourceKind.METABASE &&
+					card.question.sourceId
+						? [card.question.sourceId]
+						: [],
+				),
+			),
+		];
 		const results: Array<{
 			cardsProcessed: number;
 			snapshotsCreated?: number;
@@ -62,12 +75,23 @@ export class AtlasDashboardsService {
 			errors?: Array<{ number: number; message: string }>;
 		}> = [];
 		if (connectors.has(DataSourceKind.METABASE)) {
-			const metabase = await this.metabase.syncAtlasDashboard(number);
-			results.push(metabase);
-			if (!metabase.completed) {
+			for (const sourceId of metabaseSourceIds) {
+				const metabase = await this.metabase.syncAtlasDashboard(
+					number,
+					sourceId,
+				);
+				results.push(metabase);
+				if (metabase.completed) continue;
 				return {
-					cardsProcessed: metabase.cardsProcessed,
-					snapshotsCreated: metabase.snapshotsCreated,
+					cardsProcessed: results.reduce(
+						(total, result) => total + result.cardsProcessed,
+						0,
+					),
+					snapshotsCreated: results.reduce(
+						(total, result) =>
+							total + (result.snapshotsCreated ?? result.snapshots ?? 0),
+						0,
+					),
 					completed: false,
 					remainingQuestions: metabase.remainingQuestions,
 					errors: [],
@@ -90,7 +114,16 @@ export class AtlasDashboardsService {
 			results.push(await this.productEligibility.syncDashboard(number));
 		}
 		if (results.length === 0) {
-			throw new Error("This dashboard has no executable question source.");
+			return {
+				cardsProcessed: 0,
+				snapshotsCreated: 0,
+				errors: dashboard.cards.map((card) => ({
+					number: card.question.number,
+					message: "This KPI still needs a runnable source query.",
+				})),
+				completed: true,
+				remainingQuestions: 0,
+			};
 		}
 		return {
 			cardsProcessed: results.reduce(
@@ -169,8 +202,35 @@ export class AtlasDashboardsService {
 								lastCheckedAt: true,
 								connector: true,
 								sourceId: true,
+								source: {
+									select: {
+										key: true,
+										state: true,
+										lastError: true,
+									},
+								},
 								sourceExternalId: true,
 								metricVersionId: true,
+								canonicalCatalogEntries: {
+									where: { missingAt: null },
+									orderBy: { sourceRow: "asc" },
+									take: 1,
+									select: {
+										readiness: true,
+										sourceHint: true,
+										trackability: true,
+										ambiguities: true,
+										attempts: {
+											orderBy: { attemptedAt: "desc" },
+											take: 1,
+											select: {
+												outcome: true,
+												detail: true,
+												attemptedAt: true,
+											},
+										},
+									},
+								},
 								versions: {
 									orderBy: { version: "desc" },
 									take: 1,
@@ -285,6 +345,7 @@ export class AtlasDashboardsService {
 				: null;
 
 		const cards = dashboard.cards.map((card) => {
+			const catalog = card.question.canonicalCatalogEntries[0];
 			const metricSnapshot = card.question.metricVersionId
 				? latestMetric.get(card.question.metricVersionId)
 				: undefined;
@@ -302,6 +363,22 @@ export class AtlasDashboardsService {
 					...card.question,
 					lastCheckedAt: card.question.lastCheckedAt?.toISOString() ?? null,
 					metricVersionId: undefined,
+					catalog: catalog
+						? {
+								readiness: catalog.readiness,
+								sourceHint: catalog.sourceHint,
+								trackability: catalog.trackability,
+								ambiguities: catalog.ambiguities,
+								latestAttempt: catalog.attempts[0]
+									? {
+											...catalog.attempts[0],
+											attemptedAt:
+												catalog.attempts[0].attemptedAt.toISOString(),
+										}
+									: null,
+							}
+						: null,
+					canonicalCatalogEntries: undefined,
 					latestVersion: card.question.versions[0] ?? null,
 					versions: undefined,
 				},

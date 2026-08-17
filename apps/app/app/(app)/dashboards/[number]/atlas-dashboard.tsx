@@ -37,7 +37,7 @@ import { cn } from "@crm/ui/lib/utils";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { parseAsInteger, useQueryState } from "nuqs";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import ReactGridLayout, {
 	type Layout,
 	type LayoutItem,
@@ -708,6 +708,77 @@ function CardUnavailable({ message }: { message?: string | null }) {
 	);
 }
 
+function readinessLabel(value: string | null | undefined): string {
+	switch (value) {
+		case "NEEDS_DEFINITION":
+			return "Needs a decision";
+		case "NEEDS_SOURCE":
+			return "Needs a source";
+		case "NEEDS_EVIDENCE":
+			return "Needs evidence";
+		case "READY_TO_IMPLEMENT":
+			return "Ready to build";
+		case "IMPLEMENTING":
+			return "Being built";
+		case "RECONCILING":
+			return "Checking the result";
+		case "BLOCKED":
+			return "Blocked";
+		default:
+			return "Not ready";
+	}
+}
+
+function pendingReason(card: DashboardCard): string {
+	return (
+		card.question.catalog?.latestAttempt?.detail ??
+		card.question.source?.lastError ??
+		card.question.catalog?.sourceHint ??
+		"Atlas does not have a saved result for this KPI yet."
+	);
+}
+
+function PendingKpiRail({ cards }: { cards: DashboardCard[] }) {
+	if (cards.length === 0) return null;
+	return (
+		<section className="rounded-lg border bg-card">
+			<div className="flex flex-col gap-1 border-b px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+				<div>
+					<p className="font-medium text-sm">Not on the board yet</p>
+					<p className="text-muted-foreground text-xs">
+						{cards.length} {cards.length === 1 ? "KPI needs" : "KPIs need"} work
+						before Atlas can show a value.
+					</p>
+				</div>
+				<Button asChild variant="ghost" size="sm">
+					<Link href="/metrics">Review all metrics</Link>
+				</Button>
+			</div>
+			<div className="grid divide-y lg:grid-cols-2 lg:divide-x lg:divide-y-0">
+				{cards.map((card) => (
+					<Link
+						key={card.id}
+						href={`/questions/${card.question.number}`}
+						className="group flex min-w-0 items-start justify-between gap-4 px-4 py-3 hover:bg-muted/35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+					>
+						<div className="min-w-0">
+							<p className="truncate font-medium text-sm">
+								{card.question.name}
+							</p>
+							<p className="mt-1 line-clamp-2 text-muted-foreground text-xs leading-5">
+								{pendingReason(card)}
+							</p>
+						</div>
+						<span className="shrink-0 rounded-full border px-2 py-1 text-[10px] text-muted-foreground">
+							{readinessLabel(card.question.catalog?.readiness)}
+						</span>
+					</Link>
+				))}
+			</div>
+		</section>
+	);
+}
+
 function ReportCardHeader({
 	title,
 	period,
@@ -869,124 +940,133 @@ function ForecastStageCard({ card }: { card: DashboardCard }) {
 	);
 }
 
-function QuestionCard({
-	card,
-	editing,
-	visualization,
-	onVisualization,
-}: {
-	card: DashboardCard;
-	editing: boolean;
-	visualization: Visualization;
-	onVisualization: (visualization: Visualization) => void;
-}) {
-	const presentation = setting(card, "presentation");
-	return (
-		<div
-			className={cn(
-				"group relative h-full overflow-visible rounded-lg border bg-card shadow-xs",
-				editing && "ring-1 ring-primary/15",
-			)}
-		>
+const QuestionCard = memo(
+	function QuestionCard({
+		card,
+		editing,
+		visualization,
+		onVisualization,
+	}: {
+		card: DashboardCard;
+		editing: boolean;
+		visualization: Visualization;
+		onVisualization: (visualization: Visualization) => void;
+	}) {
+		const presentation = setting(card, "presentation");
+		return (
 			<div
 				className={cn(
-					"absolute top-2 right-2 z-20 flex items-center gap-1 rounded-md border bg-background/95 p-1 shadow-sm backdrop-blur-sm transition-opacity",
-					editing || visualization === "TABLE"
-						? "opacity-100"
-						: "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100",
+					"group relative h-full overflow-visible rounded-lg border bg-card shadow-xs",
+					editing && "ring-1 ring-primary/15",
 				)}
 			>
-				<RudyChatTrigger
-					record={{ kind: "question", id: String(card.question.number) }}
-					label={`Ask Rudy about question ${card.question.number}`}
-					iconOnly
-					variant="ghost"
-				/>
-				<Button
-					asChild
-					variant="ghost"
-					size="icon-xs"
-					aria-label="Open question"
+				<div
+					className={cn(
+						"absolute top-2 right-2 z-20 flex items-center gap-1 rounded-md border bg-background/95 p-1 shadow-sm backdrop-blur-sm transition-opacity",
+						editing || visualization === "TABLE"
+							? "opacity-100"
+							: "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100",
+					)}
 				>
-					<Link
-						href={`/questions/${card.question.number}`}
-						draggable={false}
-						onPointerDown={(event) => event.stopPropagation()}
-						onClick={(event) => event.stopPropagation()}
-					>
-						<Icon icon={View} />
-					</Link>
-				</Button>
-				{visualization === "TABLE" && card.snapshot ? (
+					<RudyChatTrigger
+						record={{ kind: "question", id: String(card.question.number) }}
+						label={`Ask Rudy about question ${card.question.number}`}
+						iconOnly
+						variant="ghost"
+					/>
 					<Button
+						asChild
 						variant="ghost"
 						size="icon-xs"
-						aria-label="Export CSV"
-						onPointerDown={(event) => event.stopPropagation()}
-						onClick={(event) => {
-							event.stopPropagation();
-							exportCardCsv(card);
-						}}
+						aria-label="Open question"
 					>
-						<Icon icon={Download} />
+						<Link
+							href={`/questions/${card.question.number}`}
+							draggable={false}
+							onPointerDown={(event) => event.stopPropagation()}
+							onClick={(event) => event.stopPropagation()}
+						>
+							<Icon icon={View} />
+						</Link>
 					</Button>
-				) : null}
-				{editing ? (
-					<DropdownMenu>
-						<DropdownMenuTrigger asChild>
-							<Button
-								variant="ghost"
-								size="icon-xs"
-								aria-label="Change visualization"
-							>
-								<Icon icon={ChartCustom} />
-							</Button>
-						</DropdownMenuTrigger>
-						<DropdownMenuContent align="end">
-							{(["NUMBER", "BAR", "LINE", "TABLE"] as const).map(
-								(visualization) => (
-									<DropdownMenuItem
-										key={visualization}
-										onSelect={() => onVisualization(visualization)}
-									>
-										{humanize(visualization.toLowerCase())}
-									</DropdownMenuItem>
-								),
-							)}
-						</DropdownMenuContent>
-					</DropdownMenu>
-				) : null}
-				{editing ? (
-					<Button
-						variant="ghost"
-						size="icon-xs"
-						className="atlas-card-drag cursor-grab active:cursor-grabbing"
-						aria-label="Move question"
-					>
-						<span className="grid grid-cols-2 gap-0.5">
-							{GRIP_DOTS.map((dot) => (
-								<span key={dot} className="size-0.5 rounded-full bg-current" />
-							))}
-						</span>
-					</Button>
-				) : null}
+					{visualization === "TABLE" && card.snapshot ? (
+						<Button
+							variant="ghost"
+							size="icon-xs"
+							aria-label="Export CSV"
+							onPointerDown={(event) => event.stopPropagation()}
+							onClick={(event) => {
+								event.stopPropagation();
+								exportCardCsv(card);
+							}}
+						>
+							<Icon icon={Download} />
+						</Button>
+					) : null}
+					{editing ? (
+						<DropdownMenu>
+							<DropdownMenuTrigger asChild>
+								<Button
+									variant="ghost"
+									size="icon-xs"
+									aria-label="Change visualization"
+								>
+									<Icon icon={ChartCustom} />
+								</Button>
+							</DropdownMenuTrigger>
+							<DropdownMenuContent align="end">
+								{(["NUMBER", "BAR", "LINE", "TABLE"] as const).map(
+									(visualization) => (
+										<DropdownMenuItem
+											key={visualization}
+											onSelect={() => onVisualization(visualization)}
+										>
+											{humanize(visualization.toLowerCase())}
+										</DropdownMenuItem>
+									),
+								)}
+							</DropdownMenuContent>
+						</DropdownMenu>
+					) : null}
+					{editing ? (
+						<Button
+							variant="ghost"
+							size="icon-xs"
+							className="atlas-card-drag cursor-grab active:cursor-grabbing"
+							aria-label="Move question"
+						>
+							<span className="grid grid-cols-2 gap-0.5">
+								{GRIP_DOTS.map((dot) => (
+									<span
+										key={dot}
+										className="size-0.5 rounded-full bg-current"
+									/>
+								))}
+							</span>
+						</Button>
+					) : null}
+				</div>
+				{presentation === "metric-strip" ? (
+					<MetricStripCard card={card} />
+				) : presentation === "forecast-stage" ? (
+					<ForecastStageCard card={card} />
+				) : visualization === "NUMBER" ? (
+					<ScalarCard card={card} />
+				) : visualization === "TABLE" ? (
+					<TableCard card={card} />
+				) : visualization === "BAR" ? (
+					<BarSeriesChart card={card} />
+				) : (
+					<SeriesChart card={card} />
+				)}
 			</div>
-			{presentation === "metric-strip" ? (
-				<MetricStripCard card={card} />
-			) : presentation === "forecast-stage" ? (
-				<ForecastStageCard card={card} />
-			) : visualization === "NUMBER" ? (
-				<ScalarCard card={card} />
-			) : visualization === "TABLE" ? (
-				<TableCard card={card} />
-			) : visualization === "BAR" ? (
-				<BarSeriesChart card={card} />
-			) : (
-				<SeriesChart card={card} />
-			)}
-		</div>
-	);
-}
+		);
+	},
+	(previous, next) =>
+		previous.card === next.card &&
+		previous.editing === next.editing &&
+		previous.visualization === next.visualization,
+);
 
 function toLayout(cards: DashboardCard[]): Layout {
 	return cards.map((card) => ({
@@ -1151,9 +1231,11 @@ export function AtlasDashboard({ number }: { number: number }) {
 					trpc.atlasDashboards.byNumber.queryFilter({ number }),
 				);
 				toast.success(
-					result.completed
-						? `${result.cardsProcessed} questions ran and the dashboard is fresh`
-						: `${result.cardsProcessed} questions ran · ${result.remainingQuestions} remaining`,
+					result.cardsProcessed === 0
+						? "No runnable questions yet. Review the KPI work below."
+						: result.completed
+							? `${result.cardsProcessed} questions ran and the dashboard is fresh`
+							: `${result.cardsProcessed} questions ran · ${result.remainingQuestions} remaining`,
 				);
 			},
 			onError: (error) => toast.error(error.message),
@@ -1166,6 +1248,15 @@ export function AtlasDashboard({ number }: { number: number }) {
 		() => data?.cards.filter((card) => card.tabId === selectedTab?.id) ?? [],
 		[data?.cards, selectedTab?.id],
 	);
+	const pendingCards = useMemo(
+		() => baseCards.filter((card) => !card.snapshot),
+		[baseCards],
+	);
+	const readyCards = useMemo(
+		() => baseCards.filter((card) => card.snapshot),
+		[baseCards],
+	);
+	const visibleCards = editing ? baseCards : readyCards;
 
 	useEffect(() => {
 		if (!data || !selectedTab) return;
@@ -1204,6 +1295,11 @@ export function AtlasDashboard({ number }: { number: number }) {
 		new Date(data.source.freshnessDeadlineAt).getTime() > Date.now();
 	const sourceLabel = data.source?.label ?? "Source";
 	const sourceUpdatedAt = data.source?.lastSyncAt ?? null;
+	const sourceErrors = data.sources.filter(
+		(source) => source.state === "ERROR",
+	);
+	const everySourceFailed =
+		data.sources.length > 0 && sourceErrors.length === data.sources.length;
 
 	return (
 		<div className="flex flex-col gap-5">
@@ -1227,15 +1323,17 @@ export function AtlasDashboard({ number }: { number: number }) {
 						</span>
 						<StatusIndicator
 							tone={
-								data.source?.state === "ERROR"
-									? "error"
+								sourceErrors.length > 0
+									? everySourceFailed
+										? "error"
+										: "warning"
 									: fresh
 										? "success"
 										: "warning"
 							}
 							label={
-								data.source?.state === "ERROR" ? (
-									`${sourceLabel} sync error`
+								sourceErrors.length > 0 ? (
+									`${sourceErrors.length} of ${data.sources.length} sources need attention`
 								) : fresh ? (
 									sourceUpdatedAt ? (
 										<>
@@ -1331,23 +1429,35 @@ export function AtlasDashboard({ number }: { number: number }) {
 				))}
 			</nav>
 
-			{data.source?.state === "ERROR" ? (
-				<div className="rounded-lg border border-destructive/35 bg-destructive/5 p-4 text-sm">
-					<p className="font-medium text-destructive">
-						Source data is unavailable
+			{sourceErrors.length > 0 ? (
+				<div className="rounded-lg border bg-card p-4 text-sm">
+					<p className="font-medium">
+						{everySourceFailed
+							? "Source refresh failed"
+							: "Some KPIs could not refresh"}
 					</p>
 					<p className="mt-1 text-muted-foreground">
-						{data.source.lastError ??
-							"The last Metabase sync failed. Existing snapshots remain visible."}
+						{sourceErrors
+							.map((source) =>
+								source.lastError
+									? `${source.label}: ${source.lastError}`
+									: `${source.label} needs attention`,
+							)
+							.join(" ")}
+						{readyCards.length > 0
+							? " Existing results remain visible below."
+							: ""}
 					</p>
 				</div>
 			) : null}
 
-			{baseCards.length > 0 ? (
+			{!editing ? <PendingKpiRail cards={pendingCards} /> : null}
+
+			{visibleCards.length > 0 ? (
 				<AtlasGrid
-					cards={baseCards}
+					cards={visibleCards}
 					editing={editing}
-					layout={editing ? draft : toLayout(baseCards)}
+					layout={editing ? draft : toLayout(visibleCards)}
 					visualizations={visualizations}
 					onLayout={setDraft}
 					onVisualization={(id, visualization) =>
@@ -1357,7 +1467,7 @@ export function AtlasDashboard({ number }: { number: number }) {
 						}))
 					}
 				/>
-			) : (
+			) : pendingCards.length === 0 ? (
 				<div className="flex min-h-72 flex-col items-center justify-center rounded-lg border border-dashed p-8 text-center">
 					<p className="font-medium">No questions on this tab yet</p>
 					<p className="mt-1 max-w-sm text-muted-foreground text-sm">
@@ -1365,7 +1475,7 @@ export function AtlasDashboard({ number }: { number: number }) {
 						dashboard.
 					</p>
 				</div>
-			)}
+			) : null}
 		</div>
 	);
 }

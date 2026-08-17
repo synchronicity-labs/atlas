@@ -182,6 +182,7 @@ function visualizationForDisplay(
 	switch (display?.toLowerCase()) {
 		case "number":
 		case "scalar":
+		case "smartscalar":
 			return VisualizationType.NUMBER;
 		case "line":
 			return VisualizationType.LINE;
@@ -195,6 +196,29 @@ function visualizationForDisplay(
 			return VisualizationType.FUNNEL;
 		default:
 			return VisualizationType.TABLE;
+	}
+}
+
+function catalogCardVisualization(
+	questionNumber: number,
+	display: string | undefined,
+) {
+	if (questionNumber === 1006) return VisualizationType.BAR;
+	return visualizationForDisplay(display);
+}
+
+function catalogCardSize(visualization: VisualizationType, isDraft: boolean) {
+	if (isDraft) return { width: 8, height: 3 };
+	switch (visualization) {
+		case VisualizationType.NUMBER:
+			return { width: 8, height: 4 };
+		case VisualizationType.LINE:
+		case VisualizationType.AREA:
+			return { width: 12, height: 6 };
+		case VisualizationType.BAR:
+			return { width: 16, height: 6 };
+		default:
+			return { width: 24, height: 5 };
 	}
 }
 
@@ -1128,6 +1152,8 @@ export class MetricCatalogService {
 				canonicalQuestionId: true,
 				canonicalQuestion: {
 					select: {
+						number: true,
+						source: { select: { key: true } },
 						versions: {
 							orderBy: { version: "desc" },
 							take: 1,
@@ -1144,42 +1170,63 @@ export class MetricCatalogService {
 				dashboardNumber: 1,
 				dashboardName: "Product 2026 Scoreboard",
 				tabNumber: 7,
+				tabName: "Company KPIs",
+				description:
+					"The Product KPIs from the company metric plan. Each result keeps its UTC period, source, and trust state.",
 			},
 			{
 				team: "Marketing",
 				dashboardNumber: 3,
 				dashboardName: "Marketing acquisition & conversion",
 				tabNumber: 4,
+				tabName: "Company KPIs",
+				description:
+					"Acquisition and conversion KPIs from the company metric plan. Cross-site identity and missing source work stay explicit.",
 			},
 			{
 				team: "Sales",
 				dashboardNumber: 4,
 				dashboardName: "Sales pipeline & bookings",
 				tabNumber: 5,
+				tabName: "Company KPIs",
+				description:
+					"Pipeline and bookings KPIs from the company metric plan, with HubSpot source evidence and open definition decisions.",
 			},
 			{
 				team: "Company",
 				dashboardNumber: 8,
 				dashboardName: "Company KPIs",
 				tabNumber: 1,
+				tabName: "Company pulse",
+				description:
+					"One operating view of product scale, billed revenue, retention, concentration, and margin. Pending KPIs stay in a compact work queue.",
 			},
 			{
 				team: "Customer Success",
 				dashboardNumber: 9,
 				dashboardName: "Customer Success KPIs",
 				tabNumber: 1,
+				tabName: "Retention",
+				description:
+					"Retention and revenue health for paid organizations. Complete-month cohorts are the headline and partial periods stay labeled.",
 			},
 			{
 				team: "Productions",
 				dashboardNumber: 10,
 				dashboardName: "Productions KPIs",
 				tabNumber: 1,
+				tabName: "Delivery",
+				description:
+					"Delivery speed and iteration quality. Values appear only after the production workflow emits the agreed start, stop, and quality events.",
 			},
 			{
 				team: "Engineering",
 				dashboardNumber: 11,
 				dashboardName: "Engineering KPIs",
 				tabNumber: 1,
+				tabName: "Quality signals",
+				description:
+					"Monthly user-feedback coverage and upvote quality signals, with the target and sample volume kept beside each rate.",
 			},
 		] as const;
 		for (const configuration of configurations) {
@@ -1194,11 +1241,14 @@ export class MetricCatalogService {
 				create: {
 					number: configuration.dashboardNumber,
 					name: configuration.dashboardName,
-					description: `${configuration.team} KPI catalog. Each card links to its governed Atlas question and current verification state.`,
+					description: configuration.description,
 					createdBy: "atlas",
 				},
-				update: {},
-				select: { id: true },
+				update: {
+					name: configuration.dashboardName,
+					description: configuration.description,
+				},
+				select: { id: true, layoutVersion: true },
 			});
 			const tab = await this.db.dashboardTab.upsert({
 				where: {
@@ -1210,10 +1260,10 @@ export class MetricCatalogService {
 				create: {
 					dashboardId: dashboard.id,
 					number: configuration.tabNumber,
-					name: "KPI catalog",
+					name: configuration.tabName,
 					position: configuration.tabNumber - 1,
 				},
-				update: { name: "KPI catalog" },
+				update: { name: configuration.tabName },
 				select: { id: true },
 			});
 			const existingCards = await this.db.dashboardCard.findMany({
@@ -1229,36 +1279,67 @@ export class MetricCatalogService {
 					questionId: { notIn: expectedQuestionIds },
 				},
 			});
-			const existingQuestionIds = new Set(
-				existingCards.map((card) => card.questionId),
+			const existingByQuestionId = new Map(
+				existingCards.map((card) => [card.questionId, card]),
 			);
-			let position =
-				existingCards.reduce(
-					(maximum, card) => Math.max(maximum, card.position),
-					-1,
-				) + 1;
-			for (const entry of teamEntries) {
-				if (
-					!entry.canonicalQuestionId ||
-					existingQuestionIds.has(entry.canonicalQuestionId)
-				) {
-					continue;
-				}
+			const shouldMigrateLayout = dashboard.layoutVersion < 2;
+			let nextX = 0;
+			let nextY = 0;
+			let rowHeight = 0;
+			for (const [position, entry] of teamEntries.entries()) {
+				if (!entry.canonicalQuestionId || !entry.canonicalQuestion) continue;
 				const display = entry.canonicalQuestion?.versions[0]?.display;
-				await this.db.dashboardCard.create({
-					data: {
-						dashboardId: dashboard.id,
-						tabId: tab.id,
-						questionId: entry.canonicalQuestionId,
-						position,
-						x: (position % 2) * 12,
-						y: Math.floor(position / 2) * 6,
-						width: 12,
-						height: 6,
-						visualization: visualizationForDisplay(display),
-					},
+				const visualization = catalogCardVisualization(
+					entry.canonicalQuestion.number,
+					display,
+				);
+				const size = catalogCardSize(
+					visualization,
+					entry.canonicalQuestion?.source?.key === "atlas:metric-catalog",
+				);
+				if (nextX + size.width > 24) {
+					nextX = 0;
+					nextY += rowHeight;
+					rowHeight = 0;
+				}
+				const existing = existingByQuestionId.get(entry.canonicalQuestionId);
+				if (existing) {
+					if (shouldMigrateLayout) {
+						await this.db.dashboardCard.update({
+							where: { id: existing.id },
+							data: {
+								position,
+								x: nextX,
+								y: nextY,
+								width: size.width,
+								height: size.height,
+								visualization,
+							},
+						});
+					}
+				} else {
+					await this.db.dashboardCard.create({
+						data: {
+							dashboardId: dashboard.id,
+							tabId: tab.id,
+							questionId: entry.canonicalQuestionId,
+							position,
+							x: nextX,
+							y: nextY,
+							width: size.width,
+							height: size.height,
+							visualization,
+						},
+					});
+				}
+				nextX += size.width;
+				rowHeight = Math.max(rowHeight, size.height);
+			}
+			if (shouldMigrateLayout) {
+				await this.db.dashboard.update({
+					where: { id: dashboard.id },
+					data: { layoutVersion: 2 },
 				});
-				position += 1;
 			}
 		}
 	}

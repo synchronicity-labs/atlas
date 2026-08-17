@@ -142,6 +142,10 @@ export class EconomicsService {
 			],
 			skipDuplicates: true,
 		});
+		await this.db.question.updateMany({
+			where: { sourceId: source.id, sourceExternalId: MODAL_RAW_QUESTION },
+			data: { lastCheckedAt: capturedAt },
+		});
 		await this.db.dataSource.update({
 			where: { id: source.id },
 			data: {
@@ -243,6 +247,7 @@ export class EconomicsService {
 				const contentHash = hash(payload);
 				const externalId =
 					question.sourceExternalId ?? `economics:question:${question.number}`;
+				const capturedAt = new Date();
 				const created = await this.db.resultSnapshot.createMany({
 					data: [
 						{
@@ -251,7 +256,7 @@ export class EconomicsService {
 							dashboardExternalId: `atlas:${number}`,
 							questionExternalId: externalId,
 							reportingPeriod,
-							capturedAt: new Date(),
+							capturedAt,
 							contentHash,
 							columns: json(result.columns),
 							rows: json(result.rows),
@@ -259,6 +264,10 @@ export class EconomicsService {
 						},
 					],
 					skipDuplicates: true,
+				});
+				await this.db.question.update({
+					where: { id: question.id },
+					data: { lastCheckedAt: capturedAt },
 				});
 				cardsProcessed += 1;
 				snapshotsCreated += created.count;

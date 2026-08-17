@@ -95,6 +95,7 @@ export class SalesService {
 				const contentHash = hash(payload);
 				const externalId =
 					question.sourceExternalId ?? `sales:question:${question.number}`;
+				const capturedAt = new Date();
 				const created = await this.db.resultSnapshot.createMany({
 					data: [
 						{
@@ -103,7 +104,7 @@ export class SalesService {
 							dashboardExternalId: `atlas:${number}`,
 							questionExternalId: externalId,
 							reportingPeriod: period,
-							capturedAt: new Date(),
+							capturedAt,
 							contentHash,
 							columns: json(result.columns),
 							rows: json(result.rows),
@@ -111,6 +112,10 @@ export class SalesService {
 						},
 					],
 					skipDuplicates: true,
+				});
+				await this.db.question.update({
+					where: { id: question.id },
+					data: { lastCheckedAt: capturedAt },
 				});
 				cardsProcessed += 1;
 				snapshotsCreated += created.count;

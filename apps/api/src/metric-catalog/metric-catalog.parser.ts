@@ -75,9 +75,6 @@ function kindFrom(type: string, title: string): CatalogKind {
 	if (normalized === "view" || /^\s*↳/.test(title)) return "VIEW";
 	if (/^(primary|input|lagging|guardrail)$/.test(normalized)) return "KPI";
 	if (/^(analysis|diagnostic)$/.test(normalized)) return "DIAGNOSTIC";
-	if (/success measure|deliverable metric|initiative metric/i.test(title)) {
-		return "ROADMAP_MEASURE";
-	}
 	if (/diagnostic|analysis|breakdown/i.test(title)) return "DIAGNOSTIC";
 	return "UNCLASSIFIED";
 }
@@ -126,6 +123,14 @@ function descriptionFrom(values: string[], title: string): string | null {
 function ambiguitiesFor(title: string, description: string | null) {
 	const value = `${title} ${description ?? ""}`.toLowerCase();
 	const ambiguities: CatalogAmbiguity[] = [];
+	const isBurnAndRunway = /\bnet burn\b|\brunway\b/.test(value);
+	if (isBurnAndRunway) {
+		ambiguities.push({
+			key: "burn_and_runway_basis",
+			label:
+				"Decide which cash accounts count toward runway, what to leave out of net burn (financing and transfers between our own accounts), and whether runway uses last month, the last 3 months, or Finance's forecast.",
+		});
+	}
 	if (
 		/\b(sows?|msas?)\b.*\bsigned\b|\bsigned\b.*\b(sows?|msas?)\b/.test(value)
 	) {
@@ -190,6 +195,7 @@ function ambiguitiesFor(title: string, description: string | null) {
 		});
 	}
 	if (
+		!isBurnAndRunway &&
 		/\b(revenue|arr|run rate|margin|ndr|cac|paid|booked|cash|accrued)\b/.test(
 			value,
 		)
@@ -231,7 +237,6 @@ function readinessHint(
 ): CatalogReadinessHint {
 	if (ambiguities.length > 0) return "NEEDS_DEFINITION";
 	if (kind === "VIEW") return "CATALOGED";
-	if (kind === "ROADMAP_MEASURE") return "NEEDS_EVIDENCE";
 	const source = sourceHint?.toLowerCase() ?? "";
 	const availability = trackability?.toLowerCase() ?? "";
 	if (
@@ -334,9 +339,9 @@ function candidatesFromTeamSheet(sheet: CatalogSheet): CatalogCandidate[] {
 		if (values[0]) inheritedInitiative = values[0];
 		const combined = values.join(" ");
 		const tag = TAG_PATTERN.exec(combined)?.[1] ?? null;
+		if (!tag) continue;
 		const success = measureColumn >= 0 ? text(raw[measureColumn]) : "";
-		if (!tag && !success) continue;
-		const taggedTitle = tag ? titleFrom(values) : null;
+		const taggedTitle = titleFrom(values);
 		const secondaryTitle =
 			secondaryTitleColumn >= 0 ? text(raw[secondaryTitleColumn]) : "";
 		const contextTitle = [inheritedInitiative, secondaryTitle]
@@ -345,7 +350,7 @@ function candidatesFromTeamSheet(sheet: CatalogSheet): CatalogCandidate[] {
 		const title = taggedTitle || contextTitle || success;
 		if (!title) continue;
 		const description = success || descriptionFrom(values, title);
-		const kind = tag ? kindFrom(tag, combined) : "ROADMAP_MEASURE";
+		const kind = kindFrom(tag, combined);
 		const ambiguities = ambiguitiesFor(title, description);
 		const base = `${sheet.id}:${slug(title) || `row-${index + 1}`}`;
 		const occurrence = (occurrences.get(base) ?? 0) + 1;

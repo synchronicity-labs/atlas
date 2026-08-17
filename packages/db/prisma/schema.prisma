@@ -221,6 +221,7 @@ enum QueryLanguage {
 }
 
 enum QuestionStatus {
+  DRAFT
   ACTIVE
   ARCHIVED
 
@@ -286,6 +287,18 @@ enum MetricReadinessStatus {
   RECONCILING
   VERIFIED
   BLOCKED
+
+  @@schema("metrics")
+}
+
+enum MetricCatalogAttemptOutcome {
+  DATA_FOUND
+  NO_ROWS
+  QUERY_FAILED
+  QUERY_NOT_BUILT
+  SOURCE_MISSING
+  SOURCE_ERROR
+  SOURCE_UNKNOWN
 
   @@schema("metrics")
 }
@@ -1118,6 +1131,10 @@ model MetricCatalogEntry {
   readiness        MetricReadinessStatus @default(CATALOGED)
   metricId         String?
   metric            MetricDefinition?     @relation(fields: [metricId], references: [id], onDelete: SetNull)
+  canonicalQuestionId String?
+  canonicalQuestion   Question?            @relation("CatalogCanonicalQuestion", fields: [canonicalQuestionId], references: [id], onDelete: SetNull)
+  evidence          MetricCatalogEvidence[]
+  attempts          MetricCatalogAttempt[]
   rawRow           Json
   ambiguities      Json
   contentHash      String
@@ -1131,8 +1148,44 @@ model MetricCatalogEntry {
   @@index([kind, readiness])
   @@index([ownerTeam, readiness])
   @@index([metricId])
+  @@index([canonicalQuestionId])
   @@index([sourceId, sourceTabIndex, sourceRow])
   @@map("metricCatalogEntry")
+  @@schema("metrics")
+}
+
+model MetricCatalogAttempt {
+  id             String                      @id @default(cuid())
+  catalogEntryId String
+  catalogEntry   MetricCatalogEntry          @relation(fields: [catalogEntryId], references: [id], onDelete: Cascade)
+  runKey         String
+  outcome        MetricCatalogAttemptOutcome
+  trustStatus    MetricTrustStatus
+  detail         String
+  observations   Json
+  attemptedAt    DateTime                    @default(now())
+
+  @@unique([catalogEntryId, runKey])
+  @@index([catalogEntryId, attemptedAt])
+  @@index([outcome, trustStatus])
+  @@map("metricCatalogAttempt")
+  @@schema("metrics")
+}
+
+model MetricCatalogEvidence {
+  id             String             @id @default(cuid())
+  catalogEntryId String
+  catalogEntry   MetricCatalogEntry @relation(fields: [catalogEntryId], references: [id], onDelete: Cascade)
+  questionId     String
+  question       Question           @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  kind           String             @default("CANDIDATE_RESULT")
+  rationale      String
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  @@unique([catalogEntryId, questionId, kind])
+  @@index([questionId])
+  @@map("metricCatalogEvidence")
   @@schema("metrics")
 }
 
@@ -1300,6 +1353,8 @@ model Question {
   versions        QuestionVersion[]
   dashboardCards  DashboardCard[]
   changeProposals QuestionChangeProposal[]
+  catalogEvidence MetricCatalogEvidence[]
+  canonicalCatalogEntries MetricCatalogEntry[] @relation("CatalogCanonicalQuestion")
 
   @@unique([connector, sourceExternalId])
   @@index([status, updatedAt])

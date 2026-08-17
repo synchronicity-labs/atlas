@@ -1,11 +1,12 @@
 import { Module } from "@nestjs/common";
+import { QuestionsModule } from "../questions/questions.module";
 import { TrpcModule } from "../trpc/trpc.module";
 import { MetricCatalogRouter } from "./metric-catalog.router";
 import { MetricCatalogService } from "./metric-catalog.service";
 import { MetricCatalogSyncController } from "./metric-catalog-sync.controller";
 
 @Module({
-	imports: [TrpcModule],
+	imports: [TrpcModule, QuestionsModule],
 	controllers: [MetricCatalogSyncController],
 	providers: [MetricCatalogService, MetricCatalogRouter],
 	exports: [MetricCatalogService],

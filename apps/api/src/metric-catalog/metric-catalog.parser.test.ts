@@ -57,7 +57,7 @@ describe("metric catalog parser", () => {
 		});
 	});
 
-	test("imports team success criteria as roadmap measures and skips plain initiatives", () => {
+	test("skips roadmap tasks and imports only explicitly tagged measures", () => {
 		const candidates = catalogCandidates([
 			{
 				id: 3,
@@ -66,17 +66,26 @@ describe("metric catalog parser", () => {
 				rows: [
 					["Main Initiative", "Sub Initiative", "Q3 Success Criteria"],
 					["SEO / GEO", "", "Own the category in search and LLM answers"],
-					["", "Website structure", ""],
+					["Security", "Hiring", "Hire 1 security engineer"],
+					[
+						"Final-mile lipsync",
+						"Studio checkpoint",
+						"80% of shots pass without VFX rework",
+					],
+					[
+						"Product quality",
+						"[guardrail] generation completion rate",
+						"At least 99%",
+					],
 				],
 			},
 		]);
 
 		expect(candidates).toHaveLength(1);
 		expect(candidates[0]).toMatchObject({
-			title: "SEO / GEO",
-			description: "Own the category in search and LLM answers",
-			kind: "ROADMAP_MEASURE",
-			readinessHint: "NEEDS_EVIDENCE",
+			title: "generation completion rate",
+			description: "At least 99%",
+			kind: "KPI",
 		});
 	});
 
@@ -126,7 +135,7 @@ describe("metric catalog parser", () => {
 		]);
 
 		expect(candidates.map((candidate) => candidate.readinessHint)).toEqual([
-			"NEEDS_SOURCE",
+			"NEEDS_DEFINITION",
 			"READY_TO_IMPLEMENT",
 			"NEEDS_SOURCE",
 		]);
@@ -161,5 +170,27 @@ describe("metric catalog parser", () => {
 		expect(
 			candidates.every((candidate) => candidate.ambiguities.length > 0),
 		).toBe(true);
+	});
+
+	test("explains the finance decision for net burn and runway", () => {
+		const candidates = catalogCandidates([
+			{
+				id: 6,
+				title: "KPIs",
+				index: 0,
+				rows: [
+					["Domain", "KPI", "type", "what it means", "Source"],
+					["Finance", "net burn + runway", "lagging", "", "finance"],
+				],
+			},
+		]);
+
+		expect(candidates[0]?.ambiguities).toEqual([
+			{
+				key: "burn_and_runway_basis",
+				label:
+					"Decide which cash accounts count toward runway, what to leave out of net burn (financing and transfers between our own accounts), and whether runway uses last month, the last 3 months, or Finance's forecast.",
+			},
+		]);
 	});
 });

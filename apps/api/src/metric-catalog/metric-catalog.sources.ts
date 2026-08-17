@@ -187,10 +187,10 @@ export function resolveCatalogSources(
 	if (/\bnet burn\b|\brunway\b/.test(value)) {
 		add({
 			key: "finance:accounting",
-			label: "Accounting and cash balances",
+			label: "Finance ledger and cash balances",
 			confidence: "INFERRED",
 			reason:
-				"Burn and runway need governed cash balances and operating cash-flow data, not Stripe collections alone.",
+				"Ask Finance for read-only access or scheduled exports covering every bank or Brex account holding cash: current and available balances, currency, restricted or unrestricted status, settled transactions, daily and month-end balances, monthly general-ledger or trial-balance data, a cash-flow statement, reconciliation and closed-through status, and at least 13 complete months of history. Brex can provide the live cash view, but the reconciled ledger and cash-flow statement are the source for final burn and runway.",
 		});
 	}
 	if (/\bmanual health|qualitative read|health check\b/.test(value)) {

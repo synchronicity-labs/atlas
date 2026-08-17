@@ -359,6 +359,7 @@ export class MetabaseService {
 				);
 				const created = await this.persistDashboardCard({
 					sourceId: source.id,
+					syncRunId: run.id,
 					dashboardId: storedDashboard.id,
 					dashboard,
 					placement: fullPlacement,
@@ -712,6 +713,7 @@ export class MetabaseService {
 
 	private async persistDashboardCard(input: {
 		sourceId: string;
+		syncRunId: string;
 		dashboardId: string;
 		dashboard: MetabaseDashboardResponse;
 		placement: NonNullable<MetabaseDashboardResponse["dashcards"]>[number] & {
@@ -795,6 +797,17 @@ export class MetabaseService {
 			question.id,
 		);
 
+		const version = await this.db.questionVersion.findFirstOrThrow({
+			where: { questionId: question.id },
+			orderBy: { version: "desc" },
+			select: {
+				id: true,
+				version: true,
+				queryLanguage: true,
+				queryText: true,
+			},
+		});
+		const capturedAt = new Date();
 		const payload = { columns: result.columns, rows: result.rows };
 		const contentHash = stableHash(payload);
 		const idempotencyKey = `metabase:${input.dashboard.id}:${placement.card.id}:${input.period}:${contentHash}`;
@@ -803,24 +816,32 @@ export class MetabaseService {
 			select: { id: true },
 		});
 
-		if (existing) return false;
+		if (!existing) {
+			await this.db.resultSnapshot.create({
+				data: {
+					idempotencyKey,
+					sourceId: input.sourceId,
+					dashboardExternalId: String(input.dashboard.id),
+					questionExternalId: String(placement.card.id),
+					reportingPeriod: input.period,
+					capturedAt,
+					contentHash,
+					columns: json(result.columns),
+					rows: json(result.rows),
+					rowCount: result.rows.length,
+				},
+			});
+		}
 
-		await this.db.resultSnapshot.create({
-			data: {
-				idempotencyKey,
-				sourceId: input.sourceId,
-				dashboardExternalId: String(input.dashboard.id),
-				questionExternalId: String(placement.card.id),
-				reportingPeriod: input.period,
-				capturedAt: new Date(),
-				contentHash,
-				columns: json(result.columns),
-				rows: json(result.rows),
-				rowCount: result.rows.length,
-			},
+		await this.productMetrics.publish({
+			question,
+			version,
+			result,
+			syncRunId: input.syncRunId,
+			capturedAt,
 		});
 
-		return true;
+		return !existing;
 	}
 
 	private async ensureQuestion(sourceId: string, card: MetabaseCardResponse) {

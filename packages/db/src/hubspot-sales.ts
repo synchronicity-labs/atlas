@@ -6,6 +6,7 @@ export type HubspotSalesQuery = {
 		| "open-pipeline"
 		| "weighted-pipeline"
 		| "closed-won"
+		| "closed-won-by-company"
 		| "deals-created"
 		| "win-rate"
 		| "pipeline-by-stage"
@@ -131,6 +132,7 @@ export function parseHubspotSalesQuery(value: unknown): HubspotSalesQuery {
 		"open-pipeline",
 		"weighted-pipeline",
 		"closed-won",
+		"closed-won-by-company",
 		"deals-created",
 		"win-rate",
 		"pipeline-by-stage",
@@ -634,6 +636,44 @@ export async function executeHubspotSalesQuery(
 	}
 
 	const periods = monthKeys(query.months);
+	if (query.report === "closed-won-by-company") {
+		const grouped = new Map<
+			string,
+			{ month: string; company: string; amount: number; deals: number }
+		>();
+		for (const deal of deals) {
+			if (!deal.isWon || !deal.closeAt) continue;
+			const period = monthKey(deal.closeAt);
+			if (!periods.includes(period)) continue;
+			const company = companies.get(deal.companyIds[0] ?? "") ?? "Unassociated";
+			const key = `${period}:${company}`;
+			const current = grouped.get(key) ?? {
+				month: period,
+				company,
+				amount: 0,
+				deals: 0,
+			};
+			current.amount += deal.amount;
+			current.deals += 1;
+			grouped.set(key, current);
+		}
+		return {
+			columns: [
+				column("month", "Month", "type/DateTime"),
+				column("partner", "Partner", "type/Text"),
+				column("closed_won_amount", "Closed won", "type/Decimal"),
+				column("closed_won_deals", "Closed won deals", "type/Integer"),
+			],
+			rows: [...grouped.values()]
+				.sort((a, b) => a.month.localeCompare(b.month) || b.amount - a.amount)
+				.map((value) => [
+					monthIso(value.month),
+					value.company,
+					value.amount,
+					value.deals,
+				]),
+		};
+	}
 	if (query.report === "closed-won") {
 		return {
 			columns: [

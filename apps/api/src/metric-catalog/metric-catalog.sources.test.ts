@@ -55,4 +55,28 @@ describe("metric catalog source resolution", () => {
 			]),
 		);
 	});
+
+	test("explains the finance access needed for burn and runway", () => {
+		const result = resolveCatalogSources(
+			{
+				title: "Net burn and runway",
+				description: "Monthly operating burn and remaining cash runway",
+				ownerTeam: "Finance",
+				sourceTabName: "KPIs",
+				sourceHint: null,
+				kind: "KPI",
+			},
+			sources,
+		);
+
+		expect(result).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({
+					key: "finance:accounting",
+					state: "MISSING",
+					reason: expect.stringContaining("13 complete months"),
+				}),
+			]),
+		);
+	});
 });

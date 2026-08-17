@@ -22,10 +22,6 @@ const nextConfig: NextConfig = {
 			{ protocol: "https", hostname: "**.blob.vercel-storage.com" },
 		],
 	},
-
-	experimental: {
-		viewTransition: true,
-	},
 };
 
 export default nextConfig;

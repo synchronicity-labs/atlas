@@ -305,6 +305,10 @@ export class ProductEligibilityService {
 					],
 					skipDuplicates: true,
 				});
+				await this.db.question.update({
+					where: { id: question.id },
+					data: { lastCheckedAt: analysis.capturedAt },
+				});
 				cardsProcessed += 1;
 				snapshotsCreated += created.count;
 				checkpoint = {

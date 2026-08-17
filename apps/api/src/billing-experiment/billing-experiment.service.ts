@@ -401,6 +401,7 @@ export class BillingExperimentService {
 				const contentHash = hash(payload);
 				const externalId =
 					question.sourceExternalId ?? `billing-experiment:${question.number}`;
+				const capturedAt = new Date();
 				const created = await this.db.resultSnapshot.createMany({
 					data: [
 						{
@@ -409,7 +410,7 @@ export class BillingExperimentService {
 							dashboardExternalId: `atlas:${number}`,
 							questionExternalId: externalId,
 							reportingPeriod: period,
-							capturedAt: new Date(),
+							capturedAt,
 							contentHash,
 							columns: json(result.columns),
 							rows: json(result.rows),
@@ -417,6 +418,10 @@ export class BillingExperimentService {
 						},
 					],
 					skipDuplicates: true,
+				});
+				await this.db.question.update({
+					where: { id: question.id },
+					data: { lastCheckedAt: capturedAt },
 				});
 				cardsProcessed += 1;
 				snapshotsCreated += created.count;

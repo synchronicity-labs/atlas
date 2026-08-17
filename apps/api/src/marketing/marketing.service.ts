@@ -200,6 +200,10 @@ export class MarketingService {
 					capturedAt,
 					contentHash,
 				});
+				await this.db.question.update({
+					where: { id: question.id },
+					data: { lastCheckedAt: capturedAt },
+				});
 				cardsProcessed += 1;
 				snapshotsCreated += created.count;
 			} catch (error) {

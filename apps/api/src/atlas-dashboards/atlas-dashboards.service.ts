@@ -57,10 +57,22 @@ export class AtlasDashboardsService {
 			cardsProcessed: number;
 			snapshotsCreated?: number;
 			snapshots?: number;
+			completed?: boolean;
+			remainingQuestions?: number;
 			errors?: Array<{ number: number; message: string }>;
 		}> = [];
 		if (connectors.has(DataSourceKind.METABASE)) {
-			results.push(await this.metabase.syncAtlasDashboard(number));
+			const metabase = await this.metabase.syncAtlasDashboard(number);
+			results.push(metabase);
+			if (!metabase.completed) {
+				return {
+					cardsProcessed: metabase.cardsProcessed,
+					snapshotsCreated: metabase.snapshotsCreated,
+					completed: false,
+					remainingQuestions: metabase.remainingQuestions,
+					errors: [],
+				};
+			}
 		}
 		if (sourceKeys.has("hubspot:crm")) {
 			results.push(await this.sales.syncDashboard(number));
@@ -91,6 +103,8 @@ export class AtlasDashboardsService {
 				0,
 			),
 			errors: results.flatMap((result) => result.errors ?? []),
+			completed: true,
+			remainingQuestions: 0,
 		};
 	}
 
@@ -152,6 +166,7 @@ export class AtlasDashboardsService {
 								number: true,
 								name: true,
 								description: true,
+								lastCheckedAt: true,
 								connector: true,
 								sourceId: true,
 								sourceExternalId: true,
@@ -285,6 +300,7 @@ export class AtlasDashboardsService {
 				...card,
 				question: {
 					...card.question,
+					lastCheckedAt: card.question.lastCheckedAt?.toISOString() ?? null,
 					metricVersionId: undefined,
 					latestVersion: card.question.versions[0] ?? null,
 					versions: undefined,

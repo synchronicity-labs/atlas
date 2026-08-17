@@ -880,6 +880,11 @@ export class MetabaseService {
 		const payload = { columns: result.columns, rows: result.rows };
 		const contentHash = stableHash(payload);
 		const idempotencyKey = `metabase:${input.dashboard.id}:${placement.card.id}:${input.period}:${contentHash}`;
+		const capturedAt = new Date();
+		await this.db.question.update({
+			where: { id: question.id },
+			data: { lastCheckedAt: capturedAt },
+		});
 		const existing = await this.db.resultSnapshot.findUnique({
 			where: { idempotencyKey },
 			select: { id: true },
@@ -894,7 +899,7 @@ export class MetabaseService {
 				dashboardExternalId: String(input.dashboard.id),
 				questionExternalId: String(placement.card.id),
 				reportingPeriod: input.period,
-				capturedAt: new Date(),
+				capturedAt,
 				contentHash,
 				columns: json(result.columns),
 				rows: json(result.rows),

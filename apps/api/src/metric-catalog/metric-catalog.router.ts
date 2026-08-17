@@ -25,4 +25,14 @@ export class MetricCatalogRouter {
 	async sync() {
 		return this.catalog.sync();
 	}
+
+	@Mutation()
+	async auditKpis() {
+		return this.catalog.auditKpis();
+	}
+
+	@Mutation()
+	async auditProjectOutcomes() {
+		return this.catalog.auditProjectOutcomes();
+	}
 }

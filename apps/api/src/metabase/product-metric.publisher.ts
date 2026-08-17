@@ -36,6 +36,10 @@ type ProductMetricSpec = {
 	businessDefinition: Record<string, unknown>;
 	computation: Record<string, unknown>;
 	requiresCrossSourceEligibility: boolean;
+	pendingChecks?: Array<{
+		name: string;
+		reason: string;
+	}>;
 	ownerTeam?: string;
 	createdBy?: string;
 	cadenceMinutes?: number;
@@ -324,6 +328,72 @@ export const PRODUCT_METRIC_SPECS: ProductMetricSpec[] = [
 			output: "paid_qualified_pct",
 		},
 		requiresCrossSourceEligibility: true,
+	},
+	{
+		questionNumber: 42,
+		sourceExternalId: "8318",
+		key: "product.generation_upvote_rate",
+		name: "Generation upvote rate",
+		description:
+			"Positive ratings divided by all rated generations, with model and workflow breakdowns.",
+		grain: FactGrain.WEEK,
+		source: {
+			key: "tinybird:usage",
+			kind: DataSourceKind.TINYBIRD,
+			label: "TinyBird product usage",
+		},
+		eventTimeField: "week_start",
+		businessDefinition: {
+			entity: "generation",
+			numerator: "positive_rated_generations",
+			denominator: "all_rated_generations",
+			breakdowns: ["model", "workflow"],
+		},
+		computation: {
+			aggregate: "ratio_percentage",
+			output: "positive_feedback_rate_pct",
+		},
+		requiresCrossSourceEligibility: true,
+		pendingChecks: [
+			{
+				name: "approved_rating_definition",
+				reason:
+					"Confirm which feedback values count as positive and how ratings on retried or deleted generations are treated.",
+			},
+		],
+	},
+	{
+		questionNumber: 39,
+		sourceExternalId: "8252",
+		key: "product.feedback_coverage_rate",
+		name: "Feedback coverage rate",
+		description:
+			"Rated completed app generations divided by completed app generations.",
+		grain: FactGrain.WEEK,
+		source: {
+			key: "tinybird:usage",
+			kind: DataSourceKind.TINYBIRD,
+			label: "TinyBird product usage",
+		},
+		eventTimeField: "week_start",
+		businessDefinition: {
+			entity: "completed_app_generation",
+			numerator: "rated_completed_app_generations",
+			denominator: "completed_app_generations",
+			breakdowns: ["workflow", "model"],
+		},
+		computation: {
+			aggregate: "ratio_percentage",
+			output: "feedback_coverage_rate_pct",
+		},
+		requiresCrossSourceEligibility: true,
+		pendingChecks: [
+			{
+				name: "approved_completed_status",
+				reason:
+					"Confirm that the denominator is final completed app generations and how retried or deleted generations are treated.",
+			},
+		],
 	},
 ];
 
@@ -636,9 +706,11 @@ export class ProductMetricPublisher {
 			input.eligibility?.applied === true ||
 			(!spec.requiresCrossSourceEligibility &&
 				hasRequiredEligibilityPredicates(input.version.queryText));
-		const lifecycleStatus = eligibilityVerified
-			? MetricLifecycleStatus.CERTIFIED
-			: MetricLifecycleStatus.DRAFT;
+		const definitionVerified = (spec.pendingChecks?.length ?? 0) === 0;
+		const lifecycleStatus =
+			eligibilityVerified && definitionVerified
+				? MetricLifecycleStatus.CERTIFIED
+				: MetricLifecycleStatus.DRAFT;
 		const source = await this.db.dataSource.upsert({
 			where: { key: spec.source.key },
 			create: {
@@ -711,6 +783,7 @@ export class ProductMetricPublisher {
 					"source_snapshot",
 					"result_non_empty",
 					"exclude_banned_anonymous_internal",
+					...(spec.pendingChecks?.map((check) => check.name) ?? []),
 				],
 			},
 			cadence: { everyMinutes: cadenceMinutes, timeZone: "UTC" },
@@ -763,8 +836,10 @@ export class ProductMetricPublisher {
 					cadence: json(contract.cadence),
 					contentHash: contractHash,
 					createdBy,
-					approvedBy: eligibilityVerified ? "atlas-policy" : null,
-					approvedAt: eligibilityVerified ? input.capturedAt : null,
+					approvedBy:
+						eligibilityVerified && definitionVerified ? "atlas-policy" : null,
+					approvedAt:
+						eligibilityVerified && definitionVerified ? input.capturedAt : null,
 					inputs: {
 						create: {
 							datasetId: dataset.id,
@@ -779,7 +854,11 @@ export class ProductMetricPublisher {
 					},
 				},
 			});
-		} else if (eligibilityVerified && !metricVersion.approvedAt) {
+		} else if (
+			eligibilityVerified &&
+			definitionVerified &&
+			!metricVersion.approvedAt
+		) {
 			metricVersion = await this.db.metricVersion.update({
 				where: { id: metricVersion.id },
 				data: { approvedBy: "atlas-policy", approvedAt: input.capturedAt },
@@ -790,9 +869,10 @@ export class ProductMetricPublisher {
 			where: { id: input.question.id },
 			data: {
 				metricVersionId: metricVersion.id,
-				purpose: eligibilityVerified
-					? QuestionPurpose.CERTIFIED
-					: QuestionPurpose.RECONCILIATION,
+				purpose:
+					eligibilityVerified && definitionVerified
+						? QuestionPurpose.CERTIFIED
+						: QuestionPurpose.RECONCILIATION,
 			},
 		});
 
@@ -848,7 +928,7 @@ export class ProductMetricPublisher {
 		const resultPresent = input.result.rows.length > 0;
 		const trustStatus = !resultPresent
 			? MetricTrustStatus.FAILED
-			: eligibilityVerified
+			: eligibilityVerified && definitionVerified
 				? MetricTrustStatus.VERIFIED
 				: MetricTrustStatus.PENDING;
 		const metricRun = await this.db.metricRun.create({
@@ -882,6 +962,7 @@ export class ProductMetricPublisher {
 						resultPresent,
 						questionVersion: input.version.version,
 						capturedAt: input.capturedAt,
+						pendingChecks: spec.pendingChecks ?? [],
 					}),
 				},
 			},
@@ -1088,6 +1169,7 @@ function verificationRows(input: {
 	resultPresent: boolean;
 	questionVersion: number;
 	capturedAt: Date;
+	pendingChecks: Array<{ name: string; reason: string }>;
 }) {
 	const passed = {
 		status: VerificationStatus.PASSED,
@@ -1138,6 +1220,16 @@ function verificationRows(input: {
 			verifiedBy: input.eligibilityVerified ? "atlas-policy" : null,
 			verifiedAt: input.eligibilityVerified ? input.capturedAt : null,
 		},
+		...input.pendingChecks.map((check) => ({
+			name: check.name,
+			referenceType: "definition_approval",
+			referenceValue: json({ required: true }),
+			actualValue: json({ approved: false }),
+			evidence: json({ reason: check.reason }),
+			status: VerificationStatus.PENDING,
+			verifiedBy: null,
+			verifiedAt: null,
+		})),
 	];
 }
 

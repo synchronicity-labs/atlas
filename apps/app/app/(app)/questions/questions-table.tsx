@@ -26,7 +26,12 @@ const COLUMNS: DataTableColumn<QuestionRow>[] = [
 				<span className="w-8 shrink-0 font-mono text-muted-foreground text-xs tabular-nums">
 					{question.number}
 				</span>
-				<span className="truncate font-medium">{question.name}</span>
+				<span className="min-w-0 truncate font-medium">{question.name}</span>
+				{question.status === "DRAFT" ? (
+					<span className="shrink-0 rounded border px-1.5 py-0.5 text-warning text-xs">
+						Draft
+					</span>
+				) : null}
 			</span>
 		),
 	},
@@ -35,7 +40,11 @@ const COLUMNS: DataTableColumn<QuestionRow>[] = [
 		header: "Source question",
 		width: "w-[18%]",
 		cell: (question) =>
-			question.sourceExternalId ? (
+			question.status === "DRAFT" ? (
+				<span className="text-muted-foreground text-xs">
+					Source query needed
+				</span>
+			) : question.sourceExternalId ? (
 				<span className="font-mono text-muted-foreground text-xs">
 					{question.connector === "METABASE" ? "Metabase" : question.connector}{" "}
 					#{question.sourceExternalId}

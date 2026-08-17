@@ -1,5 +1,9 @@
 import { DataSourceKind, type Db, type Prisma, QuestionStatus } from "@crm/db";
-import { Injectable, NotFoundException } from "@nestjs/common";
+import {
+	BadRequestException,
+	Injectable,
+	NotFoundException,
+} from "@nestjs/common";
 import { BillingExperimentService } from "../billing-experiment/billing-experiment.service";
 import { InjectDatabase } from "../database/database.constants";
 import { EconomicsService } from "../economics/economics.service";
@@ -49,7 +53,7 @@ export class QuestionsService {
 	async list(input: QuestionListInput) {
 		const term = input.q.trim();
 		const where: Prisma.QuestionWhereInput = {
-			status: QuestionStatus.ACTIVE,
+			status: { in: [QuestionStatus.ACTIVE, QuestionStatus.DRAFT] },
 			...(term
 				? {
 						OR: [
@@ -354,6 +358,11 @@ export class QuestionsService {
 		});
 		if (!question) {
 			throw new NotFoundException(`No Atlas question ${input.number}.`);
+		}
+		if (question.source?.key === "atlas:metric-catalog") {
+			throw new BadRequestException(
+				"This KPI question is a draft. Atlas still needs a runnable source query.",
+			);
 		}
 		const startedAt = Date.now();
 		const result =

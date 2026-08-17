@@ -18,5 +18,6 @@ import { QuestionsService } from "./questions.service";
 		SalesModule,
 	],
 	providers: [QuestionsService, QuestionsRouter],
+	exports: [QuestionsService],
 })
 export class QuestionsModule {}

@@ -41,6 +41,10 @@ const CHECK_LABELS: Record<string, string> = {
 	result_non_empty: "Result returned data",
 	exclude_banned_anonymous_internal:
 		"Banned, anonymous, and internal identities excluded",
+	approved_cross_property_definition: "Cross-site visitor definition approved",
+	cross_site_identity_bridge: "Same person deduplicated across Sync sites",
+	approved_rating_definition: "Positive rating definition approved",
+	approved_completed_status: "Completed-generation denominator approved",
 };
 
 export function summarizeMetricVerification(

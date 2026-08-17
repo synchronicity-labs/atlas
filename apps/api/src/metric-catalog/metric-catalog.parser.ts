@@ -9,6 +9,7 @@ export type CatalogReadinessHint =
 	| "CATALOGED"
 	| "NEEDS_DEFINITION"
 	| "NEEDS_SOURCE"
+	| "NEEDS_EVIDENCE"
 	| "READY_TO_IMPLEMENT";
 
 export type CatalogAmbiguity = {
@@ -74,9 +75,6 @@ function kindFrom(type: string, title: string): CatalogKind {
 	if (normalized === "view" || /^\s*↳/.test(title)) return "VIEW";
 	if (/^(primary|input|lagging|guardrail)$/.test(normalized)) return "KPI";
 	if (/^(analysis|diagnostic)$/.test(normalized)) return "DIAGNOSTIC";
-	if (/success measure|deliverable metric|initiative metric/i.test(title)) {
-		return "ROADMAP_MEASURE";
-	}
 	if (/diagnostic|analysis|breakdown/i.test(title)) return "DIAGNOSTIC";
 	return "UNCLASSIFIED";
 }
@@ -125,6 +123,64 @@ function descriptionFrom(values: string[], title: string): string | null {
 function ambiguitiesFor(title: string, description: string | null) {
 	const value = `${title} ${description ?? ""}`.toLowerCase();
 	const ambiguities: CatalogAmbiguity[] = [];
+	const isBurnAndRunway = /\bnet burn\b|\brunway\b/.test(value);
+	if (isBurnAndRunway) {
+		ambiguities.push({
+			key: "burn_and_runway_basis",
+			label:
+				"Decide which cash accounts count toward runway, what to leave out of net burn (financing and transfers between our own accounts), and whether runway uses last month, the last 3 months, or Finance's forecast.",
+		});
+	}
+	if (
+		/\b(sows?|msas?)\b.*\bsigned\b|\bsigned\b.*\b(sows?|msas?)\b/.test(value)
+	) {
+		ambiguities.push({
+			key: "signed_document_event",
+			label:
+				"Confirm which document and signature event counts, its effective date, and deduplication rule.",
+		});
+	}
+	if (
+		/\b(breakdown|classification|classified|segment(?:ation)?)\b/.test(value)
+	) {
+		ambiguities.push({
+			key: "classification_dimensions",
+			label:
+				"Confirm the categories, classification rules, and which records can remain unclassified.",
+		});
+	}
+	if (/\bnew logos?\b/.test(value)) {
+		ambiguities.push({
+			key: "new_logo_identity",
+			label:
+				"Confirm the canonical company identity, close event, segment source, and duplicate-account rule.",
+		});
+	}
+	if (/\benterprise usage\b/.test(value)) {
+		ambiguities.push({
+			key: "enterprise_usage_contract",
+			label:
+				"Confirm the account join, usage unit, commitment basis, contract window, and comparison method.",
+		});
+	}
+	if (/\bmanual health|qualitative read|health check\b/.test(value)) {
+		ambiguities.push({
+			key: "qualitative_health_scale",
+			label:
+				"Confirm the health scale, required evidence, scoring owner, and update cadence before automating it.",
+		});
+	}
+	if (
+		/\bhuman qc\b|\bhuman readable pattern\b|\bfailure case\b|\bpipeline failure\b/.test(
+			value,
+		)
+	) {
+		ambiguities.push({
+			key: "failure_taxonomy_ground_truth",
+			label:
+				"Confirm the failure taxonomy, ground-truth label, evaluation set, and acceptance threshold.",
+		});
+	}
 	if (/\b(active|activated|professional|used)\b/.test(value)) {
 		ambiguities.push({
 			key: "qualifying_event",
@@ -139,6 +195,7 @@ function ambiguitiesFor(title: string, description: string | null) {
 		});
 	}
 	if (
+		!isBurnAndRunway &&
 		/\b(revenue|arr|run rate|margin|ndr|cac|paid|booked|cash|accrued)\b/.test(
 			value,
 		)
@@ -282,9 +339,9 @@ function candidatesFromTeamSheet(sheet: CatalogSheet): CatalogCandidate[] {
 		if (values[0]) inheritedInitiative = values[0];
 		const combined = values.join(" ");
 		const tag = TAG_PATTERN.exec(combined)?.[1] ?? null;
+		if (!tag) continue;
 		const success = measureColumn >= 0 ? text(raw[measureColumn]) : "";
-		if (!tag && !success) continue;
-		const taggedTitle = tag ? titleFrom(values) : null;
+		const taggedTitle = titleFrom(values);
 		const secondaryTitle =
 			secondaryTitleColumn >= 0 ? text(raw[secondaryTitleColumn]) : "";
 		const contextTitle = [inheritedInitiative, secondaryTitle]
@@ -293,7 +350,7 @@ function candidatesFromTeamSheet(sheet: CatalogSheet): CatalogCandidate[] {
 		const title = taggedTitle || contextTitle || success;
 		if (!title) continue;
 		const description = success || descriptionFrom(values, title);
-		const kind = tag ? kindFrom(tag, combined) : "ROADMAP_MEASURE";
+		const kind = kindFrom(tag, combined);
 		const ambiguities = ambiguitiesFor(title, description);
 		const base = `${sheet.id}:${slug(title) || `row-${index + 1}`}`;
 		const occurrence = (occurrences.get(base) ?? 0) + 1;

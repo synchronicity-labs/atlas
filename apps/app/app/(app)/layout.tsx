@@ -5,7 +5,6 @@ import { RecordSheetHost } from "@/components/crm/record-sheet/record-sheet-host
 import { MobileNavProvider } from "@/components/mobile-nav";
 import { RudyChatHost } from "@/components/rudy-chat";
 import { requireSession } from "@/lib/session";
-import { HydrateClient } from "@/lib/trpc/hydrate";
 
 export default async function AppLayout({
 	children,
@@ -17,15 +16,13 @@ export default async function AppLayout({
 	return (
 		<MobileNavProvider>
 			<div className="isolate flex h-svh flex-col">
-				<HydrateClient>
-					<AppHeader
-						user={{
-							name: user.name,
-							email: user.email,
-							image: user.image ?? null,
-						}}
-					/>
-				</HydrateClient>
+				<AppHeader
+					user={{
+						name: user.name,
+						email: user.email,
+						image: user.image ?? null,
+					}}
+				/>
 				<div className="flex min-h-0 flex-1">
 					<AppIconRail />
 					{children}

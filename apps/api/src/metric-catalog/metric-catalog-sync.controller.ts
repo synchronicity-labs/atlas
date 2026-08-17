@@ -34,6 +34,13 @@ export class MetricCatalogSyncController {
 		return this.run(authorization);
 	}
 
+	@Post("audit")
+	@AllowAnonymous()
+	async audit(@Headers("authorization") authorization?: string) {
+		this.authorize(authorization);
+		return this.catalog.auditKpis();
+	}
+
 	private async run(authorization?: string) {
 		this.authorize(authorization);
 		return this.catalog.sync();

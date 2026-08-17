@@ -207,7 +207,11 @@ const appRouter = t.router({
     summary: publicProcedure
       .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<MetricCatalogRouter["summary"]>>),
     sync: publicProcedure
-      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<MetricCatalogRouter["sync"]>>)
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<MetricCatalogRouter["sync"]>>),
+    auditKpis: publicProcedure
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<MetricCatalogRouter["auditKpis"]>>),
+    auditProjectOutcomes: publicProcedure
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<MetricCatalogRouter["auditProjectOutcomes"]>>)
     }),
   productUsers: t.router({
     list: publicProcedure

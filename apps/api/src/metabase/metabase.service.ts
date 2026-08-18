@@ -12,6 +12,7 @@ import {
 import { Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { InjectDatabase } from "../database/database.constants";
 import { assertReadOnlyQuery } from "../questions/read-only-query";
+import { atlasQuestionName } from "./atlas-question-name";
 import {
 	type MetabaseCardResponse,
 	MetabaseClient,
@@ -933,6 +934,7 @@ export class MetabaseService {
 
 	private async ensureQuestion(sourceId: string, card: MetabaseCardResponse) {
 		const definition = this.cardDefinition(card);
+		const name = atlasQuestionName(card.name);
 		const existing = await this.db.question.findUnique({
 			where: {
 				connector_sourceExternalId: {
@@ -946,7 +948,7 @@ export class MetabaseService {
 			await this.db.question.update({
 				where: { id: existing.id },
 				data: {
-					name: card.name,
+					name,
 					description: card.description,
 					sourceId,
 					databaseExternalId: card.database_id
@@ -977,6 +979,7 @@ export class MetabaseService {
 		}
 
 		const latest = await this.db.question.findFirst({
+			where: { number: { lt: 1000 } },
 			orderBy: { number: "desc" },
 			select: { number: true },
 		});
@@ -993,7 +996,7 @@ export class MetabaseService {
 					preferredNumber && preferredAvailable
 						? preferredNumber
 						: (latest?.number ?? 0) + 1,
-				name: card.name,
+				name,
 				description: card.description,
 				connector: DataSourceKind.METABASE,
 				sourceId,

@@ -25,6 +25,10 @@ import {
 	ProductMetricPublisher,
 	preferredAtlasQuestionNumber,
 } from "./product-metric.publisher";
+import {
+	RevenueDoorPolicyService,
+	usesRevenueDoorPolicy,
+} from "./revenue-door-policy.service";
 import { TinybirdEligibilityService } from "./tinybird-eligibility.service";
 
 const SOURCE_KEY = "metabase:sync";
@@ -134,6 +138,7 @@ export class MetabaseService {
 		@InjectDatabase() private readonly db: Db,
 		private readonly productMetrics: ProductMetricPublisher,
 		private readonly productEligibility: ProductEligibilityService,
+		private readonly revenueDoorPolicy: RevenueDoorPolicyService,
 		private readonly tinybirdEligibility: TinybirdEligibilityService,
 	) {}
 
@@ -570,19 +575,27 @@ export class MetabaseService {
 						const language =
 							version.queryLanguage === QueryLanguage.SQL ? "SQL" : "MBQL";
 						assertReadOnlyQuery(language, version.queryText);
+						const revenueDoor =
+							language === "SQL" && usesRevenueDoorPolicy(question.number)
+								? await this.revenueDoorPolicy.compile(version.queryText)
+								: null;
+						const classifiedQueryText =
+							revenueDoor?.queryText ?? version.queryText;
+						assertReadOnlyQuery(language, classifiedQueryText);
 						const governed = eligibility
 							? this.tinybirdEligibility.govern(
-									version.queryText,
+									classifiedQueryText,
 									question.databaseExternalId,
 									eligibility,
 								)
 							: null;
+						const executedQueryText =
+							language === "SQL" && governed && question.number !== 15
+								? governed.queryText
+								: classifiedQueryText;
 						let result = await client.preview({
 							language,
-							queryText:
-								language === "SQL" && governed && question.number !== 15
-									? governed.queryText
-									: version.queryText,
+							queryText: executedQueryText,
 							databaseExternalId: question.databaseExternalId,
 						});
 						let publishEligibility = governed
@@ -635,11 +648,12 @@ export class MetabaseService {
 						});
 						await this.productMetrics.publish({
 							question,
-							version,
+							version: { ...version, queryText: executedQueryText },
 							result,
 							syncRunId: run.id,
 							capturedAt,
 							eligibility: publishEligibility,
+							revenueDoorPolicy: revenueDoor?.evidence,
 						});
 						await this.db.question.update({
 							where: { id: question.id },

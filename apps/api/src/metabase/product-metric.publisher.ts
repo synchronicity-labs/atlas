@@ -16,6 +16,7 @@ import { type MetricContract, stableMetricContractHash } from "@crm/metrics";
 import { Injectable } from "@nestjs/common";
 import { InjectDatabase } from "../database/database.constants";
 import type { MetabaseResult } from "./metabase.client";
+import type { RevenueDoorPolicyEvidence } from "./revenue-door-policy.service";
 
 const FRESHNESS_SLA_MINUTES = 10 * 60;
 const MAX_LAG_SECONDS = FRESHNESS_SLA_MINUTES * 60;
@@ -74,6 +75,7 @@ type PublishInput = {
 		sourceRows: number;
 		returnedRows: number;
 	};
+	revenueDoorPolicy?: RevenueDoorPolicyEvidence;
 };
 
 const sharedNormalizationPolicy = {
@@ -413,6 +415,7 @@ export const REVENUE_METRIC_SPECS: ProductMetricSpec[] = [
 		},
 		eventTimeField: "generationEndedAt",
 		businessDefinition: {
+			revenueDoor: "sync.tools",
 			licensedBase:
 				"latest active or past-due self-serve subscriptions at the current v2 or v3 plan price",
 			usageActual: "paid-plan generation value grouped by generationEndedAt",
@@ -420,7 +423,12 @@ export const REVENUE_METRIC_SPECS: ProductMetricSpec[] = [
 				"month-to-date accrued usage divided by exact elapsed UTC seconds and multiplied by seconds in the calendar month",
 			productRunRate: "licensed base plus projected accrued usage",
 			annualizedRunRate: "product run-rate multiplied by 12",
-			excluded: ["enterprise commitments", "Studio commitments"],
+			excluded: [
+				"enterprise plans",
+				"program plans",
+				"channel partners in the governed revenue-door registry",
+				"Studio commitments",
+			],
 		},
 		computation: {
 			aggregate: "run_rate_reconstruction",
@@ -452,6 +460,7 @@ export const REVENUE_METRIC_SPECS: ProductMetricSpec[] = [
 		},
 		eventTimeField: "generationEndedAt",
 		businessDefinition: {
+			revenueDoor: "sync.tools",
 			formula: "licensed_subscription_base + projected_usage_accrual",
 			enterpriseCommitmentsIncluded: false,
 			studioCommitmentsIncluded: false,
@@ -477,9 +486,11 @@ export const REVENUE_METRIC_SPECS: ProductMetricSpec[] = [
 		},
 		eventTimeField: "generationEndedAt",
 		businessDefinition: {
+			revenueDoor: "sync.tools",
 			valueBasis: "generationCostMillicents divided by 100000",
 			timeField: "generationEndedAt",
-			population: "non-empty organizationPlanType",
+			population:
+				"self-serve organizations after governed revenue-door exclusions",
 		},
 		computation: {
 			aggregate: "monthly_sum_and_current_month_pace",
@@ -505,6 +516,7 @@ export const REVENUE_METRIC_SPECS: ProductMetricSpec[] = [
 		},
 		eventTimeField: "createdAt",
 		businessDefinition: {
+			revenueDoor: "sync.tools",
 			entity: "latest_subscription",
 			includedStatuses: ["active", "past_due"],
 			includedPlans: [
@@ -542,8 +554,9 @@ export const REVENUE_METRIC_SPECS: ProductMetricSpec[] = [
 		},
 		eventTimeField: "generationEndedAt",
 		businessDefinition: {
+			revenueDoor: "sync.tools",
 			cohort:
-				"organizations with paid-plan accrued usage in the starting month",
+				"self-serve organizations with accrued usage in the starting month after governed revenue-door exclusions",
 			numerator: "next-month usage from the same starting organizations",
 			denominator: "starting-month usage",
 			missingCurrentUsage: 0,
@@ -569,6 +582,7 @@ export const REVENUE_METRIC_SPECS: ProductMetricSpec[] = [
 		},
 		eventTimeField: "generationEndedAt",
 		businessDefinition: {
+			revenueDoor: "sync.tools",
 			cohort: "fixed starting-month organizations",
 			tierAssignment: "latest organizationPlanType in the starting month",
 		},
@@ -597,6 +611,7 @@ export const REVENUE_METRIC_SPECS: ProductMetricSpec[] = [
 		},
 		eventTimeField: "generationEndedAt",
 		businessDefinition: {
+			revenueDoor: "sync.tools",
 			cohort: "organizations with paid-plan accrued usage in the starting week",
 			window: "complete Monday-Sunday UTC weeks",
 			classification: "directional_proxy",
@@ -625,6 +640,7 @@ export const REVENUE_METRIC_SPECS: ProductMetricSpec[] = [
 		},
 		eventTimeField: "generationEndedAt",
 		businessDefinition: {
+			revenueDoor: "sync.tools",
 			retained: "report-week usage from starting-week organizations",
 			outsideStartingCohort:
 				"total report-week usage minus retained starting-cohort usage",
@@ -658,6 +674,7 @@ export const REVENUE_METRIC_SPECS: ProductMetricSpec[] = [
 		},
 		eventTimeField: "generationEndedAt",
 		businessDefinition: {
+			revenueDoor: "sync.tools",
 			cohort: "fixed starting-week organizations",
 			tierAssignment: "latest organizationPlanType in the starting week",
 			classification: "directional_proxy",
@@ -706,9 +723,17 @@ export class ProductMetricPublisher {
 			input.eligibility?.applied === true ||
 			(!spec.requiresCrossSourceEligibility &&
 				hasRequiredEligibilityPredicates(input.version.queryText));
+		const requiresRevenueDoorPolicy = REVENUE_METRIC_SPECS.some(
+			(candidate) => candidate.key === spec.key,
+		);
+		const revenueDoorVerified =
+			!requiresRevenueDoorPolicy ||
+			(input.revenueDoorPolicy?.applied === true &&
+				input.revenueDoorPolicy.complete === true);
+		const governanceVerified = eligibilityVerified && revenueDoorVerified;
 		const definitionVerified = (spec.pendingChecks?.length ?? 0) === 0;
 		const lifecycleStatus =
-			eligibilityVerified && definitionVerified
+			governanceVerified && definitionVerified
 				? MetricLifecycleStatus.CERTIFIED
 				: MetricLifecycleStatus.DRAFT;
 		const source = await this.db.dataSource.upsert({
@@ -773,7 +798,21 @@ export class ProductMetricPublisher {
 			businessDefinition: spec.businessDefinition,
 			normalizationPolicy: {
 				...sharedNormalizationPolicy,
-				state: eligibilityVerified ? "enforced" : "pending_cross_source_join",
+				state: governanceVerified
+					? "enforced"
+					: revenueDoorVerified
+						? "pending_cross_source_join"
+						: "pending_revenue_door_registry",
+				revenueDoorPolicy: requiresRevenueDoorPolicy
+					? {
+							policyId: input.revenueDoorPolicy?.policyId ?? null,
+							status: input.revenueDoorPolicy?.status ?? null,
+							complete: input.revenueDoorPolicy?.complete ?? false,
+							contentHash: input.revenueDoorPolicy?.contentHash ?? null,
+							excludedPlans: input.revenueDoorPolicy?.excludedPlans ?? [],
+							excludedDomains: input.revenueDoorPolicy?.excludedDomains ?? [],
+						}
+					: null,
 			},
 			computation: spec.computation,
 			verificationPolicy: {
@@ -783,6 +822,9 @@ export class ProductMetricPublisher {
 					"source_snapshot",
 					"result_non_empty",
 					"exclude_banned_anonymous_internal",
+					...(requiresRevenueDoorPolicy
+						? ["complete_revenue_door_registry"]
+						: []),
 					...(spec.pendingChecks?.map((check) => check.name) ?? []),
 				],
 			},
@@ -837,9 +879,9 @@ export class ProductMetricPublisher {
 					contentHash: contractHash,
 					createdBy,
 					approvedBy:
-						eligibilityVerified && definitionVerified ? "atlas-policy" : null,
+						governanceVerified && definitionVerified ? "atlas-policy" : null,
 					approvedAt:
-						eligibilityVerified && definitionVerified ? input.capturedAt : null,
+						governanceVerified && definitionVerified ? input.capturedAt : null,
 					inputs: {
 						create: {
 							datasetId: dataset.id,
@@ -855,7 +897,7 @@ export class ProductMetricPublisher {
 				},
 			});
 		} else if (
-			eligibilityVerified &&
+			governanceVerified &&
 			definitionVerified &&
 			!metricVersion.approvedAt
 		) {
@@ -870,7 +912,7 @@ export class ProductMetricPublisher {
 			data: {
 				metricVersionId: metricVersion.id,
 				purpose:
-					eligibilityVerified && definitionVerified
+					governanceVerified && definitionVerified
 						? QuestionPurpose.CERTIFIED
 						: QuestionPurpose.RECONCILIATION,
 			},
@@ -901,6 +943,7 @@ export class ProductMetricPublisher {
 					checkpoint: json({
 						reportingPeriod: window.reportingPeriod,
 						eligibility: input.eligibility ?? null,
+						revenueDoorPolicy: input.revenueDoorPolicy ?? null,
 					}),
 					observedAt: input.capturedAt,
 				},
@@ -914,8 +957,9 @@ export class ProductMetricPublisher {
 			spec,
 			result: input.result,
 			window,
-			eligibilityVerified,
+			governanceVerified,
 			eligibility: input.eligibility,
+			revenueDoorPolicy: input.revenueDoorPolicy,
 		});
 
 		const snapshotKey = `${metricVersion.id}:${window.reportingPeriod}:${outputHash}`;
@@ -928,7 +972,7 @@ export class ProductMetricPublisher {
 		const resultPresent = input.result.rows.length > 0;
 		const trustStatus = !resultPresent
 			? MetricTrustStatus.FAILED
-			: eligibilityVerified && definitionVerified
+			: governanceVerified && definitionVerified
 				? MetricTrustStatus.VERIFIED
 				: MetricTrustStatus.PENDING;
 		const metricRun = await this.db.metricRun.create({
@@ -952,6 +996,8 @@ export class ProductMetricPublisher {
 				validation: json({
 					eligibilityVerified,
 					eligibility: input.eligibility ?? null,
+					revenueDoorVerified,
+					revenueDoorPolicy: input.revenueDoorPolicy ?? null,
 					resultPresent,
 				}),
 				startedAt: input.capturedAt,
@@ -959,6 +1005,8 @@ export class ProductMetricPublisher {
 				verifications: {
 					create: verificationRows({
 						eligibilityVerified,
+						requiresRevenueDoorPolicy,
+						revenueDoorPolicy: input.revenueDoorPolicy,
 						resultPresent,
 						questionVersion: input.version.version,
 						capturedAt: input.capturedAt,
@@ -993,8 +1041,9 @@ export class ProductMetricPublisher {
 		spec: ProductMetricSpec;
 		result: MetabaseResult;
 		window: MetricWindow;
-		eligibilityVerified: boolean;
+		governanceVerified: boolean;
 		eligibility?: PublishInput["eligibility"];
+		revenueDoorPolicy?: RevenueDoorPolicyEvidence;
 	}) {
 		const facts = input.result.rows.map((row, index) => {
 			const record = Object.fromEntries(
@@ -1028,10 +1077,11 @@ export class ProductMetricPublisher {
 				measures: json(measures),
 				eligibility: json({
 					policy: sharedNormalizationPolicy,
-					evidence: input.eligibility ?? null,
-					state: input.eligibilityVerified
-						? "enforced"
-						: "pending_cross_source_join",
+					evidence: {
+						userEligibility: input.eligibility ?? null,
+						revenueDoorPolicy: input.revenueDoorPolicy ?? null,
+					},
+					state: input.governanceVerified ? "enforced" : "pending_governance",
 				}),
 				contentHash,
 			};
@@ -1166,6 +1216,8 @@ function incrementPeriod(value: Date, grain: FactGrain): Date {
 
 function verificationRows(input: {
 	eligibilityVerified: boolean;
+	requiresRevenueDoorPolicy: boolean;
+	revenueDoorPolicy?: RevenueDoorPolicyEvidence;
 	resultPresent: boolean;
 	questionVersion: number;
 	capturedAt: Date;
@@ -1220,6 +1272,44 @@ function verificationRows(input: {
 			verifiedBy: input.eligibilityVerified ? "atlas-policy" : null,
 			verifiedAt: input.eligibilityVerified ? input.capturedAt : null,
 		},
+		...(input.requiresRevenueDoorPolicy
+			? [
+					{
+						name: "complete_revenue_door_registry",
+						referenceType: "revenue_door_policy",
+						referenceValue: json({
+							policyId: "company-revenue-doors",
+							requiredStatus: "COMPLETE",
+						}),
+						actualValue: json({
+							applied: input.revenueDoorPolicy?.applied ?? false,
+							status: input.revenueDoorPolicy?.status ?? null,
+							complete: input.revenueDoorPolicy?.complete ?? false,
+						}),
+						evidence: json({
+							reason: input.revenueDoorPolicy?.complete
+								? "The revenue-door registry is complete and was applied before aggregation."
+								: "Known non-tools revenue is excluded, but the channel-partner registry still needs a complete review.",
+							excludedPlans: input.revenueDoorPolicy?.excludedPlans ?? [],
+							excludedDomains: input.revenueDoorPolicy?.excludedDomains ?? [],
+							excludedOrganizationCount:
+								input.revenueDoorPolicy?.excludedOrganizationIds.length ?? 0,
+							unresolvedDomains:
+								input.revenueDoorPolicy?.unresolvedDomains ?? [],
+							contentHash: input.revenueDoorPolicy?.contentHash ?? null,
+						}),
+						status: input.revenueDoorPolicy?.complete
+							? VerificationStatus.PASSED
+							: VerificationStatus.PENDING,
+						verifiedBy: input.revenueDoorPolicy?.complete
+							? "atlas-policy"
+							: null,
+						verifiedAt: input.revenueDoorPolicy?.complete
+							? input.capturedAt
+							: null,
+					},
+				]
+			: []),
 		...input.pendingChecks.map((check) => ({
 			name: check.name,
 			referenceType: "definition_approval",

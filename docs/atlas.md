@@ -242,6 +242,12 @@ webhook ingestion timestamp, so an old close cannot reconstruct subscription sta
 exactly unless Atlas preserved the result at that close. New report deliveries must
 therefore point to their immutable Atlas snapshot.
 
+Before these questions run, Atlas applies the current company revenue-door policy.
+The Sync Tools result excludes enterprise, program, partner, and explicitly classified
+channel-partner organizations. The rule registry is stored in Postgres so adding a
+partner does not require editing every SQL question. The result stays pending while
+the registry is marked partial, even though known exclusions are already applied.
+
 ## Product identities
 
 Product-user ingestion whitelists only the fields Atlas uses. Email is searchable but

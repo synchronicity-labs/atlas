@@ -110,6 +110,28 @@ Atlas records the answer in the metric version instead of hiding it in a query.
 
 ## Questions for Prady: Weekly Revenue Lite
 
+### Revenue-door classification
+
+Company revenue is measured as four separate businesses:
+
+| Revenue door | Meaning | Current Atlas treatment |
+| --- | --- | --- |
+| `sync.tools` | Self-serve subscription and accrued usage revenue | The Weekly Revenue questions calculate this door. |
+| `sync.partners` | Channel-partner revenue | Excluded from `sync.tools` and measured separately. |
+| `sync.productions` | Professional services and enterprise commitments | Excluded from `sync.tools` and measured separately. |
+| `sync.enterprise` | Contracted enterprise revenue | Excluded from `sync.tools`; Prady asked to define this last. |
+
+Atlas stores this classification in the `revenueDoorPolicy` and `revenueDoorRule`
+tables. Queries do not contain a permanent list of customer names. Each rule has a
+door, match type, value, evidence, and active state. The current rules exclude
+`enterprise`, `program`, and `partner` plans. They also exclude organizations linked
+to `fal.ai`, `higgsfield.ai`, `replicate.com`, and `magichour.ai` from `sync.tools`.
+
+The domain list is partial. Atlas applies the known exclusions, but keeps the revenue
+metrics in `PENDING` trust state until the partner registry is reviewed and marked
+complete. A new partner is added as a registry rule. Existing report snapshots remain
+immutable; later runs use the new policy version and evidence hash.
+
 Ask these in one review. Record each answer in a new metric version before the report
 is called certified.
 
@@ -122,6 +144,8 @@ is called certified.
 | Signed amount precedence | HubSpot amount is accepted only as CRM evidence; a conflicting signed amount remains partial | Signed contract always wins, HubSpot always wins, or a named reconciliation owner resolves conflicts | USC is `$292` in HubSpot and `$334.25` in the cited source thread. |
 | Licensed subscription base | Current active or past-due subscriptions multiplied by current plan price | Invoice-item accrual, contracted price, or collected license cash | Current state is useful for run-rate but cannot replay an old close without lifecycle ingestion time. |
 | Enterprise commitments | Excluded from master Product run-rate | Include contracted commitments, usage drawdown, or only the unused commitment balance | Adding commitments and usage can double count the same economics. |
+| Complete channel-partner list | Known partner domains and `partner` plans are excluded from `sync.tools`; the registry is partial | Confirm every partner organization and its effective date | A missed partner inflates self-serve revenue and retention. |
+| Partner pricing source | Product plan and domain identify the door; contract-specific tiers are not yet normalized | Signed agreement, Stripe price, CRM deal, or an approved plan configuration | Partners can share one commercial structure while using different prices and thresholds. |
 | Report finality | The delivered snapshot is immutable | Recalculate old reports after source corrections | An immutable close is reproducible; a live dashboard may still restate history. |
 
 The current Stripe cash calculation is correct for the label **paid invoice

@@ -150,6 +150,32 @@ enum RecordSource {
   @@schema("public")
 }
 
+enum RevenueDoor {
+  TOOLS
+  PARTNERS
+  PRODUCTIONS
+  ENTERPRISE
+  PROGRAM
+
+  @@schema("public")
+}
+
+enum RevenueDoorMatchKind {
+  PLAN
+  EMAIL_DOMAIN
+  ORGANIZATION_ID
+  STRIPE_CUSTOMER_ID
+
+  @@schema("public")
+}
+
+enum RevenueDoorPolicyStatus {
+  PARTIAL
+  COMPLETE
+
+  @@schema("public")
+}
+
 enum DataSourceKind {
   METABASE
   POSTGRES
@@ -1705,6 +1731,39 @@ model ProductOrganizationCompanyLink {
   @@unique([productOrganizationId, companyId])
   @@index([companyId])
   @@map("productOrganizationCompanyLink")
+  @@schema("public")
+}
+
+model RevenueDoorPolicy {
+  id         String                  @id
+  name       String
+  status     RevenueDoorPolicyStatus @default(PARTIAL)
+  notes      String?
+  reviewedAt DateTime?
+  createdAt  DateTime                @default(now())
+  updatedAt  DateTime                @updatedAt
+  rules      RevenueDoorRule[]
+
+  @@map("revenueDoorPolicy")
+  @@schema("public")
+}
+
+model RevenueDoorRule {
+  id         String               @id @default(cuid())
+  policyId   String
+  policy     RevenueDoorPolicy    @relation(fields: [policyId], references: [id], onDelete: Cascade)
+  door       RevenueDoor
+  matchKind  RevenueDoorMatchKind
+  matchValue String
+  label      String?
+  active     Boolean              @default(true)
+  evidence   Json?
+  createdAt  DateTime             @default(now())
+  updatedAt  DateTime             @updatedAt
+
+  @@unique([policyId, matchKind, matchValue])
+  @@index([policyId, door, active])
+  @@map("revenueDoorRule")
   @@schema("public")
 }
 

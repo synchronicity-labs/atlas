@@ -11,6 +11,10 @@ import { MarketingService } from "../marketing/marketing.service";
 import { MetabaseClient } from "../metabase/metabase.client";
 import { metabaseConfig } from "../metabase/metabase.config";
 import { ProductEligibilityService } from "../metabase/product-eligibility.service";
+import {
+	RevenueDoorPolicyService,
+	usesRevenueDoorPolicy,
+} from "../metabase/revenue-door-policy.service";
 import { TinybirdEligibilityService } from "../metabase/tinybird-eligibility.service";
 import {
 	summarizeMetricVerification,
@@ -47,6 +51,7 @@ export class QuestionsService {
 		private readonly sales: SalesService,
 		private readonly economics: EconomicsService,
 		private readonly productEligibility: ProductEligibilityService,
+		private readonly revenueDoorPolicy: RevenueDoorPolicyService,
 		private readonly tinybirdEligibility: TinybirdEligibilityService,
 	) {}
 
@@ -377,6 +382,7 @@ export class QuestionsService {
 								? await this.productEligibility.preview(input.queryText)
 								: await this.marketing.preview(input.queryText)
 				: await this.metabasePreview(
+						input.number,
 						input.queryLanguage,
 						input.queryText,
 						question.databaseExternalId,
@@ -421,6 +427,7 @@ export class QuestionsService {
 	}
 
 	private async metabasePreview(
+		questionNumber: number,
 		language: "SQL" | "MBQL",
 		queryText: string,
 		databaseExternalId: string | null,
@@ -434,9 +441,14 @@ export class QuestionsService {
 				databaseExternalId,
 			});
 		}
+		const classified = usesRevenueDoorPolicy(questionNumber)
+			? await this.revenueDoorPolicy.compile(queryText)
+			: null;
+		const classifiedQueryText = classified?.queryText ?? queryText;
+		assertReadOnlyQuery(language, classifiedQueryText);
 		const eligibility = await this.tinybirdEligibility.current();
 		const governed = this.tinybirdEligibility.govern(
-			queryText,
+			classifiedQueryText,
 			databaseExternalId,
 			eligibility,
 		);

@@ -106,7 +106,8 @@ describe("Product metric publication", () => {
 
 	test("registers stable governed questions for the weekly revenue report", () => {
 		expect(REVENUE_METRIC_SPECS.map((spec) => spec.questionNumber)).toEqual([
-			1101, 1102, 1103, 1104, 1105, 1106, 1107, 1108, 1109,
+			1101, 1102, 1103, 1104, 1110, 1111, 1112, 1113, 1114, 1115, 1116, 1105,
+			1106, 1107, 1108, 1109,
 		]);
 	});
 

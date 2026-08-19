@@ -2,6 +2,8 @@ import { describe, expect, test } from "bun:test";
 import {
 	PRODUCT_METRIC_SPECS,
 	preferredAtlasQuestionNumber,
+	REVENUE_CLOSE_METRIC_SPECS,
+	REVENUE_METRIC_SPECS,
 } from "./product-metric.publisher";
 
 describe("product feedback metric registry", () => {
@@ -18,6 +20,49 @@ describe("product feedback metric registry", () => {
 		expect(checks).toEqual([
 			"approved_rating_definition",
 			"approved_completed_status",
+		]);
+	});
+
+	test("registers separate self-serve usage, subscription, and combined run-rate metrics", () => {
+		const revenueMetrics = REVENUE_METRIC_SPECS.filter((spec) =>
+			[1102, 1110, 1111].includes(spec.questionNumber),
+		).map((spec) => spec.name);
+
+		expect(revenueMetrics).toEqual([
+			"Self-serve combined run-rate",
+			"Self-serve usage run-rate",
+			"Self-serve subscription run-rate",
+		]);
+	});
+
+	test("registers every Revenue close question in the governed metric layer", () => {
+		expect(
+			REVENUE_CLOSE_METRIC_SPECS.map((spec) => spec.questionNumber),
+		).toEqual(Array.from({ length: 14 }, (_, index) => 1001 + index));
+		expect(preferredAtlasQuestionNumber("revenue:usage-spend-ndr")).toBe(1007);
+	});
+
+	test("keeps the saved-question replacement pending until equivalence is proven", () => {
+		const paidCustomerRevenue = REVENUE_CLOSE_METRIC_SPECS.find(
+			(spec) => spec.questionNumber === 1004,
+		);
+
+		expect(paidCustomerRevenue?.pendingChecks?.[0]?.name).toBe(
+			"saved_question_equivalence",
+		);
+	});
+
+	test("registers the partner usage, invoice, cash, breakdown, and reconciliation metrics", () => {
+		const partnerMetrics = REVENUE_METRIC_SPECS.filter((spec) =>
+			[1112, 1113, 1114, 1115, 1116].includes(spec.questionNumber),
+		).map((spec) => spec.name);
+
+		expect(partnerMetrics).toEqual([
+			"Channel-partner usage run-rate",
+			"Channel-partner invoices raised",
+			"Channel-partner cash collected",
+			"Channel-partner usage by partner",
+			"Channel-partner revenue reconciliation",
 		]);
 	});
 });

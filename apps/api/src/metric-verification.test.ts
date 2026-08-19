@@ -29,6 +29,30 @@ describe("metric verification summaries", () => {
 		expect(summary.dataThrough).toBe("2026-08-01T00:00:00.000Z");
 	});
 
+	test("uses neutral wording while the identity filter is still pending", () => {
+		const summary = summarizeMetricVerification({
+			trustStatus: "PENDING",
+			reportingPeriod: "2026-08",
+			dataThrough: new Date("2026-08-18T14:30:00Z"),
+			computedAt: new Date("2026-08-18T14:31:00Z"),
+			metricRun: {
+				verifications: [
+					{
+						name: "exclude_banned_anonymous_internal",
+						status: "PENDING",
+						evidence: {
+							reason: "The source returned a partial exclusion list.",
+						},
+						verifiedAt: null,
+					},
+				],
+			},
+		});
+
+		expect(summary.checks[0]?.label).toBe("Clean-user filter");
+		expect(summary.checks[0]?.status).toBe("PENDING");
+	});
+
 	test("only verifies a dashboard when every question is verified", () => {
 		const verified = summarizeMetricVerification({
 			trustStatus: "VERIFIED",

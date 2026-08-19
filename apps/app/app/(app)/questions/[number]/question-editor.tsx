@@ -44,6 +44,7 @@ import Link from "next/link";
 import { parseAsString, useQueryState } from "nuqs";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { QuestionExplanationPanel } from "@/components/question-explanation";
 import { RudyChatTrigger } from "@/components/rudy-chat";
 import { useTRPC } from "@/lib/trpc/client";
 
@@ -77,11 +78,15 @@ type QuestionData = {
 	number: number;
 	name: string;
 	description: string | null;
+	explanation: string;
 	connector: "METABASE" | "STRIPE" | "HUBSPOT" | "POSTHOG" | "ATLAS";
 	sourceKey: string | null;
 	sourceExternalId: string | null;
 	sourceUrl: string | null;
 	verification: MetricTrustSummary | null;
+	metric: {
+		contract: { businessDefinition: unknown };
+	} | null;
 	versions: QuestionVersion[];
 	snapshots: Array<{
 		columns: unknown;
@@ -510,6 +515,11 @@ export function QuestionEditor({ number }: { number: number }) {
 					</p>
 				</div>
 			) : null}
+
+			<QuestionExplanationPanel
+				explanation={data.explanation}
+				definition={data.metric?.contract.businessDefinition}
+			/>
 
 			<div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_19rem]">
 				<div className="flex min-w-0 flex-col gap-5">

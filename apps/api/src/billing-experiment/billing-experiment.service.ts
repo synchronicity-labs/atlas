@@ -13,6 +13,7 @@ import {
 	type MetabaseResult,
 } from "../metabase/metabase.client";
 import { metabaseConfig } from "../metabase/metabase.config";
+import { ProductMetricPublisher } from "../metabase/product-metric.publisher";
 import {
 	TinybirdEligibilityService,
 	type TinybirdEligibilitySnapshot,
@@ -311,6 +312,7 @@ export class BillingExperimentService {
 	constructor(
 		@InjectDatabase() private readonly db: Db,
 		private readonly tinybirdEligibility: TinybirdEligibilityService,
+		private readonly metricPublisher: ProductMetricPublisher,
 	) {}
 
 	async preview(queryText: string): Promise<Result> {
@@ -327,12 +329,18 @@ export class BillingExperimentService {
 							select: {
 								id: true,
 								number: true,
+								name: true,
+								description: true,
+								connector: true,
 								sourceId: true,
 								sourceExternalId: true,
+								databaseExternalId: true,
+								metricVersionId: true,
 								versions: {
 									orderBy: { version: "desc" },
 									take: 1,
 									select: {
+										id: true,
 										version: true,
 										queryLanguage: true,
 										queryText: true,
@@ -390,6 +398,7 @@ export class BillingExperimentService {
 		let cardsProcessed = 0;
 		let snapshotsCreated = 0;
 		const errors: Array<{ number: number; message: string }> = [];
+		const eligibility = await this.tinybirdEligibility.currentForRevenue();
 		for (const question of questions) {
 			const version = question.versions[0];
 			if (!version) continue;
@@ -418,6 +427,25 @@ export class BillingExperimentService {
 						},
 					],
 					skipDuplicates: true,
+				});
+				await this.metricPublisher.publish({
+					question,
+					version,
+					result,
+					syncRunId: run.id,
+					capturedAt,
+					eligibility: {
+						applied: true,
+						capturedAt: eligibility.capturedAt.toISOString(),
+						contentHash: eligibility.contentHash,
+						excludedUsers: eligibility.excludedUserIds.length,
+						excludedOrganizations: eligibility.excludedOrganizationIds.length,
+						excludedCustomers: eligibility.excludedCustomerIds.length,
+						complete: eligibility.complete,
+						sourceRows: eligibility.sourceRows,
+						returnedRows: eligibility.returnedRows,
+						scope: eligibility.scope,
+					},
 				});
 				await this.db.question.update({
 					where: { id: question.id },
@@ -708,7 +736,7 @@ export class BillingExperimentService {
 		const config = metabaseConfig();
 		if (!config) throw new Error("Metabase is not configured.");
 		const client = new MetabaseClient(config);
-		const eligibility = await this.tinybirdEligibility.current();
+		const eligibility = await this.tinybirdEligibility.currentForRevenue();
 		const [assignmentRows, invoiceRows, paymentRows, cancellationRows] =
 			await Promise.all([
 				this.queryAll(

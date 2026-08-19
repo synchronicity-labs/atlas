@@ -7,7 +7,7 @@ import type { Seed } from "./palette"
 export type TooltipItem = {
   name: string
   label: string
-  value: number
+  value: number | null
   seed: Seed
   dimmed: boolean
 }

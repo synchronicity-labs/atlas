@@ -51,6 +51,8 @@ export function Bar({
     <>
       {isClickable &&
         band.map((bounds, index) => {
+          const value = ctx.data[index]?.[dataKey]
+          if (!(typeof value === "number" && Number.isFinite(value))) return null
           const slot = ctx.barSlot(index, seriesIndex, seriesCount)
           const top = ctx.y(bounds[1])
           const base = ctx.y(bounds[0])

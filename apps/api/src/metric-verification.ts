@@ -39,8 +39,8 @@ const CHECK_LABELS: Record<string, string> = {
 	read_only_query: "Query is read-only",
 	source_snapshot: "Immutable source snapshot stored",
 	result_non_empty: "Result returned data",
-	exclude_banned_anonymous_internal:
-		"Banned, anonymous, and internal identities excluded",
+	exclude_banned_anonymous_internal: "Clean-user filter",
+	saved_question_equivalence: "Saved-question replacement matches",
 	approved_cross_property_definition: "Cross-site visitor definition approved",
 	cross_site_identity_bridge: "Same person deduplicated across Sync sites",
 	approved_rating_definition: "Positive rating definition approved",

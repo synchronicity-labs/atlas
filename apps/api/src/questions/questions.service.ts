@@ -22,6 +22,7 @@ import {
 } from "../metric-verification";
 import { SalesService } from "../sales/sales.service";
 import { paginate, resolveOrderBy } from "../trpc/list-input";
+import { questionExplanation } from "./question-explanation";
 import type {
 	QuestionListInput,
 	QuestionPreviewInput,
@@ -97,7 +98,12 @@ export class QuestionsService {
 						select: {
 							version: true,
 							metric: {
-								select: { key: true, name: true, status: true },
+								select: {
+									key: true,
+									name: true,
+									description: true,
+									status: true,
+								},
 							},
 							snapshots: {
 								orderBy: { computedAt: "desc" },
@@ -140,6 +146,11 @@ export class QuestionsService {
 				const snapshot = row.metricVersion?.snapshots[0];
 				return {
 					...row,
+					explanation: questionExplanation({
+						name: row.name,
+						description: row.description,
+						metricDescription: row.metricVersion?.metric.description,
+					}),
 					metricVersion: row.metricVersion
 						? {
 								version: row.metricVersion.version,
@@ -303,6 +314,11 @@ export class QuestionsService {
 
 		return {
 			...question,
+			explanation: questionExplanation({
+				name: question.name,
+				description: question.description,
+				metricDescription: question.metricVersion?.metric.description,
+			}),
 			metric: question.metricVersion
 				? {
 						...question.metricVersion.metric,
@@ -442,11 +458,16 @@ export class QuestionsService {
 			});
 		}
 		const classified = usesRevenueDoorPolicy(questionNumber)
-			? await this.revenueDoorPolicy.compile(queryText)
+			? await this.revenueDoorPolicy.compileForQuestion(
+					questionNumber,
+					queryText,
+				)
 			: null;
 		const classifiedQueryText = classified?.queryText ?? queryText;
 		assertReadOnlyQuery(language, classifiedQueryText);
-		const eligibility = await this.tinybirdEligibility.current();
+		const eligibility = usesRevenueDoorPolicy(questionNumber)
+			? await this.tinybirdEligibility.currentForRevenue()
+			: await this.tinybirdEligibility.current();
 		const governed = this.tinybirdEligibility.govern(
 			classifiedQueryText,
 			databaseExternalId,

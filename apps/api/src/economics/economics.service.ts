@@ -10,6 +10,7 @@ import { Injectable, NotFoundException } from "@nestjs/common";
 import { InjectDatabase } from "../database/database.constants";
 import { MetabaseClient } from "../metabase/metabase.client";
 import { metabaseConfig } from "../metabase/metabase.config";
+import { ProductMetricPublisher } from "../metabase/product-metric.publisher";
 import {
 	TinybirdEligibilityService,
 	type TinybirdEligibilitySnapshot,
@@ -95,6 +96,7 @@ export class EconomicsService {
 	constructor(
 		@InjectDatabase() private readonly db: Db,
 		private readonly tinybirdEligibility: TinybirdEligibilityService,
+		private readonly metricPublisher: ProductMetricPublisher,
 	) {}
 
 	async preview(queryText: string): Promise<Result> {
@@ -174,12 +176,18 @@ export class EconomicsService {
 							select: {
 								id: true,
 								number: true,
+								name: true,
+								description: true,
+								connector: true,
 								sourceId: true,
 								sourceExternalId: true,
+								databaseExternalId: true,
+								metricVersionId: true,
 								versions: {
 									orderBy: { version: "desc" },
 									take: 1,
 									select: {
+										id: true,
 										version: true,
 										queryLanguage: true,
 										queryText: true,
@@ -235,7 +243,7 @@ export class EconomicsService {
 		let cardsProcessed = 0;
 		let snapshotsCreated = 0;
 		try {
-			const eligibility = await this.tinybirdEligibility.current();
+			const eligibility = await this.tinybirdEligibility.currentForRevenue();
 			for (const question of questions) {
 				const version = question.versions[0];
 				if (!version) continue;
@@ -264,6 +272,25 @@ export class EconomicsService {
 						},
 					],
 					skipDuplicates: true,
+				});
+				await this.metricPublisher.publish({
+					question,
+					version,
+					result,
+					syncRunId: run.id,
+					capturedAt,
+					eligibility: {
+						applied: true,
+						capturedAt: eligibility.capturedAt.toISOString(),
+						contentHash: eligibility.contentHash,
+						excludedUsers: eligibility.excludedUserIds.length,
+						excludedOrganizations: eligibility.excludedOrganizationIds.length,
+						excludedCustomers: eligibility.excludedCustomerIds.length,
+						complete: eligibility.complete,
+						sourceRows: eligibility.sourceRows,
+						returnedRows: eligibility.returnedRows,
+						scope: eligibility.scope,
+					},
 				});
 				await this.db.question.update({
 					where: { id: question.id },

@@ -12,6 +12,15 @@ doppler run -- bun install
 bun run dev
 ```
 
+During active Atlas development, the `atlas/local` Doppler config uses the
+shared Atlas database. Localhost therefore shows the same questions, snapshots,
+and workspace data as the deployed app. Local edits, question runs, and syncs
+also write to that shared data.
+
+Database migration, seed, and reset commands still reject a remote database by
+default. Do not bypass that guard during normal development. Separate databases
+can be introduced later if Atlas needs an isolated staging environment.
+
 The root `dev`, database, Metabase, and marketing sync scripts run through `doppler run`.
 Use `bun run dev:env` only in CI or a deployment that already injects the same
 variables into the process. Never commit a Doppler service token or secret value.

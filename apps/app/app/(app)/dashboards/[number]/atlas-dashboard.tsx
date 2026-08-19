@@ -44,6 +44,7 @@ import ReactGridLayout, {
 	useContainerWidth,
 } from "react-grid-layout";
 import { toast } from "sonner";
+import { QuestionExplanationTooltip } from "@/components/question-explanation";
 import { RudyChatTrigger } from "@/components/rudy-chat";
 import { useTRPC } from "@/lib/trpc/client";
 import type { RouterOutputs } from "@/lib/trpc/types";
@@ -158,6 +159,20 @@ function humanize(value: string): string {
 		.replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
+function sourceErrorSummary(lastError: string | null): string {
+	if (!lastError) return "The latest refresh failed.";
+	if (lastError.includes("__ATLAS_")) {
+		return "A saved question was not prepared before it reached Metabase.";
+	}
+	if (/\b(401|403)\b|unauthorized|forbidden/i.test(lastError)) {
+		return "Metabase rejected the saved read-only credential.";
+	}
+	if (/Metabase request failed \(400\)|DB::Exception/i.test(lastError)) {
+		return "Metabase rejected one of the saved questions.";
+	}
+	return "The latest refresh failed. Existing results are still available.";
+}
+
 function setting(
 	card: { displaySettings: unknown },
 	key: string,
@@ -166,6 +181,15 @@ function setting(
 	if (!value || typeof value !== "object" || Array.isArray(value)) return null;
 	const candidate = (value as Record<string, unknown>)[key];
 	return typeof candidate === "string" ? candidate : null;
+}
+
+function booleanSetting(
+	card: { displaySettings: unknown },
+	key: string,
+): boolean {
+	const value = card.displaySettings;
+	if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+	return (value as Record<string, unknown>)[key] === true;
 }
 
 function chartPeriod(value: unknown, compact = false): string {
@@ -193,6 +217,12 @@ function chartPeriod(value: unknown, compact = false): string {
 function timeframeLabel(card: DashboardCard): string | null {
 	const explicit = setting(card, "timeframe") ?? setting(card, "periodLabel");
 	if (explicit) return explicit;
+	if ([1102, 1110].includes(card.question.number)) {
+		return "Previous month actual → current month projected";
+	}
+	if (card.question.number === 1111) {
+		return "Previous month-end → current value";
+	}
 	const snapshot = card.snapshot;
 	if (!snapshot) return null;
 	const cardColumns = columns(snapshot);
@@ -220,16 +250,18 @@ function CardHeading({ card }: { card: DashboardCard }) {
 	const timeframe = timeframeLabel(card);
 	const checkedAt = card.question.lastCheckedAt ?? card.snapshot?.capturedAt;
 	return (
-		<div className="absolute top-3 right-16 left-4 z-10">
+		<div className="absolute top-3 right-16 left-4 z-10 min-w-0">
 			<p className="truncate font-medium text-sm">{card.question.name}</p>
-			<div className="mt-0.5 flex min-w-0 items-center gap-1 text-[11px] text-muted-foreground">
-				<span className="min-w-0 truncate">{timeframe}</span>
+			<div className="mt-0.5 flex min-w-0 max-w-full items-center gap-1 overflow-hidden text-[11px] text-muted-foreground">
+				<span className="min-w-0 flex-1 truncate">{timeframe}</span>
 				{checkedAt ? (
 					<span className="shrink-0">
 						· <RelativeTimestamp value={checkedAt} prefix="Checked" />
 					</span>
 				) : null}
-				<MetricTrustIndicator summary={card.verification} compact />
+				<span className="flex shrink-0">
+					<MetricTrustIndicator summary={card.verification} compact />
+				</span>
 			</div>
 		</div>
 	);
@@ -245,6 +277,7 @@ function isPercent(name: string): boolean {
 }
 
 function isCurrency(name: string): boolean {
+	if (/cash|collect|usage.*incurred|invoice.*raised/i.test(name)) return true;
 	if (
 		/(^|_)(count|counts|customers|organizations|orgs|subscriptions|invoices|generations|contacts|users)($|_)/i.test(
 			name,
@@ -332,6 +365,7 @@ function ScalarCard({ card }: { card: DashboardCard }) {
 	const currentValue = current?.find((cell) => typeof cell === "number");
 	const previousValue = previous?.find((cell) => typeof cell === "number");
 	const period = current?.find((cell) => typeof cell === "string");
+	const previousPeriod = previous?.find((cell) => typeof cell === "string");
 	const isCurrentMonth =
 		typeof period === "string" &&
 		period.slice(0, 7) === new Date().toISOString().slice(0, 7);
@@ -344,20 +378,39 @@ function ScalarCard({ card }: { card: DashboardCard }) {
 		typeof currentValue === "number" &&
 		typeof previousValue === "number" &&
 		previousValue !== 0 &&
-		!isCurrentMonth
+		(!isCurrentMonth || booleanSetting(card, "compareCurrentPeriod"))
 			? percentMetric
 				? currentValue - previousValue
 				: ((currentValue - previousValue) / previousValue) * 100
 			: null;
+	const runRateComparison = [1102, 1110, 1111].includes(card.question.number);
+	const currentPeriodLabel =
+		typeof period === "string"
+			? card.question.number === 1110
+				? `${formatMonthPeriod(period)} projected usage`
+				: card.question.number === 1111
+					? `${formatMonthPeriod(period)} current subscription value`
+					: card.question.number === 1102
+						? `${formatMonthPeriod(period)} projected run-rate`
+						: formatMonthPeriod(period, { includeMtd: true })
+			: null;
+	const previousPeriodLabel =
+		typeof previousPeriod === "string"
+			? card.question.number === 1111
+				? `${formatMonthPeriod(previousPeriod)} month-end`
+				: `${formatMonthPeriod(previousPeriod)} actual`
+			: "Previous period";
 
 	return (
 		<div className="atlas-scalar-card grid h-full grid-rows-[auto_minmax(0,1fr)] gap-2 p-4">
-			<div className="shrink-0 pr-16">
+			<div className="min-w-0 shrink-0 pr-16">
 				<p className="line-clamp-2 font-medium text-sm leading-5">
 					{card.question.name}
 				</p>
-				<div className="mt-0.5 flex min-w-0 items-center gap-1 text-[11px] text-muted-foreground">
-					<span className="min-w-0 truncate">{timeframeLabel(card)}</span>
+				<div className="mt-0.5 flex min-w-0 max-w-full items-center gap-1 overflow-hidden text-[11px] text-muted-foreground">
+					<span className="min-w-0 flex-1 truncate">
+						{timeframeLabel(card)}
+					</span>
 					{card.question.lastCheckedAt || card.snapshot?.capturedAt ? (
 						<span className="shrink-0">
 							·{" "}
@@ -369,7 +422,9 @@ function ScalarCard({ card }: { card: DashboardCard }) {
 							/>
 						</span>
 					) : null}
-					<MetricTrustIndicator summary={card.verification} compact />
+					<span className="flex shrink-0">
+						<MetricTrustIndicator summary={card.verification} compact />
+					</span>
 				</div>
 			</div>
 			{typeof currentValue === "number" ? (
@@ -377,9 +432,9 @@ function ScalarCard({ card }: { card: DashboardCard }) {
 					<p className="atlas-scalar-value max-w-full font-medium tracking-tight tabular-nums">
 						{formattedCurrent}
 					</p>
-					{period ? (
+					{currentPeriodLabel ? (
 						<p className="mt-1 text-muted-foreground text-sm">
-							{formatMonthPeriod(period, { includeMtd: true })}
+							{currentPeriodLabel}
 						</p>
 					) : null}
 					{change != null && typeof previousValue === "number" ? (
@@ -389,10 +444,22 @@ function ScalarCard({ card }: { card: DashboardCard }) {
 								change >= 0 ? "text-success" : "text-destructive",
 							)}
 						>
-							{change >= 0 ? "+" : ""}
-							{change.toFixed(2)}
-							{percentMetric ? " pts" : "%"} · previous{" "}
-							{formatMetric(previousValue, card.question.name)}
+							{runRateComparison ? (
+								<>
+									{previousPeriodLabel}:{" "}
+									{formatMetric(previousValue, card.question.name)} ·{" "}
+									{change >= 0 ? "+" : ""}
+									{change.toFixed(2)}
+									{percentMetric ? " pts" : "%"}
+								</>
+							) : (
+								<>
+									{change >= 0 ? "+" : ""}
+									{change.toFixed(2)}
+									{percentMetric ? " pts" : "%"} · previous{" "}
+									{formatMetric(previousValue, card.question.name)}
+								</>
+							)}
 						</p>
 					) : null}
 				</div>
@@ -766,6 +833,9 @@ function PendingKpiRail({ cards }: { cards: DashboardCard[] }) {
 								{card.question.name}
 							</p>
 							<p className="mt-1 line-clamp-2 text-muted-foreground text-xs leading-5">
+								{card.question.explanation}
+							</p>
+							<p className="mt-1 line-clamp-2 text-muted-foreground text-xs leading-5">
 								{pendingReason(card)}
 							</p>
 						</div>
@@ -953,6 +1023,9 @@ const QuestionCard = memo(
 		onVisualization: (visualization: Visualization) => void;
 	}) {
 		const presentation = setting(card, "presentation");
+		const questionDefinition = (
+			card.question as unknown as { definition?: unknown }
+		).definition;
 		return (
 			<div
 				className={cn(
@@ -968,6 +1041,10 @@ const QuestionCard = memo(
 							: "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100",
 					)}
 				>
+					<QuestionExplanationTooltip
+						explanation={card.question.explanation}
+						definition={questionDefinition}
+					/>
 					<RudyChatTrigger
 						record={{ kind: "question", id: String(card.question.number) }}
 						label={`Ask Rudy about question ${card.question.number}`}
@@ -1440,7 +1517,7 @@ export function AtlasDashboard({ number }: { number: number }) {
 						{sourceErrors
 							.map((source) =>
 								source.lastError
-									? `${source.label}: ${source.lastError}`
+									? `${source.label}: ${sourceErrorSummary(source.lastError)}`
 									: `${source.label} needs attention`,
 							)
 							.join(" ")}

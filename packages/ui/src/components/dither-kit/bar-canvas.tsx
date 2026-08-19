@@ -84,6 +84,8 @@ export function BarCanvas() {
         const emphasis = current.selectedDataKey ?? current.focusDataKey
         const selectedOpacity = emphasis !== null && emphasis !== key ? 0.3 : 1
         for (let index = 0; index < current.dataLength; index += 1) {
+          const value = current.data[index]?.[key]
+          if (!(typeof value === "number" && Number.isFinite(value))) continue
           const progressForBar = barProgress(
             index,
             current.dataLength,

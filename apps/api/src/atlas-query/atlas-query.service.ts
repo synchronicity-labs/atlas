@@ -6,6 +6,7 @@ import {
 } from "@crm/db";
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { InjectDatabase } from "../database/database.constants";
+import { questionExplanation } from "../questions/question-explanation";
 import type { AtlasQuestionQuery } from "./atlas-query.contracts";
 
 @Injectable()
@@ -54,6 +55,7 @@ export class AtlasQueryService {
 								select: {
 									key: true,
 									name: true,
+									description: true,
 									ownerTeam: true,
 									status: true,
 								},
@@ -210,6 +212,11 @@ export class AtlasQueryService {
 					number: question.number,
 					name: question.name,
 					description: question.description,
+					explanation: questionExplanation({
+						name: question.name,
+						description: question.description,
+						metricDescription: question.metricVersion?.metric.description,
+					}),
 					connector: question.connector,
 					purpose: question.purpose,
 					metric: question.metricVersion
@@ -438,6 +445,11 @@ export class AtlasQueryService {
 				number: question.number,
 				name: question.name,
 				description: question.description,
+				explanation: questionExplanation({
+					name: question.name,
+					description: question.description,
+					metricDescription: question.metricVersion?.metric.description,
+				}),
 				status: question.status,
 				connector: question.connector,
 				purpose: question.purpose,

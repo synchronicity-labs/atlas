@@ -25,10 +25,19 @@ export type RevenueDoorPolicyEvidence = {
 	status: RevenueDoorPolicyStatus;
 	applied: boolean;
 	complete: boolean;
+	matchMode: "EXCLUDE_NON_TOOLS" | "INCLUDE_PARTNERS";
+	door: RevenueDoor;
 	ruleCount: number;
 	excludedPlans: string[];
 	excludedDomains: string[];
 	excludedOrganizationIds: string[];
+	includedPlans: string[];
+	includedDomains: string[];
+	includedOrganizationIds: string[];
+	includedOrganizationLabels: Array<{
+		organizationId: string;
+		label: string;
+	}>;
 	unresolvedDomains: string[];
 	contentHash: string;
 };
@@ -36,7 +45,52 @@ export type RevenueDoorPolicyEvidence = {
 type ResolvedRevenueDoorPolicy = Omit<RevenueDoorPolicyEvidence, "applied">;
 
 export function usesRevenueDoorPolicy(questionNumber: number): boolean {
-	return questionNumber >= 1101 && questionNumber <= 1109;
+	return questionNumber >= 1101 && questionNumber <= 1116;
+}
+
+export function usesSubscribedRevenueEligibility(
+	questionNumber: number,
+	questionName = "",
+	queryText = "",
+): boolean {
+	if (
+		(questionNumber >= 1001 && questionNumber <= 1014) ||
+		usesRevenueDoorPolicy(questionNumber)
+	) {
+		return true;
+	}
+	const metricText = `${questionName}\n${queryText}`.toLowerCase();
+	if (/free\s*(?:&|and)\s*paid|paid\s*(?:&|and)\s*free/.test(metricText)) {
+		return false;
+	}
+	return [
+		/paid[_\s-]*(?:org|organization|customer|team)/,
+		/subscription/,
+		/invoice/,
+		/cash[_\s-]*(?:collected|collection|ltv|revenue)/,
+		/revenue/,
+		/run[_\s-]*rate/,
+		/\bndr\b/,
+		/gross[_\s-]*logo[_\s-]*retention/,
+		/contribution[_\s-]*margin/,
+	].some((pattern) => pattern.test(metricText));
+}
+
+export function usesPartnerRevenueDoorPolicy(questionNumber: number): boolean {
+	return questionNumber >= 1112 && questionNumber <= 1116;
+}
+
+export function assertResolvedAtlasQuery(
+	questionNumber: number,
+	queryText: string,
+): void {
+	const unresolvedTemplates = [
+		...new Set(queryText.match(/__ATLAS_[A-Z0-9_]+__/g) ?? []),
+	];
+	if (unresolvedTemplates.length === 0) return;
+	throw new Error(
+		`Question ${questionNumber} has an unresolved Atlas query template: ${unresolvedTemplates.join(", ")}.`,
+	);
 }
 
 @Injectable()
@@ -55,46 +109,95 @@ export class RevenueDoorPolicyService {
 		};
 	}
 
+	async compileForQuestion(
+		questionNumber: number,
+		queryText: string,
+	): Promise<{
+		queryText: string;
+		evidence: RevenueDoorPolicyEvidence;
+	}> {
+		const compiled = usesPartnerRevenueDoorPolicy(questionNumber)
+			? this.compilePartners(queryText)
+			: this.compile(queryText);
+		const result = await compiled;
+		assertResolvedAtlasQuery(questionNumber, result.queryText);
+		return result;
+	}
+
+	async compilePartners(queryText: string): Promise<{
+		queryText: string;
+		evidence: RevenueDoorPolicyEvidence;
+	}> {
+		const policy = await this.partners();
+		const compiled = applyPartnerRevenueDoorPolicy(queryText, policy);
+		return {
+			queryText: compiled.queryText,
+			evidence: { ...policy, applied: compiled.applied },
+		};
+	}
+
 	async current(): Promise<ResolvedRevenueDoorPolicy> {
+		return this.resolve("EXCLUDE_NON_TOOLS");
+	}
+
+	async partners(): Promise<ResolvedRevenueDoorPolicy> {
+		return this.resolve("INCLUDE_PARTNERS");
+	}
+
+	private async resolve(
+		matchMode: "EXCLUDE_NON_TOOLS" | "INCLUDE_PARTNERS",
+	): Promise<ResolvedRevenueDoorPolicy> {
 		const policy = await this.db.revenueDoorPolicy.findUniqueOrThrow({
 			where: { id: POLICY_ID },
 			include: {
 				rules: {
-					where: { active: true, door: { not: RevenueDoor.TOOLS } },
+					where: { active: true },
 					orderBy: [{ matchKind: "asc" }, { matchValue: "asc" }],
 				},
 			},
 		});
-		const excludedPlans = sortedUnique(
-			policy.rules
+		const rules = policy.rules.filter((rule) =>
+			matchMode === "INCLUDE_PARTNERS"
+				? rule.door === RevenueDoor.PARTNERS
+				: rule.door !== RevenueDoor.TOOLS,
+		);
+		const plans = sortedUnique(
+			rules
 				.filter((rule) => rule.matchKind === RevenueDoorMatchKind.PLAN)
 				.map((rule) => normalize(rule.matchValue)),
 		);
-		const excludedDomains = sortedUnique(
-			policy.rules
+		const domains = sortedUnique(
+			rules
 				.filter((rule) => rule.matchKind === RevenueDoorMatchKind.EMAIL_DOMAIN)
 				.map((rule) => normalize(rule.matchValue)),
 		);
-		const directOrganizationIds = policy.rules
+		const directOrganizationIds = rules
 			.filter((rule) => rule.matchKind === RevenueDoorMatchKind.ORGANIZATION_ID)
 			.map((rule) => rule.matchValue.trim());
-		const stripeCustomerIds = policy.rules
+		const stripeCustomerIds = rules
 			.filter(
 				(rule) => rule.matchKind === RevenueDoorMatchKind.STRIPE_CUSTOMER_ID,
 			)
 			.map((rule) => rule.matchValue.trim());
-		const planOrganizations = excludedPlans.length
+		const organizationSelect = {
+			externalId: true,
+			domain: true,
+			memberships: {
+				select: { productUser: { select: { email: true } } },
+			},
+		} as const;
+		const planOrganizations = plans.length
 			? await this.db.productOrganization.findMany({
 					where: {
-						OR: excludedPlans.map((plan) => ({
+						OR: plans.map((plan) => ({
 							plan: { equals: plan, mode: "insensitive" },
 						})),
 					},
-					select: { externalId: true },
+					select: organizationSelect,
 				})
 			: [];
 		const domainMatches = await Promise.all(
-			excludedDomains.map(async (domain) => ({
+			domains.map(async (domain) => ({
 				domain,
 				organizations: await this.db.productOrganization.findMany({
 					where: {
@@ -114,17 +217,17 @@ export class RevenueDoorPolicyService {
 							},
 						],
 					},
-					select: { externalId: true },
+					select: organizationSelect,
 				}),
 			})),
 		);
 		const customerOrganizations = stripeCustomerIds.length
 			? await this.db.productOrganization.findMany({
 					where: { stripeCustomerId: { in: stripeCustomerIds } },
-					select: { externalId: true },
+					select: organizationSelect,
 				})
 			: [];
-		const excludedOrganizationIds = sortedUnique([
+		const organizationIds = sortedUnique([
 			...directOrganizationIds,
 			...planOrganizations.map((organization) => organization.externalId),
 			...customerOrganizations.map((organization) => organization.externalId),
@@ -135,16 +238,50 @@ export class RevenueDoorPolicyService {
 		const unresolvedDomains = domainMatches
 			.filter((match) => match.organizations.length === 0)
 			.map((match) => match.domain);
+		const labels = new Map<string, string>();
+		for (const match of domainMatches) {
+			for (const organization of match.organizations) {
+				labels.set(organization.externalId, match.domain);
+			}
+		}
+		for (const organization of [
+			...planOrganizations,
+			...customerOrganizations,
+		]) {
+			if (!labels.has(organization.externalId)) {
+				labels.set(organization.externalId, organizationLabel(organization));
+			}
+		}
+		for (const rule of rules.filter(
+			(rule) => rule.matchKind === RevenueDoorMatchKind.ORGANIZATION_ID,
+		)) {
+			labels.set(rule.matchValue.trim(), rule.label ?? rule.matchValue.trim());
+		}
+		const includedOrganizationLabels = organizationIds.map(
+			(organizationId) => ({
+				organizationId,
+				label: labels.get(organizationId) ?? "Other partner",
+			}),
+		);
+		const isPartnerPolicy = matchMode === "INCLUDE_PARTNERS";
 		const summary = {
 			policyId: policy.id,
 			status: policy.status,
+			matchMode,
+			door: isPartnerPolicy ? RevenueDoor.PARTNERS : RevenueDoor.TOOLS,
 			complete:
 				policy.status === RevenueDoorPolicyStatus.COMPLETE &&
 				unresolvedDomains.length === 0,
-			ruleCount: policy.rules.length,
-			excludedPlans,
-			excludedDomains,
-			excludedOrganizationIds,
+			ruleCount: rules.length,
+			excludedPlans: isPartnerPolicy ? [] : plans,
+			excludedDomains: isPartnerPolicy ? [] : domains,
+			excludedOrganizationIds: isPartnerPolicy ? [] : organizationIds,
+			includedPlans: isPartnerPolicy ? plans : [],
+			includedDomains: isPartnerPolicy ? domains : [],
+			includedOrganizationIds: isPartnerPolicy ? organizationIds : [],
+			includedOrganizationLabels: isPartnerPolicy
+				? includedOrganizationLabels
+				: [],
 			unresolvedDomains,
 		};
 
@@ -157,6 +294,51 @@ export class RevenueDoorPolicyService {
 	}
 }
 
+export function applyPartnerRevenueDoorPolicy(
+	queryText: string,
+	policy: ResolvedRevenueDoorPolicy,
+): { queryText: string; applied: boolean } {
+	const usage = wrapTable(
+		queryText,
+		USAGE_TABLE,
+		[
+			partnerCombinedPredicate(
+				"lower(coalesce(\"organizationPlanType\", ''))",
+				'"organizationId"',
+				policy,
+			),
+			hasSubscriptionHistoryPredicate('"organizationId"'),
+		].join(" and "),
+	);
+	const subscriptions = wrapTable(
+		usage.queryText,
+		SUBSCRIPTION_TABLE,
+		partnerCombinedPredicate(
+			"lower(coalesce(plan, ''))",
+			'"organizationId"',
+			policy,
+		),
+	);
+	let governed = subscriptions.queryText;
+	let applied = usage.applied || subscriptions.applied;
+	for (const table of ORGANIZATION_TABLES) {
+		const result = wrapTable(
+			governed,
+			table,
+			partnerOrganizationPredicate('"organizationId"', policy),
+		);
+		governed = result.queryText;
+		applied ||= result.applied;
+	}
+	return {
+		queryText: governed.replaceAll(
+			"__ATLAS_PARTNER_LABEL__",
+			partnerLabelExpression('"organizationId"', policy),
+		),
+		applied,
+	};
+}
+
 export function applyRevenueDoorPolicy(
 	queryText: string,
 	policy: ResolvedRevenueDoorPolicy,
@@ -164,11 +346,14 @@ export function applyRevenueDoorPolicy(
 	const usage = wrapTable(
 		queryText,
 		USAGE_TABLE,
-		combinedPredicate(
-			"lower(coalesce(\"organizationPlanType\", ''))",
-			'"organizationId"',
-			policy,
-		),
+		[
+			combinedPredicate(
+				"lower(coalesce(\"organizationPlanType\", ''))",
+				'"organizationId"',
+				policy,
+			),
+			hasSubscriptionHistoryPredicate('"organizationId"'),
+		].join(" and "),
 	);
 	const subscriptions = wrapTable(
 		usage.queryText,
@@ -223,6 +408,54 @@ function organizationPredicate(
 		.join(", ")})`;
 }
 
+function hasSubscriptionHistoryPredicate(organizationColumn: string): string {
+	return `${organizationColumn} in (select distinct "organizationId" from ${SUBSCRIPTION_TABLE} where "organizationId" is not null and "organizationId" != '')`;
+}
+
+function partnerCombinedPredicate(
+	planColumn: string,
+	organizationColumn: string,
+	policy: ResolvedRevenueDoorPolicy,
+): string {
+	const predicates = [];
+	if (policy.includedPlans.length > 0) {
+		predicates.push(
+			`${planColumn} in (${policy.includedPlans.map(sqlString).join(", ")})`,
+		);
+	}
+	if (policy.includedOrganizationIds.length > 0) {
+		predicates.push(
+			`${organizationColumn} in (${policy.includedOrganizationIds
+				.map(sqlString)
+				.join(", ")})`,
+		);
+	}
+	return predicates.length > 0 ? `(${predicates.join(" or ")})` : "0 = 1";
+}
+
+function partnerOrganizationPredicate(
+	organizationColumn: string,
+	policy: ResolvedRevenueDoorPolicy,
+): string {
+	if (policy.includedOrganizationIds.length === 0) return "0 = 1";
+	return `${organizationColumn} in (${policy.includedOrganizationIds
+		.map(sqlString)
+		.join(", ")})`;
+}
+
+function partnerLabelExpression(
+	organizationColumn: string,
+	policy: ResolvedRevenueDoorPolicy,
+): string {
+	const branches = policy.includedOrganizationLabels.flatMap((entry) => [
+		`${organizationColumn} = ${sqlString(entry.organizationId)}`,
+		sqlString(entry.label),
+	]);
+	return branches.length > 0
+		? `multiIf(${branches.join(", ")}, 'Other partner')`
+		: "'Other partner'";
+}
+
 function wrapTable(queryText: string, table: string, predicate: string) {
 	const pattern = new RegExp(
 		`\\b${table.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`,
@@ -246,4 +479,16 @@ function normalize(value: string): string {
 
 function sqlString(value: string): string {
 	return `'${value.replaceAll("'", "''")}'`;
+}
+
+function organizationLabel(organization: {
+	domain: string | null;
+	memberships: Array<{ productUser: { email: string | null } }>;
+}): string {
+	if (organization.domain) return normalize(organization.domain);
+	for (const membership of organization.memberships) {
+		const domain = membership.productUser.email?.split("@")[1];
+		if (domain) return normalize(domain);
+	}
+	return "Other partner";
 }

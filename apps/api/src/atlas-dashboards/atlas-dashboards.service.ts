@@ -12,6 +12,7 @@ import {
 	summarizeMetricVerification,
 	summarizePendingMetricVerification,
 } from "../metric-verification";
+import { questionExplanation } from "../questions/question-explanation";
 import { SalesService } from "../sales/sales.service";
 import type { dashboardLayoutInput } from "./atlas-dashboards.contracts";
 
@@ -211,6 +212,12 @@ export class AtlasDashboardsService {
 								},
 								sourceExternalId: true,
 								metricVersionId: true,
+								metricVersion: {
+									select: {
+										businessDefinition: true,
+										metric: { select: { description: true } },
+									},
+								},
 								canonicalCatalogEntries: {
 									where: { missingAt: null },
 									orderBy: { sourceRow: "asc" },
@@ -361,8 +368,15 @@ export class AtlasDashboardsService {
 				...card,
 				question: {
 					...card.question,
+					explanation: questionExplanation({
+						name: card.question.name,
+						description: card.question.description,
+						metricDescription: card.question.metricVersion?.metric.description,
+					}),
+					definition: card.question.metricVersion?.businessDefinition ?? null,
 					lastCheckedAt: card.question.lastCheckedAt?.toISOString() ?? null,
 					metricVersionId: undefined,
+					metricVersion: undefined,
 					catalog: catalog
 						? {
 								readiness: catalog.readiness,

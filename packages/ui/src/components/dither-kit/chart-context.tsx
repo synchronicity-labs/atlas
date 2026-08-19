@@ -388,7 +388,8 @@ export function useChartController({
         return {
           name,
           label: config[name]?.label ?? name,
-          value: typeof raw === "number" ? raw : 0,
+          value:
+            typeof raw === "number" && Number.isFinite(raw) ? raw : null,
           seed: seedOf(name),
           dimmed: (() => {
             const emphasis = selectedDataKey ?? focusDataKey

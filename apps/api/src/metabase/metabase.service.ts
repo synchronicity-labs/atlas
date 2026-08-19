@@ -28,6 +28,7 @@ import {
 import {
 	RevenueDoorPolicyService,
 	usesRevenueDoorPolicy,
+	usesSubscribedRevenueEligibility,
 } from "./revenue-door-policy.service";
 import { TinybirdEligibilityService } from "./tinybird-eligibility.service";
 
@@ -457,6 +458,7 @@ export class MetabaseService {
 								number: true,
 								name: true,
 								description: true,
+								metricVersionId: true,
 								connector: true,
 								sourceId: true,
 								sourceExternalId: true,
@@ -548,12 +550,29 @@ export class MetabaseService {
 		let snapshotsCreated = 0;
 		try {
 			const client = new MetabaseClient(config);
-			const eligibility = questions.some(
+			const generalEligibility = questions.some(
 				(question) =>
 					question.databaseExternalId === "166" &&
-					question.versions[0]?.queryLanguage === QueryLanguage.SQL,
+					question.versions[0]?.queryLanguage === QueryLanguage.SQL &&
+					!usesSubscribedRevenueEligibility(
+						question.number,
+						question.name,
+						question.versions[0]?.queryText,
+					),
 			)
 				? await this.tinybirdEligibility.current()
+				: null;
+			const revenueEligibility = questions.some(
+				(question) =>
+					question.databaseExternalId === "166" &&
+					question.versions[0]?.queryLanguage === QueryLanguage.SQL &&
+					usesSubscribedRevenueEligibility(
+						question.number,
+						question.name,
+						question.versions[0]?.queryText,
+					),
+			)
+				? await this.tinybirdEligibility.currentForRevenue()
 				: null;
 			for (
 				let offset = 0;
@@ -577,11 +596,21 @@ export class MetabaseService {
 						assertReadOnlyQuery(language, version.queryText);
 						const revenueDoor =
 							language === "SQL" && usesRevenueDoorPolicy(question.number)
-								? await this.revenueDoorPolicy.compile(version.queryText)
+								? await this.revenueDoorPolicy.compileForQuestion(
+										question.number,
+										version.queryText,
+									)
 								: null;
 						const classifiedQueryText =
 							revenueDoor?.queryText ?? version.queryText;
 						assertReadOnlyQuery(language, classifiedQueryText);
+						const eligibility = usesSubscribedRevenueEligibility(
+							question.number,
+							question.name,
+							classifiedQueryText,
+						)
+							? revenueEligibility
+							: generalEligibility;
 						const governed = eligibility
 							? this.tinybirdEligibility.govern(
 									classifiedQueryText,
@@ -708,8 +737,11 @@ export class MetabaseService {
 							questionCount: questions.length,
 							remainingQuestions,
 							eligibilityCapturedAt:
-								eligibility?.capturedAt.toISOString() ?? null,
-							eligibilityHash: eligibility?.contentHash ?? null,
+								generalEligibility?.capturedAt.toISOString() ?? null,
+							eligibilityHash: generalEligibility?.contentHash ?? null,
+							revenueEligibilityCapturedAt:
+								revenueEligibility?.capturedAt.toISOString() ?? null,
+							revenueEligibilityHash: revenueEligibility?.contentHash ?? null,
 						}),
 					},
 				}),

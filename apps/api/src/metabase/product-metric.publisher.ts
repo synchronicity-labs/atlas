@@ -46,14 +46,16 @@ type ProductMetricSpec = {
 	cadenceMinutes?: number;
 };
 
-type PublishInput = {
+export type PublishInput = {
 	question: {
 		id: string;
 		number: number;
 		name: string;
 		description: string | null;
+		connector?: DataSourceKind;
 		sourceExternalId: string | null;
 		databaseExternalId: string | null;
+		metricVersionId?: string | null;
 	};
 	version: {
 		id: string;
@@ -74,6 +76,7 @@ type PublishInput = {
 		complete: boolean;
 		sourceRows: number;
 		returnedRows: number;
+		scope?: "ALL_IDENTITIES" | "SUBSCRIBED_ORGANIZATIONS";
 	};
 	revenueDoorPolicy?: RevenueDoorPolicyEvidence;
 };
@@ -120,7 +123,7 @@ export const PRODUCT_METRIC_SPECS: ProductMetricSpec[] = [
 		key: "product.monthly_activated_organizations",
 		name: "Monthly activated organizations",
 		description:
-			"Self-serve organizations with three completed generations across at least two distinct days.",
+			"Self-serve organizations with 3+ billable generations on 2+ distinct UTC days.",
 		grain: FactGrain.MONTH,
 		source: {
 			key: "tinybird:usage",
@@ -157,7 +160,7 @@ export const PRODUCT_METRIC_SPECS: ProductMetricSpec[] = [
 			secondDayReturn:
 				"another completed generation on a distinct day within 14 days",
 			activation:
-				"three completed generations across two distinct days within 14 days",
+				"3+ completed generations across 2+ distinct UTC days within 14 days",
 		},
 		computation: {
 			aggregate: "cohort_share",
@@ -231,7 +234,7 @@ export const PRODUCT_METRIC_SPECS: ProductMetricSpec[] = [
 			entity: "starting_professional_organization_cohort",
 			requalificationMonthOffset: 2,
 			professionalDefinition:
-				"100 USD accrued value, three completed billable generations, two active days",
+				"$100+ accrued value, 3+ billable generations, and generations on 2+ distinct UTC days",
 		},
 		computation: { aggregate: "cohort_share", output: "value" },
 		requiresCrossSourceEligibility: true,
@@ -312,7 +315,7 @@ export const PRODUCT_METRIC_SPECS: ProductMetricSpec[] = [
 		key: "product.accrued_professional_paid_qualified",
 		name: "Accrued professional organization-months paid-qualified",
 		description:
-			"Accrued professional organization-months with at least 100 USD in paid subscription and usage invoices in the same month.",
+			"Accrued professional organization-months with $100+ in paid subscription and usage invoices in the same month.",
 		grain: FactGrain.MONTH,
 		source: {
 			key: "tinybird:usage-billing",
@@ -399,6 +402,374 @@ export const PRODUCT_METRIC_SPECS: ProductMetricSpec[] = [
 	},
 ];
 
+export const REVENUE_CLOSE_METRIC_SPECS: ProductMetricSpec[] = [
+	{
+		questionNumber: 1001,
+		sourceExternalId: "revenue:product-run-rate",
+		key: "company.revenue_close_product_run_rate",
+		name: "Product accrual run-rate",
+		description:
+			"Monthly usage incurred when generations finish plus the licensed invoice-item base. This is a run-rate reconstruction, not cash collected or recognized revenue.",
+		grain: FactGrain.MONTH,
+		source: {
+			key: "tinybird:revenue-close",
+			kind: DataSourceKind.TINYBIRD,
+			label: "Metabase finance revenue model",
+		},
+		eventTimeField: "generationEndedAt and invoice-item createdAt",
+		businessDefinition: {
+			formula: "paid_usage_accrual + licensed_subscription_base_proxy",
+			usageTimeField: "generationEndedAt",
+			classification: "run_rate_reconstruction",
+			notEquivalentTo: ["cash_collected", "recognized_revenue"],
+		},
+		computation: { aggregate: "sum", output: "product_run_rate" },
+		requiresCrossSourceEligibility: true,
+		ownerTeam: "Company",
+		createdBy: "atlas-revenue-close",
+		cadenceMinutes: 8 * 60,
+	},
+	{
+		questionNumber: 1002,
+		sourceExternalId: "revenue:paid-usage-accrual",
+		key: "company.revenue_close_paid_usage_accrual",
+		name: "Paid usage accrual",
+		description:
+			"Generation value incurred in the UTC month when each generation finished. This is usage activity, not an invoice or cash receipt.",
+		grain: FactGrain.MONTH,
+		source: {
+			key: "tinybird:revenue-close",
+			kind: DataSourceKind.TINYBIRD,
+			label: "Metabase finance revenue model",
+		},
+		eventTimeField: "generationEndedAt",
+		businessDefinition: {
+			valueBasis: "generationCostMillicents divided by 100000",
+			timeField: "generationEndedAt",
+			population: "organizations with a non-empty paid plan type",
+		},
+		computation: { aggregate: "monthly_sum", output: "usage_usd" },
+		requiresCrossSourceEligibility: true,
+		ownerTeam: "Company",
+		createdBy: "atlas-revenue-close",
+		cadenceMinutes: 8 * 60,
+	},
+	{
+		questionNumber: 1003,
+		sourceExternalId: "revenue:licensed-subscription-base",
+		key: "company.revenue_close_licensed_subscription_base_proxy",
+		name: "Licensed subscription base proxy",
+		description:
+			"Licensed Stripe invoice-item value after keeping one latest state per invoice-item id. This is an invoice-item proxy, not the live active-subscription base.",
+		grain: FactGrain.MONTH,
+		source: {
+			key: "tinybird:revenue-close",
+			kind: DataSourceKind.TINYBIRD,
+			label: "Metabase finance revenue model",
+		},
+		eventTimeField: "createdAt",
+		businessDefinition: {
+			entity: "latest_stripe_invoice_item_state",
+			priceType: "licensed",
+			includedStatuses: ["paid", "open"],
+			classification: "subscription_base_proxy",
+		},
+		computation: { aggregate: "monthly_sum", output: "subs_usd" },
+		requiresCrossSourceEligibility: true,
+		ownerTeam: "Company",
+		createdBy: "atlas-revenue-close",
+		cadenceMinutes: 8 * 60,
+	},
+	{
+		questionNumber: 1004,
+		sourceExternalId: "revenue:paid-customer-revenue",
+		key: "company.revenue_close_paid_customer_monthly_revenue",
+		name: "Paid customer monthly revenue",
+		description:
+			"Monthly paid-customer revenue from the warehouse table used as a native SQL replacement for Metabase question 1256.",
+		grain: FactGrain.MONTH,
+		source: {
+			key: "tinybird:revenue-close",
+			kind: DataSourceKind.TINYBIRD,
+			label: "Metabase finance revenue model",
+		},
+		eventTimeField: "month",
+		businessDefinition: {
+			source: "sync_prod.paid_customer_monthly_revenue",
+			replacesMetabaseQuestion: 1256,
+			classification: "native_sql_equivalent",
+		},
+		computation: { aggregate: "monthly_sum", output: "revenue_usd" },
+		requiresCrossSourceEligibility: true,
+		pendingChecks: [
+			{
+				name: "saved_question_equivalence",
+				reason:
+					"Direct execution of Metabase question 1256 is permission blocked, so Atlas cannot yet prove that the native SQL replacement is exactly equivalent.",
+			},
+		],
+		ownerTeam: "Company",
+		createdBy: "atlas-revenue-close",
+		cadenceMinutes: 8 * 60,
+	},
+	{
+		questionNumber: 1005,
+		sourceExternalId: "revenue:paid-invoice-collections",
+		key: "company.revenue_close_stripe_collections",
+		name: "Stripe paid invoice collections",
+		description:
+			"Cash paid on Stripe invoices after keeping one latest state per invoice id. This is money collected, not invoices raised or recognized revenue.",
+		grain: FactGrain.MONTH,
+		source: {
+			key: "tinybird:revenue-close",
+			kind: DataSourceKind.TINYBIRD,
+			label: "Metabase finance revenue model",
+		},
+		eventTimeField: "invoice createdAt",
+		businessDefinition: {
+			entity: "latest_stripe_invoice_state",
+			valueBasis: "amountPaid",
+			includedStatus: "paid",
+			classification: "cash_collected",
+		},
+		computation: { aggregate: "monthly_sum", output: "collections_usd" },
+		requiresCrossSourceEligibility: true,
+		ownerTeam: "Company",
+		createdBy: "atlas-revenue-close",
+		cadenceMinutes: 8 * 60,
+	},
+	{
+		questionNumber: 1006,
+		sourceExternalId: "revenue:paid-open-billings",
+		key: "company.revenue_close_stripe_billings",
+		name: "Stripe paid + open invoice billings",
+		description:
+			"Stripe invoice amount due after keeping one latest state per invoice id, grouped by invoice creation month. This is invoices raised, not cash collected.",
+		grain: FactGrain.MONTH,
+		source: {
+			key: "tinybird:revenue-close",
+			kind: DataSourceKind.TINYBIRD,
+			label: "Metabase finance revenue model",
+		},
+		eventTimeField: "invoice createdAt",
+		businessDefinition: {
+			entity: "latest_stripe_invoice_state",
+			valueBasis: "amountDue",
+			includedStatuses: ["paid", "open"],
+			classification: "invoices_raised",
+		},
+		computation: { aggregate: "monthly_sum", output: "amount_due_usd" },
+		requiresCrossSourceEligibility: true,
+		ownerTeam: "Company",
+		createdBy: "atlas-revenue-close",
+		cadenceMinutes: 8 * 60,
+	},
+	{
+		questionNumber: 1007,
+		sourceExternalId: "revenue:usage-spend-ndr",
+		key: "company.revenue_close_usage_ndr",
+		name: "Usage-spend NDR",
+		description:
+			"Next-month usage from the fixed prior-month organization cohort divided by that cohort's starting usage. Organizations with no next-month usage count as zero.",
+		grain: FactGrain.MONTH,
+		source: {
+			key: "tinybird:revenue-close",
+			kind: DataSourceKind.TINYBIRD,
+			label: "Metabase finance revenue model",
+		},
+		eventTimeField: "generationEndedAt",
+		businessDefinition: {
+			cohort: "organizations with usage in the starting month",
+			numerator: "next-month usage from the same organizations",
+			denominator: "starting-month usage",
+			missingCurrentUsage: 0,
+		},
+		computation: { aggregate: "cohort_ratio", output: "usage_ndr_pct" },
+		requiresCrossSourceEligibility: true,
+		ownerTeam: "Company",
+		createdBy: "atlas-revenue-close",
+		cadenceMinutes: 8 * 60,
+	},
+	{
+		questionNumber: 1008,
+		sourceExternalId: "revenue:product-run-rate-history",
+		key: "company.revenue_close_run_rate_history",
+		name: "Product run-rate composition history",
+		description:
+			"Shows monthly usage incurred and the licensed invoice-item proxy as separate parts of the product run-rate reconstruction.",
+		grain: FactGrain.MONTH,
+		source: {
+			key: "tinybird:revenue-close",
+			kind: DataSourceKind.TINYBIRD,
+			label: "Metabase finance revenue model",
+		},
+		eventTimeField: "generationEndedAt and invoice-item createdAt",
+		businessDefinition: {
+			components: ["paid_usage_accrual", "licensed_subscription_base_proxy"],
+			classification: "run_rate_reconstruction",
+		},
+		computation: { aggregate: "monthly_components" },
+		requiresCrossSourceEligibility: true,
+		ownerTeam: "Company",
+		createdBy: "atlas-revenue-close",
+		cadenceMinutes: 8 * 60,
+	},
+	{
+		questionNumber: 1009,
+		sourceExternalId: "revenue:reconciliation-history",
+		key: "company.revenue_close_reconciliation_history",
+		name: "Revenue reconciliation history",
+		description:
+			"Shows paid-customer revenue, Stripe cash collected, and Stripe invoices raised side by side. These are different views and must not be added together.",
+		grain: FactGrain.MONTH,
+		source: {
+			key: "tinybird:revenue-close",
+			kind: DataSourceKind.TINYBIRD,
+			label: "Metabase finance revenue model",
+		},
+		eventTimeField: "month and invoice createdAt",
+		businessDefinition: {
+			measures: [
+				"paid_customer_revenue",
+				"paid_invoice_collections",
+				"paid_open_invoice_billings",
+			],
+			warning: "the measures are reconciliations, not additive revenue",
+		},
+		computation: { aggregate: "monthly_reconciliation" },
+		requiresCrossSourceEligibility: true,
+		ownerTeam: "Company",
+		createdBy: "atlas-revenue-close",
+		cadenceMinutes: 8 * 60,
+	},
+	{
+		questionNumber: 1010,
+		sourceExternalId: "revenue:usage-spend-ndr-history",
+		key: "company.revenue_close_usage_ndr_history",
+		name: "Usage-spend NDR history",
+		description:
+			"Shows the fixed-cohort usage NDR calculation for each complete month pair in the history window.",
+		grain: FactGrain.MONTH,
+		source: {
+			key: "tinybird:revenue-close",
+			kind: DataSourceKind.TINYBIRD,
+			label: "Metabase finance revenue model",
+		},
+		eventTimeField: "generationEndedAt",
+		businessDefinition: {
+			cohort: "organizations with usage in the starting month",
+			numerator: "next-month usage from the same organizations",
+			denominator: "starting-month usage",
+		},
+		computation: { aggregate: "monthly_cohort_ratio_history" },
+		requiresCrossSourceEligibility: true,
+		ownerTeam: "Company",
+		createdBy: "atlas-revenue-close",
+		cadenceMinutes: 8 * 60,
+	},
+	{
+		questionNumber: 1011,
+		sourceExternalId: "revenue:annualized-run-rate",
+		key: "company.revenue_close_annualized_run_rate",
+		name: "Annualized product run-rate",
+		description:
+			"Monthly product accrual run-rate multiplied by 12. This is a pace estimate, not a forecast or recognized annual revenue.",
+		grain: FactGrain.MONTH,
+		source: {
+			key: "tinybird:revenue-close",
+			kind: DataSourceKind.TINYBIRD,
+			label: "Metabase finance revenue model",
+		},
+		eventTimeField: "generationEndedAt and invoice-item createdAt",
+		businessDefinition: {
+			formula: "monthly_product_run_rate multiplied by 12",
+			classification: "annualized_pace",
+		},
+		computation: { aggregate: "multiply", output: "annualized_run_rate" },
+		requiresCrossSourceEligibility: true,
+		ownerTeam: "Company",
+		createdBy: "atlas-revenue-close",
+		cadenceMinutes: 8 * 60,
+	},
+	{
+		questionNumber: 1012,
+		sourceExternalId: "revenue:paid-usage-organizations",
+		key: "company.revenue_close_paid_usage_organizations",
+		name: "Paid usage organizations",
+		description:
+			"Counts distinct organizations with paid-plan generation usage in each complete UTC month, using the generation finish time.",
+		grain: FactGrain.MONTH,
+		source: {
+			key: "tinybird:revenue-close",
+			kind: DataSourceKind.TINYBIRD,
+			label: "Metabase finance revenue model",
+		},
+		eventTimeField: "generationEndedAt",
+		businessDefinition: {
+			entity: "organization_month",
+			timeField: "generationEndedAt",
+			population: "organizations with a non-empty paid plan type",
+		},
+		computation: {
+			aggregate: "count_distinct",
+			output: "paid_usage_organizations",
+		},
+		requiresCrossSourceEligibility: true,
+		ownerTeam: "Company",
+		createdBy: "atlas-revenue-close",
+		cadenceMinutes: 8 * 60,
+	},
+	{
+		questionNumber: 1013,
+		sourceExternalId: "revenue:ndr-starting-spend",
+		key: "company.revenue_close_ndr_starting_spend",
+		name: "NDR starting cohort spend",
+		description:
+			"Shows the starting-month usage for the fixed organization cohort. This is the denominator of Usage-spend NDR.",
+		grain: FactGrain.MONTH,
+		source: {
+			key: "tinybird:revenue-close",
+			kind: DataSourceKind.TINYBIRD,
+			label: "Metabase finance revenue model",
+		},
+		eventTimeField: "generationEndedAt",
+		businessDefinition: {
+			cohort: "organizations with usage in the starting month",
+			role: "usage_ndr_denominator",
+		},
+		computation: { aggregate: "monthly_sum", output: "starting_usage_spend" },
+		requiresCrossSourceEligibility: true,
+		ownerTeam: "Company",
+		createdBy: "atlas-revenue-close",
+		cadenceMinutes: 8 * 60,
+	},
+	{
+		questionNumber: 1014,
+		sourceExternalId: "revenue:ndr-retained-spend",
+		key: "company.revenue_close_ndr_retained_spend",
+		name: "NDR retained cohort spend",
+		description:
+			"Shows next-month usage from the fixed starting cohort. This is the numerator of Usage-spend NDR.",
+		grain: FactGrain.MONTH,
+		source: {
+			key: "tinybird:revenue-close",
+			kind: DataSourceKind.TINYBIRD,
+			label: "Metabase finance revenue model",
+		},
+		eventTimeField: "generationEndedAt",
+		businessDefinition: {
+			cohort: "organizations with usage in the starting month",
+			role: "usage_ndr_numerator",
+			missingCurrentUsage: 0,
+		},
+		computation: { aggregate: "monthly_sum", output: "retained_usage_spend" },
+		requiresCrossSourceEligibility: true,
+		ownerTeam: "Company",
+		createdBy: "atlas-revenue-close",
+		cadenceMinutes: 8 * 60,
+	},
+];
+
 export const REVENUE_METRIC_SPECS: ProductMetricSpec[] = [
 	{
 		questionNumber: 1101,
@@ -427,8 +798,8 @@ export const REVENUE_METRIC_SPECS: ProductMetricSpec[] = [
 				"enterprise plans",
 				"program plans",
 				"channel partners in the governed revenue-door registry",
-				"Studio commitments",
 			],
+			channelPartnerRegistryStatus: "partial",
 		},
 		computation: {
 			aggregate: "run_rate_reconstruction",
@@ -449,9 +820,9 @@ export const REVENUE_METRIC_SPECS: ProductMetricSpec[] = [
 		questionNumber: 1102,
 		sourceExternalId: "weekly-revenue:product-run-rate",
 		key: "company.product_run_rate",
-		name: "Current product run-rate",
+		name: "Self-serve combined run-rate",
 		description:
-			"Self-serve licensed subscription base plus current-month accrued usage pace at a shared UTC cutoff.",
+			"Self-serve subscription run-rate plus projected current-month usage accrual at one UTC cutoff. Excludes enterprise and program plans, plus known channel partners in the governed revenue-door registry. The channel-partner list is still being completed.",
 		grain: FactGrain.MONTH,
 		source: {
 			key: "tinybird:revenue",
@@ -463,7 +834,8 @@ export const REVENUE_METRIC_SPECS: ProductMetricSpec[] = [
 			revenueDoor: "sync.tools",
 			formula: "licensed_subscription_base + projected_usage_accrual",
 			enterpriseCommitmentsIncluded: false,
-			studioCommitmentsIncluded: false,
+			channelPartnersIncluded: false,
+			channelPartnerRegistryStatus: "partial",
 		},
 		computation: { aggregate: "sum", output: "product_run_rate" },
 		requiresCrossSourceEligibility: true,
@@ -475,9 +847,9 @@ export const REVENUE_METRIC_SPECS: ProductMetricSpec[] = [
 		questionNumber: 1103,
 		sourceExternalId: "weekly-revenue:usage-history-pace",
 		key: "company.paid_plan_usage_accrual",
-		name: "Paid-plan usage accrual history and MTD pace",
+		name: "Self-serve usage accrual and MTD pace",
 		description:
-			"Completed-month accrued usage plus current-month actual and projected pace, using generationEndedAt in UTC.",
+			"Completed-month usage accrual plus current-month actual and projected pace, using generationEndedAt in UTC. Excludes enterprise and program plans, plus known channel partners in the governed revenue-door registry. The channel-partner list is still being completed.",
 		grain: FactGrain.MONTH,
 		source: {
 			key: "tinybird:revenue",
@@ -505,9 +877,9 @@ export const REVENUE_METRIC_SPECS: ProductMetricSpec[] = [
 		questionNumber: 1104,
 		sourceExternalId: "weekly-revenue:licensed-base-by-plan",
 		key: "company.active_licensed_subscription_base",
-		name: "Active licensed subscription base by plan",
+		name: "Self-serve subscription run-rate by billing type and plan",
 		description:
-			"Latest active or past-due self-serve Stripe subscription state multiplied by the current licensed monthly price for each v2 and v3 plan.",
+			"Latest active or past-due self-serve Stripe subscriptions multiplied by the current monthly plan price, grouped by V2 or V3 billing type and plan. Excludes enterprise and program plans, plus known channel partners in the governed revenue-door registry. The channel-partner list is still being completed. This is subscription run-rate, not cash collected.",
 		grain: FactGrain.MONTH,
 		source: {
 			key: "tinybird:revenue",
@@ -518,6 +890,10 @@ export const REVENUE_METRIC_SPECS: ProductMetricSpec[] = [
 		businessDefinition: {
 			revenueDoor: "sync.tools",
 			entity: "latest_subscription",
+			billingType: {
+				V2: ["hobbyist", "creator", "growth", "scale"],
+				V3: ["starter", "pro", "team"],
+			},
 			includedStatuses: ["active", "past_due"],
 			includedPlans: [
 				"hobbyist",
@@ -534,6 +910,206 @@ export const REVENUE_METRIC_SPECS: ProductMetricSpec[] = [
 			aggregate: "subscription_count_times_current_plan_price",
 			output: "licensed_subscription_base",
 		},
+		requiresCrossSourceEligibility: true,
+		ownerTeam: "Company",
+		createdBy: "atlas-revenue-registry",
+		cadenceMinutes: 8 * 60,
+	},
+	{
+		questionNumber: 1110,
+		sourceExternalId: "weekly-revenue:usage-run-rate",
+		key: "company.self_serve_usage_run_rate",
+		name: "Self-serve usage run-rate",
+		description:
+			"Projected self-serve usage accrual for the current UTC month compared with the previous complete month. Completed months use actual accrued usage. Excludes enterprise and program plans, plus known channel partners in the governed revenue-door registry. The channel-partner list is still being completed.",
+		grain: FactGrain.MONTH,
+		source: {
+			key: "tinybird:revenue",
+			kind: DataSourceKind.TINYBIRD,
+			label: "TinyBird usage and Stripe mirror",
+		},
+		eventTimeField: "generationEndedAt",
+		businessDefinition: {
+			revenueDoor: "sync.tools",
+			valueBasis: "generationCostMillicents divided by 100000",
+			timeField: "generationEndedAt",
+			currentMonth:
+				"month-to-date accrual projected over the full UTC calendar month using exact elapsed seconds",
+			channelPartnersIncluded: false,
+			channelPartnerRegistryStatus: "partial",
+		},
+		computation: {
+			aggregate: "monthly_sum_or_current_month_pace",
+			output: "usage_run_rate",
+		},
+		requiresCrossSourceEligibility: true,
+		ownerTeam: "Company",
+		createdBy: "atlas-revenue-registry",
+		cadenceMinutes: 8 * 60,
+	},
+	{
+		questionNumber: 1111,
+		sourceExternalId: "weekly-revenue:subscription-run-rate",
+		key: "company.self_serve_subscription_run_rate",
+		name: "Self-serve subscription run-rate",
+		description:
+			"Active or past-due self-serve subscriptions at the plan price in effect at each UTC cutoff, compared with the previous month-end. Excludes enterprise and program plans, plus known channel partners in the governed revenue-door registry. The channel-partner list is still being completed.",
+		grain: FactGrain.MONTH,
+		source: {
+			key: "tinybird:revenue",
+			kind: DataSourceKind.TINYBIRD,
+			label: "TinyBird usage and Stripe mirror",
+		},
+		eventTimeField: "createdAt",
+		businessDefinition: {
+			revenueDoor: "sync.tools",
+			includedStatuses: ["active", "past_due"],
+			valueBasis: "subscription count multiplied by monthly plan price",
+			channelPartnersIncluded: false,
+			channelPartnerRegistryStatus: "partial",
+		},
+		computation: {
+			aggregate: "subscription_count_times_plan_price",
+			output: "subscription_run_rate",
+		},
+		requiresCrossSourceEligibility: true,
+		ownerTeam: "Company",
+		createdBy: "atlas-revenue-registry",
+		cadenceMinutes: 8 * 60,
+	},
+	{
+		questionNumber: 1112,
+		sourceExternalId: "weekly-revenue:partner-usage-run-rate",
+		key: "company.partner_usage_run_rate",
+		name: "Channel-partner usage run-rate",
+		description:
+			"Accrued usage from organizations in the governed sync.partners registry. The current month is projected from the exact UTC data-through time and compared with the previous complete month.",
+		grain: FactGrain.MONTH,
+		source: {
+			key: "tinybird:revenue",
+			kind: DataSourceKind.TINYBIRD,
+			label: "TinyBird usage and Stripe mirror",
+		},
+		eventTimeField: "generationEndedAt",
+		businessDefinition: {
+			revenueDoor: "sync.partners",
+			valueBasis: "generationCostMillicents divided by 100000",
+			timeField: "generationEndedAt",
+			currentMonth:
+				"month-to-date accrual projected over the full UTC calendar month using exact elapsed seconds",
+			partnerRegistryStatus: "partial",
+		},
+		computation: {
+			aggregate: "monthly_sum_or_current_month_pace",
+			output: "partner_usage_run_rate",
+		},
+		requiresCrossSourceEligibility: true,
+		ownerTeam: "Company",
+		createdBy: "atlas-revenue-registry",
+		cadenceMinutes: 8 * 60,
+	},
+	{
+		questionNumber: 1113,
+		sourceExternalId: "weekly-revenue:partner-booked-revenue",
+		key: "company.partner_booked_revenue",
+		name: "Channel-partner invoices raised",
+		description:
+			"Stripe invoice amount due for known channel partners, counted once when the invoice was raised. The current month is compared with the same elapsed UTC window in the previous month. This is booked revenue, not cash collected or recognized revenue.",
+		grain: FactGrain.MONTH,
+		source: {
+			key: "tinybird:revenue",
+			kind: DataSourceKind.TINYBIRD,
+			label: "TinyBird usage and Stripe mirror",
+		},
+		eventTimeField: "createdAt",
+		businessDefinition: {
+			revenueDoor: "sync.partners",
+			entity: "stripe_invoice",
+			valueBasis: "amountDue",
+			timeField: "invoice createdAt",
+			deduplication: "one latest-state record per Stripe invoice id",
+			comparison: "current MTD versus the same elapsed UTC window last month",
+		},
+		computation: { aggregate: "sum", output: "booked_revenue" },
+		requiresCrossSourceEligibility: true,
+		ownerTeam: "Company",
+		createdBy: "atlas-revenue-registry",
+		cadenceMinutes: 8 * 60,
+	},
+	{
+		questionNumber: 1114,
+		sourceExternalId: "weekly-revenue:partner-cash-collected",
+		key: "company.partner_cash_collected",
+		name: "Channel-partner cash collected",
+		description:
+			"Stripe amount paid for known channel-partner invoices, grouped by the actual paid timestamp. The current month is compared with the same elapsed UTC window in the previous month. This is cash collected, not booked or recognized revenue.",
+		grain: FactGrain.MONTH,
+		source: {
+			key: "tinybird:revenue",
+			kind: DataSourceKind.TINYBIRD,
+			label: "TinyBird usage and Stripe mirror",
+		},
+		eventTimeField: "status_transitions.paid_at",
+		businessDefinition: {
+			revenueDoor: "sync.partners",
+			entity: "paid_stripe_invoice",
+			valueBasis: "amountPaid",
+			timeField: "status_transitions.paid_at",
+			deduplication: "one paid result per Stripe invoice id",
+			comparison: "current MTD versus the same elapsed UTC window last month",
+		},
+		computation: { aggregate: "sum", output: "cash_collected" },
+		requiresCrossSourceEligibility: true,
+		ownerTeam: "Company",
+		createdBy: "atlas-revenue-registry",
+		cadenceMinutes: 8 * 60,
+	},
+	{
+		questionNumber: 1115,
+		sourceExternalId: "weekly-revenue:partner-usage-history",
+		key: "company.partner_usage_history",
+		name: "Channel-partner usage by partner",
+		description:
+			"Monthly accrued usage for the four known channel-partner domains and any additional organizations already marked with the partner plan. The current month is month to date.",
+		grain: FactGrain.MONTH,
+		source: {
+			key: "tinybird:revenue",
+			kind: DataSourceKind.TINYBIRD,
+			label: "TinyBird usage and Stripe mirror",
+		},
+		eventTimeField: "generationEndedAt",
+		businessDefinition: {
+			revenueDoor: "sync.partners",
+			breakdown: "governed partner label",
+			valueBasis: "accrued usage",
+			partnerRegistryStatus: "partial",
+		},
+		computation: { aggregate: "monthly_sum_by_partner" },
+		requiresCrossSourceEligibility: true,
+		ownerTeam: "Company",
+		createdBy: "atlas-revenue-registry",
+		cadenceMinutes: 8 * 60,
+	},
+	{
+		questionNumber: 1116,
+		sourceExternalId: "weekly-revenue:partner-reconciliation",
+		key: "company.partner_revenue_reconciliation",
+		name: "Channel-partner revenue reconciliation",
+		description:
+			"Monthly partner usage incurred, Stripe invoices raised, and cash collected shown together by partner. These are different accounting views and must not be added together.",
+		grain: FactGrain.MONTH,
+		source: {
+			key: "tinybird:revenue",
+			kind: DataSourceKind.TINYBIRD,
+			label: "TinyBird usage and Stripe mirror",
+		},
+		eventTimeField: "generationEndedAt and Stripe invoice timestamps",
+		businessDefinition: {
+			revenueDoor: "sync.partners",
+			measures: ["usage_incurred", "invoices_raised", "cash_collected"],
+			warning: "the three measures are reconciliations, not additive revenue",
+		},
+		computation: { aggregate: "monthly_sum_by_partner_and_basis" },
 		requiresCrossSourceEligibility: true,
 		ownerTeam: "Company",
 		createdBy: "atlas-revenue-registry",
@@ -691,13 +1267,150 @@ export const REVENUE_METRIC_SPECS: ProductMetricSpec[] = [
 	},
 ];
 
-const ALL_METRIC_SPECS = [...PRODUCT_METRIC_SPECS, ...REVENUE_METRIC_SPECS];
+const ALL_METRIC_SPECS = [
+	...PRODUCT_METRIC_SPECS,
+	...REVENUE_CLOSE_METRIC_SPECS,
+	...REVENUE_METRIC_SPECS,
+];
 const specsByQuestion = new Map(
 	ALL_METRIC_SPECS.map((spec) => [spec.questionNumber, spec]),
 );
 const specsBySourceExternalId = new Map(
 	ALL_METRIC_SPECS.map((spec) => [spec.sourceExternalId, spec]),
 );
+
+type LinkedMetric = {
+	approvedAt: Date | null;
+	metric: {
+		key: string;
+		name: string;
+		description: string;
+		ownerTeam: string;
+	};
+};
+
+function buildQuestionMetricSpec(
+	input: PublishInput,
+	linkedMetric?: LinkedMetric,
+): ProductMetricSpec {
+	const name = linkedMetric?.metric.name ?? input.question.name;
+	const sourceKind =
+		input.question.databaseExternalId === "166"
+			? DataSourceKind.TINYBIRD
+			: input.question.databaseExternalId === "34"
+				? DataSourceKind.POSTGRES
+				: (input.question.connector ?? DataSourceKind.METABASE);
+	const sourceLabel =
+		sourceKind === DataSourceKind.TINYBIRD
+			? "TinyBird through Metabase"
+			: sourceKind === DataSourceKind.POSTGRES
+				? "Product Postgres through Metabase"
+				: sourceKind === DataSourceKind.POSTHOG
+					? "PostHog"
+					: sourceKind === DataSourceKind.HUBSPOT
+						? "HubSpot CRM"
+						: sourceKind === DataSourceKind.STRIPE
+							? "Stripe"
+							: sourceKind === DataSourceKind.ATLAS
+								? "Atlas normalized source"
+								: "Metabase saved question";
+	const pendingChecks = linkedMetric?.approvedAt
+		? []
+		: [
+				{
+					name: "approved_metric_definition",
+					reason:
+						"The query returns data, but the metric owner still needs to confirm the definition, population, and reporting period.",
+				},
+			];
+	return {
+		questionNumber: input.question.number,
+		sourceExternalId:
+			input.question.sourceExternalId ?? `question:${input.question.number}`,
+		key:
+			linkedMetric?.metric.key ??
+			`atlas.question.${input.question.number}.${metricSlug(input.question.name)}`,
+		name,
+		description:
+			linkedMetric?.metric.description ??
+			input.question.description ??
+			`The governed result for Atlas question ${input.question.number}, ${input.question.name}.`,
+		grain: inferQuestionGrain(input.question.name, input.version.queryText),
+		source: {
+			key: `atlas-question-source:${sourceKind.toLowerCase()}:${input.question.databaseExternalId ?? "local"}`,
+			kind: sourceKind,
+			label: sourceLabel,
+		},
+		eventTimeField: "source_query_period",
+		businessDefinition: {
+			questionNumber: input.question.number,
+			questionName: input.question.name,
+			definition:
+				input.question.description ??
+				"The saved Atlas query is the current candidate definition.",
+			definitionState:
+				pendingChecks.length === 0 ? "approved" : "pending_owner_review",
+		},
+		computation: {
+			type: "saved_question",
+			queryLanguage: input.version.queryLanguage,
+			output: "query_result",
+		},
+		requiresCrossSourceEligibility: questionNeedsIdentityEligibility(input),
+		pendingChecks,
+		ownerTeam: linkedMetric?.metric.ownerTeam ?? "Atlas",
+		createdBy: "atlas-question-registry",
+	};
+}
+
+function questionNeedsIdentityEligibility(input: PublishInput): boolean {
+	if (input.question.connector === DataSourceKind.HUBSPOT) return false;
+	const text =
+		`${input.question.name}\n${input.version.queryText}`.toLowerCase();
+	return (
+		input.question.databaseExternalId === "166" ||
+		/(?:user|organization|org\b|signup|generation|subscription|customer|revenue|usage|retention|churn|activation|professional)/.test(
+			text,
+		)
+	);
+}
+
+function inferQuestionGrain(name: string, queryText: string): FactGrain {
+	const text = `${name}\n${queryText}`.toLowerCase();
+	if (/quarter|date_trunc\s*\(\s*'quarter'/.test(text))
+		return FactGrain.QUARTER;
+	if (/weekly|\bweek\b|date_trunc\s*\(\s*'week'/.test(text))
+		return FactGrain.WEEK;
+	if (/daily|\btoday\b|\bday\b|date_trunc\s*\(\s*'day'/.test(text))
+		return FactGrain.DAY;
+	if (/monthly|\bmonth\b|date_trunc\s*\(\s*'month'/.test(text))
+		return FactGrain.MONTH;
+	return FactGrain.EVENT;
+}
+
+function metricSlug(value: string): string {
+	return value
+		.toLowerCase()
+		.replace(/[^a-z0-9]+/g, "_")
+		.replace(/^_+|_+$/g, "")
+		.slice(0, 80);
+}
+
+function sourceAdapter(kind: DataSourceKind): string {
+	if (kind === DataSourceKind.POSTHOG) return "posthog_hogql";
+	if (kind === DataSourceKind.HUBSPOT) return "hubspot_normalized_query";
+	if (kind === DataSourceKind.STRIPE) return "stripe_normalized_query";
+	if (kind === DataSourceKind.ATLAS) return "atlas_normalized_query";
+	return "metabase_read_transport";
+}
+
+function sourceTransport(kind: DataSourceKind): string {
+	if (kind === DataSourceKind.POSTHOG) return "posthog";
+	if (kind === DataSourceKind.HUBSPOT) return "hubspot";
+	if (kind === DataSourceKind.STRIPE) return "stripe";
+	if (kind === DataSourceKind.ATLAS) return "atlas";
+	return "metabase";
+}
 
 export function preferredAtlasQuestionNumber(
 	sourceExternalId: string,
@@ -710,19 +1423,39 @@ export class ProductMetricPublisher {
 	constructor(@InjectDatabase() private readonly db: Db) {}
 
 	async publish(input: PublishInput) {
-		const spec =
+		const registeredSpec =
 			(input.question.sourceExternalId
 				? specsBySourceExternalId.get(input.question.sourceExternalId)
 				: undefined) ?? specsByQuestion.get(input.question.number);
-		if (!spec) return null;
+		const linkedMetric =
+			!registeredSpec && input.question.metricVersionId
+				? await this.db.metricVersion.findUnique({
+						where: { id: input.question.metricVersionId },
+						select: {
+							approvedAt: true,
+							metric: {
+								select: {
+									key: true,
+									name: true,
+									description: true,
+									ownerTeam: true,
+								},
+							},
+						},
+					})
+				: null;
+		const spec =
+			registeredSpec ??
+			buildQuestionMetricSpec(input, linkedMetric ?? undefined);
 		const ownerTeam = spec.ownerTeam ?? "Product";
 		const createdBy = spec.createdBy ?? "atlas-product-registry";
 		const cadenceMinutes = spec.cadenceMinutes ?? 8 * 60;
 
 		const eligibilityVerified =
-			input.eligibility?.applied === true ||
-			(!spec.requiresCrossSourceEligibility &&
-				hasRequiredEligibilityPredicates(input.version.queryText));
+			!spec.requiresCrossSourceEligibility ||
+			(input.eligibility?.applied === true &&
+				input.eligibility.complete === true) ||
+			hasRequiredEligibilityPredicates(input.version.queryText);
 		const requiresRevenueDoorPolicy = REVENUE_METRIC_SPECS.some(
 			(candidate) => candidate.key === spec.key,
 		);
@@ -767,7 +1500,7 @@ export class ProductMetricPublisher {
 				key: datasetKey,
 				label: `${spec.name} source rows`,
 				description: spec.description,
-				adapter: "metabase_read_transport",
+				adapter: sourceAdapter(spec.source.kind),
 				eventTimeField: spec.eventTimeField,
 				watermarkField: spec.eventTimeField,
 				cadenceMinutes,
@@ -775,7 +1508,7 @@ export class ProductMetricPublisher {
 				backfillWindowDays: 366,
 				config: json({
 					databaseExternalId: input.question.databaseExternalId,
-					transport: "metabase",
+					transport: sourceTransport(spec.source.kind),
 				}),
 			},
 			update: {
@@ -786,7 +1519,7 @@ export class ProductMetricPublisher {
 				freshnessSlaMinutes: FRESHNESS_SLA_MINUTES,
 				config: json({
 					databaseExternalId: input.question.databaseExternalId,
-					transport: "metabase",
+					transport: sourceTransport(spec.source.kind),
 				}),
 			},
 		});
@@ -809,8 +1542,12 @@ export class ProductMetricPublisher {
 							status: input.revenueDoorPolicy?.status ?? null,
 							complete: input.revenueDoorPolicy?.complete ?? false,
 							contentHash: input.revenueDoorPolicy?.contentHash ?? null,
+							matchMode: input.revenueDoorPolicy?.matchMode ?? null,
+							door: input.revenueDoorPolicy?.door ?? null,
 							excludedPlans: input.revenueDoorPolicy?.excludedPlans ?? [],
 							excludedDomains: input.revenueDoorPolicy?.excludedDomains ?? [],
+							includedPlans: input.revenueDoorPolicy?.includedPlans ?? [],
+							includedDomains: input.revenueDoorPolicy?.includedDomains ?? [],
 						}
 					: null,
 			},
@@ -821,7 +1558,9 @@ export class ProductMetricPublisher {
 					"read_only_query",
 					"source_snapshot",
 					"result_non_empty",
-					"exclude_banned_anonymous_internal",
+					...(spec.requiresCrossSourceEligibility
+						? ["exclude_banned_anonymous_internal"]
+						: []),
 					...(requiresRevenueDoorPolicy
 						? ["complete_revenue_door_registry"]
 						: []),
@@ -1005,6 +1744,8 @@ export class ProductMetricPublisher {
 				verifications: {
 					create: verificationRows({
 						eligibilityVerified,
+						requiresEligibility: spec.requiresCrossSourceEligibility,
+						eligibility: input.eligibility,
 						requiresRevenueDoorPolicy,
 						revenueDoorPolicy: input.revenueDoorPolicy,
 						resultPresent,
@@ -1216,6 +1957,8 @@ function incrementPeriod(value: Date, grain: FactGrain): Date {
 
 function verificationRows(input: {
 	eligibilityVerified: boolean;
+	requiresEligibility: boolean;
+	eligibility?: PublishInput["eligibility"];
 	requiresRevenueDoorPolicy: boolean;
 	revenueDoorPolicy?: RevenueDoorPolicyEvidence;
 	resultPresent: boolean;
@@ -1228,6 +1971,18 @@ function verificationRows(input: {
 		verifiedBy: "atlas-policy",
 		verifiedAt: input.capturedAt,
 	};
+	const eligibility = input.eligibility;
+	const incompleteEligibilityReason =
+		eligibility?.scope === "SUBSCRIBED_ORGANIZATIONS" &&
+		!input.eligibilityVerified
+			? "Atlas applied the smaller subscribed-customer exclusion list. This keeps known paying banned and internal identities out, but it does not certify the wider free-user population."
+			: eligibility && eligibility.complete === false
+				? `Atlas could load only ${eligibility.returnedRows.toLocaleString()} of ${eligibility.sourceRows.toLocaleString()} identity and organization membership records because the source response was capped. This is not the number of customers in this metric. Atlas did not apply or approve a partial banned, anonymous, and internal identity filter.`
+				: "TinyBird usage must be joined to the governed product-user eligibility dataset.";
+	const eligibilityPassedReason =
+		eligibility?.scope === "SUBSCRIBED_ORGANIZATIONS"
+			? "The revenue query requires subscription history, then excludes banned, anonymous, and internal identities linked to that population."
+			: "The source query applies the canonical exclusions.";
 	return [
 		{
 			name: "read_only_query",
@@ -1256,22 +2011,26 @@ function verificationRows(input: {
 			verifiedBy: "atlas-policy",
 			verifiedAt: input.capturedAt,
 		},
-		{
-			name: "exclude_banned_anonymous_internal",
-			referenceType: "eligibility_policy",
-			referenceValue: json(sharedNormalizationPolicy),
-			actualValue: json({ enforced: input.eligibilityVerified }),
-			evidence: json({
-				reason: input.eligibilityVerified
-					? "The source query applies the canonical exclusions."
-					: "TinyBird usage must be joined to the governed product-user eligibility dataset.",
-			}),
-			status: input.eligibilityVerified
-				? VerificationStatus.PASSED
-				: VerificationStatus.PENDING,
-			verifiedBy: input.eligibilityVerified ? "atlas-policy" : null,
-			verifiedAt: input.eligibilityVerified ? input.capturedAt : null,
-		},
+		...(input.requiresEligibility
+			? [
+					{
+						name: "exclude_banned_anonymous_internal",
+						referenceType: "eligibility_policy",
+						referenceValue: json(sharedNormalizationPolicy),
+						actualValue: json({ enforced: input.eligibilityVerified }),
+						evidence: json({
+							reason: input.eligibilityVerified
+								? eligibilityPassedReason
+								: incompleteEligibilityReason,
+						}),
+						status: input.eligibilityVerified
+							? VerificationStatus.PASSED
+							: VerificationStatus.PENDING,
+						verifiedBy: input.eligibilityVerified ? "atlas-policy" : null,
+						verifiedAt: input.eligibilityVerified ? input.capturedAt : null,
+					},
+				]
+			: []),
 		...(input.requiresRevenueDoorPolicy
 			? [
 					{
@@ -1289,11 +2048,19 @@ function verificationRows(input: {
 						evidence: json({
 							reason: input.revenueDoorPolicy?.complete
 								? "The revenue-door registry is complete and was applied before aggregation."
-								: "Known non-tools revenue is excluded, but the channel-partner registry still needs a complete review.",
+								: input.revenueDoorPolicy?.matchMode === "INCLUDE_PARTNERS"
+									? "Known channel partners are included, but the partner registry still needs a complete review."
+									: "Known non-tools revenue is excluded, but the channel-partner registry still needs a complete review.",
+							matchMode: input.revenueDoorPolicy?.matchMode ?? null,
+							door: input.revenueDoorPolicy?.door ?? null,
 							excludedPlans: input.revenueDoorPolicy?.excludedPlans ?? [],
 							excludedDomains: input.revenueDoorPolicy?.excludedDomains ?? [],
 							excludedOrganizationCount:
 								input.revenueDoorPolicy?.excludedOrganizationIds.length ?? 0,
+							includedPlans: input.revenueDoorPolicy?.includedPlans ?? [],
+							includedDomains: input.revenueDoorPolicy?.includedDomains ?? [],
+							includedOrganizationCount:
+								input.revenueDoorPolicy?.includedOrganizationIds.length ?? 0,
 							unresolvedDomains:
 								input.revenueDoorPolicy?.unresolvedDomains ?? [],
 							contentHash: input.revenueDoorPolicy?.contentHash ?? null,

@@ -22,16 +22,25 @@ const COLUMNS: DataTableColumn<QuestionRow>[] = [
 		hideable: false,
 		width: "w-[34%]",
 		cell: (question) => (
-			<span className="flex min-w-0 items-center gap-3">
+			<span className="flex min-w-0 items-start gap-3">
 				<span className="w-8 shrink-0 font-mono text-muted-foreground text-xs tabular-nums">
 					{question.number}
 				</span>
-				<span className="min-w-0 truncate font-medium">{question.name}</span>
-				{question.status === "DRAFT" ? (
-					<span className="shrink-0 rounded border px-1.5 py-0.5 text-warning text-xs">
-						Draft
+				<span className="min-w-0">
+					<span className="flex min-w-0 items-center gap-2">
+						<span className="min-w-0 truncate font-medium">
+							{question.name}
+						</span>
+						{question.status === "DRAFT" ? (
+							<span className="shrink-0 rounded border px-1.5 py-0.5 text-warning text-xs">
+								Draft
+							</span>
+						) : null}
 					</span>
-				) : null}
+					<span className="mt-0.5 block truncate text-muted-foreground text-xs">
+						{question.explanation}
+					</span>
+				</span>
 			</span>
 		),
 	},

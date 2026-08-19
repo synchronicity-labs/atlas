@@ -22,6 +22,28 @@ where coalesce(u.banned, false)
   or lower(coalesce(u.email, '')) like '%@sync.labs'
 order by u.id, o.id`;
 
+const REVENUE_ELIGIBILITY_QUERY = `select
+  u.id::text as user_id,
+  lower(coalesce(u.email, '')) as email,
+  coalesce(u.banned, false) as banned,
+  coalesce(u.disabled, false) as disabled,
+  coalesce(u.is_anonymous, false) as is_anonymous,
+  lower(coalesce(uo.role, '')) as membership_role,
+  o.id::text as organization_id,
+  o.stripe_customer_id::text as customer_id,
+  count(*) over()::bigint as source_row_count
+from auth.users u
+join public.user_organizations uo on uo.user_id = u.id
+join public.organizations o on o.id = uo.organization_id
+where o.first_subscribed_at is not null
+  and (
+    coalesce(u.banned, false)
+    or coalesce(u.is_anonymous, false)
+    or lower(coalesce(u.email, '')) like '%@sync.so'
+    or lower(coalesce(u.email, '')) like '%@sync.labs'
+  )
+order by u.id, o.id`;
+
 const USER_TABLES = [
 	"sync_prod.sync_usage3",
 	"sync_prod.sync_usage_integration_tts",
@@ -49,6 +71,7 @@ export type TinybirdEligibilitySnapshot = {
 	complete: boolean;
 	sourceRows: number;
 	returnedRows: number;
+	scope: "ALL_IDENTITIES" | "SUBSCRIBED_ORGANIZATIONS";
 };
 
 export type GovernedTinybirdQuery = {
@@ -63,6 +86,7 @@ export type GovernedTinybirdQuery = {
 		complete: boolean;
 		sourceRows: number;
 		returnedRows: number;
+		scope?: "ALL_IDENTITIES" | "SUBSCRIBED_ORGANIZATIONS";
 	};
 };
 
@@ -80,11 +104,22 @@ export type EligibilityRow = {
 @Injectable()
 export class TinybirdEligibilityService {
 	async current(): Promise<TinybirdEligibilitySnapshot> {
+		return this.load(ELIGIBILITY_QUERY, "ALL_IDENTITIES");
+	}
+
+	async currentForRevenue(): Promise<TinybirdEligibilitySnapshot> {
+		return this.load(REVENUE_ELIGIBILITY_QUERY, "SUBSCRIBED_ORGANIZATIONS");
+	}
+
+	private async load(
+		queryText: string,
+		scope: TinybirdEligibilitySnapshot["scope"],
+	): Promise<TinybirdEligibilitySnapshot> {
 		const config = metabaseConfig();
 		if (!config) throw new Error("Metabase is not configured.");
 		const result = await new MetabaseClient(config).preview({
 			language: "SQL",
-			queryText: ELIGIBILITY_QUERY,
+			queryText,
 			databaseExternalId: "34",
 		});
 		const rows = result.rows.map((values) =>
@@ -109,6 +144,7 @@ export class TinybirdEligibilityService {
 			})),
 			new Date(),
 			sourceRows,
+			scope,
 		);
 	}
 
@@ -125,6 +161,7 @@ export function buildTinybirdEligibility(
 	rows: EligibilityRow[],
 	capturedAt: Date,
 	sourceRows = rows.length,
+	scope: TinybirdEligibilitySnapshot["scope"] = "ALL_IDENTITIES",
 ): TinybirdEligibilitySnapshot {
 	const excludedUserIds = sortedUnique(
 		rows.filter(isIneligible).map((row) => row.userId),
@@ -147,6 +184,7 @@ export function buildTinybirdEligibility(
 		complete: sourceRows === rows.length,
 		sourceRows,
 		returnedRows: rows.length,
+		scope,
 	};
 	return {
 		capturedAt,
@@ -236,6 +274,7 @@ function eligibilityEvidence(eligibility: TinybirdEligibilitySnapshot) {
 		complete: eligibility.complete,
 		sourceRows: eligibility.sourceRows,
 		returnedRows: eligibility.returnedRows,
+		scope: eligibility.scope,
 	};
 }
 

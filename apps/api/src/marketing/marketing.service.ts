@@ -1,10 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import {
 	type Db,
-	FactGrain,
-	MetricReadinessStatus,
-	MetricRunStatus,
-	MetricTrustStatus,
 	type Prisma,
 	SourceStatus,
 	SyncMode,
@@ -13,7 +9,8 @@ import {
 } from "@crm/db";
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { InjectDatabase } from "../database/database.constants";
-import { inferMetricWindow } from "../metabase/product-metric.publisher";
+import { ProductMetricPublisher } from "../metabase/product-metric.publisher";
+import { TinybirdEligibilityService } from "../metabase/tinybird-eligibility.service";
 import { MarketingClient, type MarketingResult } from "./marketing.client";
 import { marketingConfig } from "./marketing.config";
 import { marketingQuery } from "./marketing.contracts";
@@ -56,13 +53,17 @@ function assertReadOnlyHogql(query: string): void {
 
 @Injectable()
 export class MarketingService {
-	constructor(@InjectDatabase() private readonly db: Db) {}
+	constructor(
+		@InjectDatabase() private readonly db: Db,
+		private readonly metricPublisher: ProductMetricPublisher,
+		private readonly tinybirdEligibility: TinybirdEligibilityService,
+	) {}
 
 	async preview(queryText: string): Promise<MarketingResult> {
 		const query = this.parse(queryText);
-		const predicate = await this.productUserEligibilityPredicate();
+		const eligibility = await this.productUserEligibility();
 		return new MarketingClient(marketingConfig()).execute(
-			this.withProductUserEligibility(query, predicate),
+			this.withProductUserEligibility(query, eligibility.predicate),
 		);
 	}
 
@@ -77,13 +78,18 @@ export class MarketingService {
 							select: {
 								id: true,
 								number: true,
+								name: true,
+								description: true,
+								connector: true,
 								sourceId: true,
 								sourceExternalId: true,
+								databaseExternalId: true,
 								metricVersionId: true,
 								versions: {
 									orderBy: { version: "desc" },
 									take: 1,
 									select: {
+										id: true,
 										version: true,
 										queryLanguage: true,
 										queryText: true,
@@ -148,7 +154,7 @@ export class MarketingService {
 		});
 
 		const client = new MarketingClient(marketingConfig());
-		const predicate = await this.productUserEligibilityPredicate();
+		const eligibility = await this.productUserEligibility();
 		let cardsProcessed = 0;
 		let snapshotsCreated = 0;
 		const errors: Array<{ number: number; message: string }> = [];
@@ -165,7 +171,7 @@ export class MarketingService {
 				const result = await client.execute(
 					this.withProductUserEligibility(
 						this.parse(version.queryText),
-						predicate,
+						eligibility.predicate,
 					),
 				);
 				const payload = { columns: result.columns, rows: result.rows };
@@ -190,15 +196,24 @@ export class MarketingService {
 					],
 					skipDuplicates: true,
 				});
-				await this.publishMetricAttempt({
-					metricVersionId: question.metricVersionId,
-					questionNumber: question.number,
-					questionVersion: version.version,
-					queryText: version.queryText,
+				await this.metricPublisher.publish({
+					question,
+					version,
 					result,
 					syncRunId: run.id,
 					capturedAt,
-					contentHash,
+					eligibility: {
+						applied: false,
+						capturedAt: eligibility.capturedAt,
+						contentHash: eligibility.contentHash,
+						excludedUsers: eligibility.excludedExternalIds.length,
+						excludedOrganizations: 0,
+						excludedCustomers: 0,
+						complete: true,
+						sourceRows: eligibility.sourceRows,
+						returnedRows: eligibility.returnedRows,
+						scope: "SUBSCRIBED_ORGANIZATIONS",
+					},
 				});
 				await this.db.question.update({
 					where: { id: question.id },
@@ -246,96 +261,6 @@ export class MarketingService {
 		};
 	}
 
-	private async publishMetricAttempt(input: {
-		metricVersionId: string | null;
-		questionNumber: number;
-		questionVersion: number;
-		queryText: string;
-		result: MarketingResult;
-		syncRunId: string;
-		capturedAt: Date;
-		contentHash: string;
-	}) {
-		if (!input.metricVersionId) return;
-		const metricVersion = await this.db.metricVersion.findUnique({
-			where: { id: input.metricVersionId },
-			select: { metricId: true },
-		});
-		if (!metricVersion) return;
-		const window = inferMetricWindow(
-			input.result,
-			FactGrain.MONTH,
-			input.capturedAt,
-		);
-		const snapshotKey = `${input.metricVersionId}:${window.reportingPeriod}:${input.contentHash}`;
-		const existing = await this.db.metricSnapshot.findUnique({
-			where: { idempotencyKey: snapshotKey },
-			select: { id: true },
-		});
-		if (!existing) {
-			const resultPresent = input.result.rows.length > 0;
-			const run = await this.db.metricRun.create({
-				data: {
-					runKey: `${input.metricVersionId}:${input.capturedAt.toISOString()}:${input.contentHash}`,
-					metricVersionId: input.metricVersionId,
-					status: MetricRunStatus.PUBLISHED,
-					periodStart: window.periodStart,
-					periodEnd: window.periodEnd,
-					dataThrough: window.dataThrough,
-					sourceWatermarks: json([
-						{
-							source: "atlas:marketing",
-							syncRunId: input.syncRunId,
-							dataThrough: window.dataThrough.toISOString(),
-							contentHash: input.contentHash,
-						},
-					]),
-					inputHash: hash(input.queryText),
-					outputHash: input.contentHash,
-					rowCount: input.result.rows.length,
-					validation: json({
-						resultPresent,
-						approvedDefinition: "one_person_across_sync_sites",
-						pendingDecision: "cross_site_identity_bridge",
-					}),
-					startedAt: input.capturedAt,
-					finishedAt: input.capturedAt,
-					verifications: {
-						create: marketingAttemptVerificationRows({
-							questionNumber: input.questionNumber,
-							questionVersion: input.questionVersion,
-							capturedAt: input.capturedAt,
-							resultPresent,
-						}),
-					},
-				},
-			});
-			await this.db.metricSnapshot.create({
-				data: {
-					idempotencyKey: snapshotKey,
-					metricVersionId: input.metricVersionId,
-					metricRunId: run.id,
-					reportingPeriod: window.reportingPeriod,
-					periodStart: window.periodStart,
-					periodEnd: window.periodEnd,
-					dataThrough: window.dataThrough,
-					computedAt: input.capturedAt,
-					trustStatus: resultPresent
-						? MetricTrustStatus.PENDING
-						: MetricTrustStatus.FAILED,
-					contentHash: input.contentHash,
-					columns: json(input.result.columns),
-					rows: json(input.result.rows),
-					rowCount: input.result.rows.length,
-				},
-			});
-		}
-		await this.db.metricCatalogEntry.updateMany({
-			where: { metricId: metricVersion.metricId, missingAt: null },
-			data: { readiness: MetricReadinessStatus.RECONCILING },
-		});
-	}
-
 	private parse(queryText: string) {
 		let value: unknown;
 		try {
@@ -348,21 +273,24 @@ export class MarketingService {
 		return query;
 	}
 
-	private async productUserEligibilityPredicate(): Promise<string> {
-		const excludedUsers = await this.db.productUser.findMany({
-			where: {
-				OR: [
-					{ banned: true },
-					{ isAnonymous: true },
-					{ email: { endsWith: "@sync.so", mode: "insensitive" } },
-					{ email: { endsWith: "@sync.labs", mode: "insensitive" } },
-				],
-			},
-			select: { externalId: true },
-		});
-		return productUserEligibilityPredicate(
-			excludedUsers.map((user) => user.externalId),
-		);
+	private async productUserEligibility(): Promise<{
+		predicate: string;
+		excludedExternalIds: string[];
+		capturedAt: string;
+		contentHash: string;
+		sourceRows: number;
+		returnedRows: number;
+	}> {
+		const eligibility = await this.tinybirdEligibility.currentForRevenue();
+		const excludedExternalIds = eligibility.excludedUserIds;
+		return {
+			predicate: productUserEligibilityPredicate(excludedExternalIds),
+			excludedExternalIds,
+			capturedAt: eligibility.capturedAt.toISOString(),
+			contentHash: eligibility.contentHash,
+			sourceRows: eligibility.sourceRows,
+			returnedRows: eligibility.returnedRows,
+		};
 	}
 
 	private withProductUserEligibility(

@@ -16,6 +16,7 @@ import {
 	type ProductEligibilityQuery,
 	productEligibilityQuery,
 } from "./product-eligibility.contracts";
+import { ProductMetricPublisher } from "./product-metric.publisher";
 
 const SOURCE_KEY = "atlas:product-eligibility";
 const PAGE_SIZE = 1_000;
@@ -164,7 +165,10 @@ export class ProductEligibilityService {
 		{ expiresAt: number; value: Analysis }
 	>();
 
-	constructor(@InjectDatabase() private readonly db: Db) {}
+	constructor(
+		@InjectDatabase() private readonly db: Db,
+		private readonly metricPublisher: ProductMetricPublisher,
+	) {}
 
 	async preview(queryText: string): Promise<MetabaseResult> {
 		const query = parseQuery(queryText);
@@ -215,13 +219,19 @@ export class ProductEligibilityService {
 							select: {
 								id: true,
 								number: true,
+								name: true,
+								description: true,
+								connector: true,
 								sourceId: true,
 								sourceExternalId: true,
+								databaseExternalId: true,
+								metricVersionId: true,
 								source: { select: { key: true } },
 								versions: {
 									orderBy: { version: "desc" },
 									take: 1,
 									select: {
+										id: true,
 										version: true,
 										queryLanguage: true,
 										queryText: true,
@@ -304,6 +314,25 @@ export class ProductEligibilityService {
 						},
 					],
 					skipDuplicates: true,
+				});
+				await this.metricPublisher.publish({
+					question,
+					version,
+					result,
+					syncRunId: run.id,
+					capturedAt: analysis.capturedAt,
+					eligibility: {
+						applied: analysis.complete,
+						capturedAt: analysis.capturedAt.toISOString(),
+						contentHash: analysis.contentHash,
+						excludedUsers: analysis.excludedPrincipals,
+						excludedOrganizations: analysis.excludedOrganizations,
+						excludedCustomers: 0,
+						complete: analysis.complete,
+						sourceRows: analysis.sourceRows,
+						returnedRows: analysis.returnedRows,
+						scope: "SUBSCRIBED_ORGANIZATIONS",
+					},
 				});
 				await this.db.question.update({
 					where: { id: question.id },
@@ -644,29 +673,25 @@ where k.id::text in (${ids.map(sqlString).join(", ")})`,
 	private async userDeletionEvents(
 		principals: Map<string, Principal>,
 	): Promise<Map<string, Date>> {
-		const ownerUserIds = [
-			...new Set(
-				[...principals.values()].map((principal) => principal.ownerUserId),
-			),
-		];
+		const ownerUserIds = new Set(
+			[...principals.values()].map((principal) => principal.ownerUserId),
+		);
 		const client = new MarketingClient(marketingConfig());
 		const deletions = new Map<string, Date>();
-		for (const ids of chunks(ownerUserIds, 400)) {
-			const result = await client.execute({
-				source: "posthog",
-				personPolicy: "all_events",
-				query: `select
+		const result = await client.execute({
+			source: "posthog",
+			personPolicy: "all_events",
+			query: `select
   distinct_id,
   min(timestamp) as deleted_at
 from events
 where event = 'user_account_deleted'
-  and distinct_id in (${ids.map(sqlString).join(", ")})
 group by distinct_id`,
-			});
-			for (const values of result.rows) {
-				const ownerUserId = text(values[0]);
-				if (ownerUserId && values[1])
-					deletions.set(ownerUserId, date(values[1]));
+		});
+		for (const values of result.rows) {
+			const ownerUserId = text(values[0]);
+			if (ownerUserIds.has(ownerUserId) && values[1]) {
+				deletions.set(ownerUserId, date(values[1]));
 			}
 		}
 		return deletions;

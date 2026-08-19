@@ -21,6 +21,7 @@ import { TinybirdEligibilityService } from "./tinybird-eligibility.service";
 	],
 	exports: [
 		MetabaseService,
+		ProductMetricPublisher,
 		ProductEligibilityService,
 		RevenueDoorPolicyService,
 		TinybirdEligibilityService,

@@ -3,6 +3,7 @@ import { type Db, type Prisma, SyncMode, SyncRunStatus } from "@crm/db";
 import { executeHubspotSalesQuery } from "@crm/db/hubspot-sales";
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { InjectDatabase } from "../database/database.constants";
+import { ProductMetricPublisher } from "../metabase/product-metric.publisher";
 
 const SOURCE_KEY = "hubspot:crm";
 
@@ -16,7 +17,10 @@ function hash(value: unknown): string {
 
 @Injectable()
 export class SalesService {
-	constructor(@InjectDatabase() private readonly db: Db) {}
+	constructor(
+		@InjectDatabase() private readonly db: Db,
+		private readonly metricPublisher: ProductMetricPublisher,
+	) {}
 
 	async preview(queryText: string) {
 		let query: unknown;
@@ -38,12 +42,18 @@ export class SalesService {
 							select: {
 								id: true,
 								number: true,
+								name: true,
+								description: true,
+								connector: true,
 								sourceId: true,
 								sourceExternalId: true,
+								databaseExternalId: true,
+								metricVersionId: true,
 								versions: {
 									orderBy: { version: "desc" },
 									take: 1,
 									select: {
+										id: true,
 										version: true,
 										queryLanguage: true,
 										queryText: true,
@@ -65,7 +75,11 @@ export class SalesService {
 			...new Map(
 				dashboard.cards.map((card) => [card.question.id, card.question]),
 			).values(),
-		];
+		].filter(
+			(question) =>
+				question.sourceId === source.id &&
+				question.versions[0]?.queryLanguage === "API",
+		);
 		const period = new Date().toISOString().slice(0, 7);
 		const run = await this.db.syncRun.create({
 			data: {
@@ -112,6 +126,13 @@ export class SalesService {
 						},
 					],
 					skipDuplicates: true,
+				});
+				await this.metricPublisher.publish({
+					question,
+					version,
+					result,
+					syncRunId: run.id,
+					capturedAt,
 				});
 				await this.db.question.update({
 					where: { id: question.id },

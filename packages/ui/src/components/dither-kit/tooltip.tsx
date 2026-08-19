@@ -105,9 +105,11 @@ export function Tooltip({
                   {item.label}
                 </span>
                 <span className="ml-auto whitespace-nowrap pl-2 text-foreground">
-                  {valueFormatter
-                    ? valueFormatter(item.value, item.name)
-                    : item.value.toLocaleString()}
+                  {item.value === null
+                    ? "—"
+                    : valueFormatter
+                      ? valueFormatter(item.value, item.name)
+                      : item.value.toLocaleString()}
                 </span>
               </div>
             ))}

@@ -42,13 +42,16 @@ describe("product feedback metric registry", () => {
 		expect(preferredAtlasQuestionNumber("revenue:usage-spend-ndr")).toBe(1007);
 	});
 
-	test("keeps the saved-question replacement pending until equivalence is proven", () => {
+	test("requires a live saved-question equivalence check", () => {
 		const paidCustomerRevenue = REVENUE_CLOSE_METRIC_SPECS.find(
 			(spec) => spec.questionNumber === 1004,
 		);
 
 		expect(paidCustomerRevenue?.pendingChecks?.[0]?.name).toBe(
 			"saved_question_equivalence",
+		);
+		expect(paidCustomerRevenue?.pendingChecks?.[0]?.reason).toContain(
+			"compare the native SQL replacement",
 		);
 	});
 

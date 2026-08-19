@@ -7,6 +7,7 @@ import {
 	SourceStatus,
 	SyncMode,
 	SyncRunStatus,
+	VerificationStatus,
 	VisualizationType,
 } from "@crm/db";
 import { Injectable, Logger, NotFoundException } from "@nestjs/common";
@@ -23,6 +24,7 @@ import { type MetabaseConfig, metabaseConfig } from "./metabase.config";
 import { ProductEligibilityService } from "./product-eligibility.service";
 import {
 	ProductMetricPublisher,
+	type PublishVerificationCheck,
 	preferredAtlasQuestionNumber,
 } from "./product-metric.publisher";
 import {
@@ -30,6 +32,7 @@ import {
 	usesRevenueDoorPolicy,
 	usesSubscribedRevenueEligibility,
 } from "./revenue-door-policy.service";
+import { comparePaidCustomerRevenue } from "./saved-question-equivalence";
 import { TinybirdEligibilityService } from "./tinybird-eligibility.service";
 
 const SOURCE_KEY = "metabase:sync";
@@ -471,6 +474,7 @@ export class MetabaseService {
 										version: true,
 										queryLanguage: true,
 										queryText: true,
+										sourceCardExternalId: true,
 									},
 								},
 							},
@@ -627,6 +631,34 @@ export class MetabaseService {
 							queryText: executedQueryText,
 							databaseExternalId: question.databaseExternalId,
 						});
+						const verificationChecks: PublishVerificationCheck[] = [];
+						if (question.number === 1004 && version.sourceCardExternalId) {
+							const sourceQuestionNumber = Number(version.sourceCardExternalId);
+							try {
+								const [savedQuestion, rawReplacement] = await Promise.all([
+									client.cardResult(sourceQuestionNumber),
+									client.preview({
+										language,
+										queryText: version.queryText,
+										databaseExternalId: question.databaseExternalId,
+									}),
+								]);
+								verificationChecks.push(
+									comparePaidCustomerRevenue(
+										savedQuestion,
+										rawReplacement,
+										sourceQuestionNumber,
+									),
+								);
+							} catch (error) {
+								verificationChecks.push({
+									name: "saved_question_equivalence",
+									status: VerificationStatus.PENDING,
+									reason: `Atlas could not compare Metabase question ${sourceQuestionNumber}: ${error instanceof Error ? error.message : String(error)}`,
+									referenceValue: { sourceQuestionNumber },
+								});
+							}
+						}
 						let publishEligibility = governed
 							? { applied: governed.applied, ...governed.eligibility }
 							: undefined;
@@ -683,6 +715,7 @@ export class MetabaseService {
 							capturedAt,
 							eligibility: publishEligibility,
 							revenueDoorPolicy: revenueDoor?.evidence,
+							verificationChecks,
 						});
 						await this.db.question.update({
 							where: { id: question.id },

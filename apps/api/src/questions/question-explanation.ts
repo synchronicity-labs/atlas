@@ -21,7 +21,7 @@ const EXPLANATIONS_BY_NAME: Record<string, string> = {
 	"Licensed subscription base proxy":
 		"Sums licensed Stripe invoice-item value after keeping one latest state per invoice-item id. This is an invoice-item proxy, not the live active-subscription base. Why it matters: It estimates the subscription part of the original product run-rate.",
 	"Paid customer monthly revenue":
-		"Sums the warehouse paid-customer revenue table as a native SQL replacement for Metabase question 1256. Direct execution of that saved question is permission blocked, so exact equivalence is still open.",
+		"Sums the warehouse paid-customer revenue table as a native SQL replacement for Metabase question 1256. Atlas compares both results on each refresh before it marks this question as verified.",
 	"Stripe paid invoice collections":
 		"Sums cash paid on Stripe invoices after keeping one latest state per invoice id. This is money collected, not invoices raised or recognized revenue. Why it matters: It reconciles the run-rate model with cash received.",
 	"Stripe paid + open invoice billings":

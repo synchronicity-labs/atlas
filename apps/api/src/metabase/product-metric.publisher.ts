@@ -79,6 +79,15 @@ export type PublishInput = {
 		scope?: "ALL_IDENTITIES" | "SUBSCRIBED_ORGANIZATIONS";
 	};
 	revenueDoorPolicy?: RevenueDoorPolicyEvidence;
+	verificationChecks?: PublishVerificationCheck[];
+};
+
+export type PublishVerificationCheck = {
+	name: string;
+	status: VerificationStatus;
+	reason: string;
+	referenceValue?: unknown;
+	actualValue?: unknown;
 };
 
 const sharedNormalizationPolicy = {
@@ -505,7 +514,7 @@ export const REVENUE_CLOSE_METRIC_SPECS: ProductMetricSpec[] = [
 			{
 				name: "saved_question_equivalence",
 				reason:
-					"Direct execution of Metabase question 1256 is permission blocked, so Atlas cannot yet prove that the native SQL replacement is exactly equivalent.",
+					"Atlas must compare the native SQL replacement with Metabase question 1256 for every overlapping month.",
 			},
 		],
 		ownerTeam: "Company",
@@ -1464,7 +1473,18 @@ export class ProductMetricPublisher {
 			(input.revenueDoorPolicy?.applied === true &&
 				input.revenueDoorPolicy.complete === true);
 		const governanceVerified = eligibilityVerified && revenueDoorVerified;
-		const definitionVerified = (spec.pendingChecks?.length ?? 0) === 0;
+		const checkResults = new Map(
+			(input.verificationChecks ?? []).map((check) => [check.name, check]),
+		);
+		const unresolvedDefinitionChecks = (spec.pendingChecks ?? []).filter(
+			(check) =>
+				checkResults.get(check.name)?.status !== VerificationStatus.PASSED,
+		);
+		const definitionVerified = unresolvedDefinitionChecks.length === 0;
+		const definitionFailed = (spec.pendingChecks ?? []).some(
+			(check) =>
+				checkResults.get(check.name)?.status === VerificationStatus.FAILED,
+		);
 		const lifecycleStatus =
 			governanceVerified && definitionVerified
 				? MetricLifecycleStatus.CERTIFIED
@@ -1701,7 +1721,12 @@ export class ProductMetricPublisher {
 			revenueDoorPolicy: input.revenueDoorPolicy,
 		});
 
-		const snapshotKey = `${metricVersion.id}:${window.reportingPeriod}:${outputHash}`;
+		const verificationHash = hash({
+			eligibilityVerified,
+			revenueDoorVerified,
+			verificationChecks: input.verificationChecks ?? [],
+		});
+		const snapshotKey = `${metricVersion.id}:${window.reportingPeriod}:${outputHash}:${verificationHash}`;
 		const existing = await this.db.metricSnapshot.findUnique({
 			where: { idempotencyKey: snapshotKey },
 			select: { id: true },
@@ -1709,11 +1734,12 @@ export class ProductMetricPublisher {
 		if (existing) return existing;
 
 		const resultPresent = input.result.rows.length > 0;
-		const trustStatus = !resultPresent
-			? MetricTrustStatus.FAILED
-			: governanceVerified && definitionVerified
-				? MetricTrustStatus.VERIFIED
-				: MetricTrustStatus.PENDING;
+		const trustStatus =
+			!resultPresent || definitionFailed
+				? MetricTrustStatus.FAILED
+				: governanceVerified && definitionVerified
+					? MetricTrustStatus.VERIFIED
+					: MetricTrustStatus.PENDING;
 		const metricRun = await this.db.metricRun.create({
 			data: {
 				runKey: `${metricVersion.id}:${input.capturedAt.toISOString()}:${outputHash}`,
@@ -1738,6 +1764,7 @@ export class ProductMetricPublisher {
 					revenueDoorVerified,
 					revenueDoorPolicy: input.revenueDoorPolicy ?? null,
 					resultPresent,
+					verificationChecks: input.verificationChecks ?? [],
 				}),
 				startedAt: input.capturedAt,
 				finishedAt: input.capturedAt,
@@ -1752,6 +1779,7 @@ export class ProductMetricPublisher {
 						questionVersion: input.version.version,
 						capturedAt: input.capturedAt,
 						pendingChecks: spec.pendingChecks ?? [],
+						verificationChecks: input.verificationChecks ?? [],
 					}),
 				},
 			},
@@ -1965,6 +1993,7 @@ function verificationRows(input: {
 	questionVersion: number;
 	capturedAt: Date;
 	pendingChecks: Array<{ name: string; reason: string }>;
+	verificationChecks: PublishVerificationCheck[];
 }) {
 	const passed = {
 		status: VerificationStatus.PASSED,
@@ -2077,16 +2106,24 @@ function verificationRows(input: {
 					},
 				]
 			: []),
-		...input.pendingChecks.map((check) => ({
-			name: check.name,
-			referenceType: "definition_approval",
-			referenceValue: json({ required: true }),
-			actualValue: json({ approved: false }),
-			evidence: json({ reason: check.reason }),
-			status: VerificationStatus.PENDING,
-			verifiedBy: null,
-			verifiedAt: null,
-		})),
+		...input.pendingChecks.map((check) => {
+			const result = input.verificationChecks.find(
+				(candidate) => candidate.name === check.name,
+			);
+			const status = result?.status ?? VerificationStatus.PENDING;
+			return {
+				name: check.name,
+				referenceType: "source_equivalence",
+				referenceValue: json(result?.referenceValue ?? { required: true }),
+				actualValue: json(result?.actualValue ?? { matched: false }),
+				evidence: json({ reason: result?.reason ?? check.reason }),
+				status,
+				verifiedBy:
+					status === VerificationStatus.PENDING ? null : "atlas-policy",
+				verifiedAt:
+					status === VerificationStatus.PENDING ? null : input.capturedAt,
+			};
+		}),
 	];
 }
 

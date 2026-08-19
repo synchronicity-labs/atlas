@@ -91,6 +91,15 @@ export class MetabaseClient {
 		return this.request(`/api/card/${id}`);
 	}
 
+	async cardResult(id: number): Promise<MetabaseResult> {
+		const raw = await this.request<DatasetResponse>(`/api/card/${id}/query`, {
+			method: "POST",
+			body: JSON.stringify({ parameters: [] }),
+		});
+
+		return this.result(raw);
+	}
+
 	async dashboardCardResult(
 		dashcardId: number,
 		cardId: number,

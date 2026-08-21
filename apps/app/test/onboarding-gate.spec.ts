@@ -11,15 +11,22 @@ function request(pathname: string, cookies: string[] = []) {
 	});
 }
 
-function redirectedTo(response: Response): string | null {
+function redirectUrl(response: Response): URL | null {
 	const location = response.headers.get("location");
 
-	return location ? new URL(location).pathname : null;
+	return location ? new URL(location) : null;
+}
+
+function redirectedTo(response: Response): string | null {
+	return redirectUrl(response)?.pathname ?? null;
 }
 
 describe("proxy", () => {
 	it("sends a stranger to sign in, and leaves them there", async () => {
-		expect(redirectedTo(await proxy(request("/companies")))).toBe("/sign-in");
+		const redirect = redirectUrl(await proxy(request("/companies?q=fal")));
+
+		expect(redirect?.pathname).toBe("/sign-in");
+		expect(redirect?.searchParams.get("next")).toBe("/companies?q=fal");
 		expect(redirectedTo(await proxy(request("/sign-in")))).toBeNull();
 	});
 

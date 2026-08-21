@@ -12,9 +12,17 @@ export async function proxy(request: NextRequest) {
 	if (
 		getSessionCookie(request, { cookiePrefix: AUTH_COOKIE_PREFIX }) === null
 	) {
-		return pathname === SIGN_IN_PATH
-			? NextResponse.next()
-			: NextResponse.redirect(new URL(SIGN_IN_PATH, request.nextUrl));
+		if (pathname === SIGN_IN_PATH) {
+			return NextResponse.next();
+		}
+
+		const signInUrl = new URL(SIGN_IN_PATH, request.nextUrl);
+		signInUrl.searchParams.set(
+			"next",
+			`${request.nextUrl.pathname}${request.nextUrl.search}`,
+		);
+
+		return NextResponse.redirect(signInUrl);
 	}
 
 	return pathname === ONBOARDING_PATH ||

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { AuthHeading, AuthShell } from "@/components/auth-shell";
+import { getSafeAuthDestination } from "@/lib/auth-redirect";
 import { getSession } from "@/lib/session";
 import { getServerQueryClient, getServerTrpc } from "@/lib/trpc/server";
 import { GoogleSignIn } from "./google-sign-in";
@@ -28,9 +29,12 @@ async function signInOptions(): Promise<SignInOptions | null> {
 export default async function SignInPage({
 	searchParams,
 }: {
-	searchParams: Promise<{ method?: string | string[] }>;
+	searchParams: Promise<{
+		method?: string | string[];
+		next?: string | string[];
+	}>;
 }) {
-	const [session, options, { method }] = await Promise.all([
+	const [session, options, { method, next }] = await Promise.all([
 		getSession().catch((error: unknown) => {
 			console.error("Sign-in: could not read the session.", error);
 			return null;
@@ -38,9 +42,10 @@ export default async function SignInPage({
 		signInOptions(),
 		searchParams,
 	]);
+	const destination = getSafeAuthDestination(next);
 
 	if (session) {
-		redirect("/");
+		redirect(destination);
 	}
 
 	const google = options?.google ?? true;
@@ -72,8 +77,10 @@ export default async function SignInPage({
 				description="Sign in with your account to continue."
 			/>
 
-			{showSso ? <SsoSignIn providers={providers} /> : null}
-			{showGoogle ? <GoogleSignIn /> : null}
+			{showSso ? (
+				<SsoSignIn destination={destination} providers={providers} />
+			) : null}
+			{showGoogle ? <GoogleSignIn destination={destination} /> : null}
 		</AuthShell>
 	);
 }

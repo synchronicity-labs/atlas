@@ -6,8 +6,9 @@ import { Button } from "@crm/ui/components/button";
 import { Spinner } from "@crm/ui/components/spinner";
 import { useState } from "react";
 import { toast } from "sonner";
+import { getSignInPath } from "@/lib/auth-redirect";
 
-export function GoogleSignIn() {
+export function GoogleSignIn({ destination }: { destination: string }) {
 	const [pending, setPending] = useState(false);
 
 	async function handleClick() {
@@ -17,8 +18,11 @@ export function GoogleSignIn() {
 			const origin = window.location.origin;
 			const { error } = await signIn.social({
 				provider: "google",
-				callbackURL: `${origin}/dashboards`,
-				errorCallbackURL: `${origin}/sign-in`,
+				callbackURL: new URL(destination, origin).toString(),
+				errorCallbackURL: new URL(
+					getSignInPath(destination, "google"),
+					origin,
+				).toString(),
 			});
 
 			if (error) {

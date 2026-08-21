@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { MetricReadinessStatus, MetricTrustStatus } from "@crm/db";
 import {
+	declaredQuestionIdentityPolicy,
 	marketingSourceCoverageChecks,
 	metricTrustStatus,
 	needsApprovedMetricDefinitionCheck,
@@ -29,6 +30,27 @@ describe("product feedback metric registry", () => {
 				linkedMetricApprovedAt: new Date("2026-08-21T00:00:00.000Z"),
 			}),
 		).toBe(false);
+	});
+
+	test("does not apply a product-user filter to anonymous traffic sources", () => {
+		expect(
+			declaredQuestionIdentityPolicy(
+				JSON.stringify({ source: "ga4", metrics: ["totalUsers"] }),
+			),
+		).toBe(false);
+		expect(
+			declaredQuestionIdentityPolicy(
+				JSON.stringify({ source: "search_console", metrics: ["clicks"] }),
+			),
+		).toBe(false);
+		expect(
+			declaredQuestionIdentityPolicy(
+				JSON.stringify({ source: "posthog", personPolicy: "all_events" }),
+			),
+		).toBe(false);
+		expect(
+			declaredQuestionIdentityPolicy(JSON.stringify({ source: "posthog" })),
+		).toBe(true);
 	});
 
 	test("keeps cross-site Marketing metrics provisional until source coverage is complete", () => {

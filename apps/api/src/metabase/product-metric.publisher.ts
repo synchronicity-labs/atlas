@@ -1660,6 +1660,10 @@ export function needsApprovedMetricDefinitionCheck(input: {
 
 function questionNeedsIdentityEligibility(input: PublishInput): boolean {
 	if (input.question.connector === DataSourceKind.HUBSPOT) return false;
+	const declaredPolicy = declaredQuestionIdentityPolicy(
+		input.version.queryText,
+	);
+	if (declaredPolicy !== null) return declaredPolicy;
 	const text =
 		`${input.question.name}\n${input.version.queryText}`.toLowerCase();
 	return (
@@ -1668,6 +1672,26 @@ function questionNeedsIdentityEligibility(input: PublishInput): boolean {
 			text,
 		)
 	);
+}
+
+export function declaredQuestionIdentityPolicy(
+	queryText: string,
+): boolean | null {
+	try {
+		const query = JSON.parse(queryText) as {
+			source?: unknown;
+			personPolicy?: unknown;
+		};
+		if (query.source === "ga4" || query.source === "search_console") {
+			return false;
+		}
+		if (query.source === "posthog") {
+			return query.personPolicy !== "all_events";
+		}
+	} catch {
+		return null;
+	}
+	return null;
 }
 
 function inferQuestionGrain(name: string, queryText: string): FactGrain {

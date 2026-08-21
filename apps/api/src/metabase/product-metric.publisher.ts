@@ -1633,6 +1633,18 @@ export function marketingSourceCoverageChecks(
 			},
 		];
 	}
+	if (
+		sourceExternalId === "marketing:posthog:attribution-source" ||
+		sourceExternalId === "marketing:posthog:first-touch-signups"
+	) {
+		return [
+			{
+				name: "first_touch_attribution_coverage",
+				reason:
+					"First touch is the approved headline model, but the current signup events do not carry a first-touch source for every person. Atlas must show the missing share and keep this result provisional until attribution coverage is complete enough for reporting.",
+			},
+		];
+	}
 	return [];
 }
 

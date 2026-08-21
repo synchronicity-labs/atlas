@@ -42,6 +42,16 @@ describe("product feedback metric registry", () => {
 				"marketing:posthog:visitor-signup-rate",
 			).map((check) => check.name),
 		).toEqual(["complete_marketing_pageview_coverage"]);
+		expect(
+			marketingSourceCoverageChecks("marketing:posthog:attribution-source").map(
+				(check) => check.name,
+			),
+		).toEqual(["first_touch_attribution_coverage"]);
+		expect(
+			marketingSourceCoverageChecks(
+				"marketing:posthog:first-touch-signups",
+			).map((check) => check.name),
+		).toEqual(["first_touch_attribution_coverage"]);
 		expect(marketingSourceCoverageChecks("marketing:ga4:sessions")).toEqual([]);
 	});
 

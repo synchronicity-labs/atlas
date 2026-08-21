@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { MetricTrustStatus } from "@crm/db";
+import { MetricReadinessStatus, MetricTrustStatus } from "@crm/db";
 import {
 	metricTrustStatus,
+	needsApprovedMetricDefinitionCheck,
 	PRODUCT_METRIC_SPECS,
 	preferredAtlasQuestionNumber,
 	REVENUE_CLOSE_METRIC_SPECS,
@@ -9,6 +10,26 @@ import {
 } from "./product-metric.publisher";
 
 describe("product feedback metric registry", () => {
+	test("requests owner approval only for canonical KPIs that need a definition", () => {
+		expect(
+			needsApprovedMetricDefinitionCheck({
+				catalogReadiness: MetricReadinessStatus.NEEDS_DEFINITION,
+			}),
+		).toBe(true);
+		expect(
+			needsApprovedMetricDefinitionCheck({
+				catalogReadiness: MetricReadinessStatus.RECONCILING,
+			}),
+		).toBe(false);
+		expect(needsApprovedMetricDefinitionCheck({})).toBe(false);
+		expect(
+			needsApprovedMetricDefinitionCheck({
+				catalogReadiness: MetricReadinessStatus.NEEDS_DEFINITION,
+				linkedMetricApprovedAt: new Date("2026-08-21T00:00:00.000Z"),
+			}),
+		).toBe(false);
+	});
+
 	test("maps the existing Metabase feedback cards to their Atlas questions", () => {
 		expect(preferredAtlasQuestionNumber("8318")).toBe(42);
 		expect(preferredAtlasQuestionNumber("8252")).toBe(39);

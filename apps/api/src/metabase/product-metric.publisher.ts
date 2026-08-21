@@ -3,7 +3,9 @@ import {
 	DataSourceKind,
 	type Db,
 	FactGrain,
+	MetricCatalogKind,
 	MetricLifecycleStatus,
+	MetricReadinessStatus,
 	MetricRunStatus,
 	MetricTrustStatus,
 	type Prisma,
@@ -1530,6 +1532,7 @@ type LinkedMetric = {
 function buildQuestionMetricSpec(
 	input: PublishInput,
 	linkedMetric?: LinkedMetric,
+	requiresOwnerApproval = false,
 ): ProductMetricSpec {
 	const name = linkedMetric?.metric.name ?? input.question.name;
 	const sourceKind =
@@ -1552,15 +1555,16 @@ function buildQuestionMetricSpec(
 							: sourceKind === DataSourceKind.ATLAS
 								? "Atlas normalized source"
 								: "Metabase saved question";
-	const pendingChecks = linkedMetric?.approvedAt
-		? []
-		: [
-				{
-					name: "approved_metric_definition",
-					reason:
-						"The query returns data, but the metric owner still needs to confirm the definition, population, and reporting period.",
-				},
-			];
+	const pendingChecks =
+		requiresOwnerApproval && !linkedMetric?.approvedAt
+			? [
+					{
+						name: "approved_metric_definition",
+						reason:
+							"The query returns data, but the metric owner still needs to confirm the definition, population, and reporting period.",
+					},
+				]
+			: [];
 	return {
 		questionNumber: input.question.number,
 		sourceExternalId:
@@ -1599,6 +1603,16 @@ function buildQuestionMetricSpec(
 		ownerTeam: linkedMetric?.metric.ownerTeam ?? "Atlas",
 		createdBy: "atlas-question-registry",
 	};
+}
+
+export function needsApprovedMetricDefinitionCheck(input: {
+	linkedMetricApprovedAt?: Date | null;
+	catalogReadiness?: MetricReadinessStatus | null;
+}): boolean {
+	return (
+		input.catalogReadiness === MetricReadinessStatus.NEEDS_DEFINITION &&
+		!input.linkedMetricApprovedAt
+	);
 }
 
 function questionNeedsIdentityEligibility(input: PublishInput): boolean {
@@ -1665,9 +1679,9 @@ export class ProductMetricPublisher {
 			(input.question.sourceExternalId
 				? specsBySourceExternalId.get(input.question.sourceExternalId)
 				: undefined) ?? specsByQuestion.get(input.question.number);
-		const linkedMetric =
+		const [linkedMetric, catalogEntry] = await Promise.all([
 			!registeredSpec && input.question.metricVersionId
-				? await this.db.metricVersion.findUnique({
+				? this.db.metricVersion.findUnique({
 						where: { id: input.question.metricVersionId },
 						select: {
 							approvedAt: true,
@@ -1681,10 +1695,29 @@ export class ProductMetricPublisher {
 							},
 						},
 					})
-				: null;
+				: null,
+			!registeredSpec
+				? this.db.metricCatalogEntry.findFirst({
+						where: {
+							canonicalQuestionId: input.question.id,
+							kind: MetricCatalogKind.KPI,
+							missingAt: null,
+						},
+						orderBy: { updatedAt: "desc" },
+						select: { readiness: true },
+					})
+				: null,
+		]);
 		const spec =
 			registeredSpec ??
-			buildQuestionMetricSpec(input, linkedMetric ?? undefined);
+			buildQuestionMetricSpec(
+				input,
+				linkedMetric ?? undefined,
+				needsApprovedMetricDefinitionCheck({
+					linkedMetricApprovedAt: linkedMetric?.approvedAt,
+					catalogReadiness: catalogEntry?.readiness,
+				}),
+			);
 		const ownerTeam = spec.ownerTeam ?? "Product";
 		const createdBy = spec.createdBy ?? "atlas-product-registry";
 		const cadenceMinutes = spec.cadenceMinutes ?? 8 * 60;

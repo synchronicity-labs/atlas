@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { MetricReadinessStatus, MetricTrustStatus } from "@crm/db";
 import {
+	marketingSourceCoverageChecks,
 	metricTrustStatus,
 	needsApprovedMetricDefinitionCheck,
 	PRODUCT_METRIC_SPECS,
@@ -28,6 +29,20 @@ describe("product feedback metric registry", () => {
 				linkedMetricApprovedAt: new Date("2026-08-21T00:00:00.000Z"),
 			}),
 		).toBe(false);
+	});
+
+	test("keeps cross-site Marketing metrics provisional until source coverage is complete", () => {
+		expect(
+			marketingSourceCoverageChecks("marketing:ga4:visitors").map(
+				(check) => check.name,
+			),
+		).toEqual(["shared_cross_site_visitor_identity"]);
+		expect(
+			marketingSourceCoverageChecks(
+				"marketing:posthog:visitor-signup-rate",
+			).map((check) => check.name),
+		).toEqual(["complete_marketing_pageview_coverage"]);
+		expect(marketingSourceCoverageChecks("marketing:ga4:sessions")).toEqual([]);
 	});
 
 	test("maps the existing Metabase feedback cards to their Atlas questions", () => {

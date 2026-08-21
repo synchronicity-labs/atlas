@@ -1555,7 +1555,7 @@ function buildQuestionMetricSpec(
 							: sourceKind === DataSourceKind.ATLAS
 								? "Atlas normalized source"
 								: "Metabase saved question";
-	const pendingChecks =
+	const ownerApprovalChecks =
 		requiresOwnerApproval && !linkedMetric?.approvedAt
 			? [
 					{
@@ -1565,6 +1565,10 @@ function buildQuestionMetricSpec(
 					},
 				]
 			: [];
+	const pendingChecks = [
+		...ownerApprovalChecks,
+		...marketingSourceCoverageChecks(input.question.sourceExternalId),
+	];
 	return {
 		questionNumber: input.question.number,
 		sourceExternalId:
@@ -1603,6 +1607,33 @@ function buildQuestionMetricSpec(
 		ownerTeam: linkedMetric?.metric.ownerTeam ?? "Atlas",
 		createdBy: "atlas-question-registry",
 	};
+}
+
+export function marketingSourceCoverageChecks(
+	sourceExternalId: string | null,
+): Array<{ name: string; reason: string }> {
+	if (sourceExternalId === "marketing:ga4:visitors") {
+		return [
+			{
+				name: "shared_cross_site_visitor_identity",
+				reason:
+					"The approved Marketing scope spans several sites. The current GA4 property totals can count the same person more than once because the sites do not yet expose one stable shared visitor ID to Atlas.",
+			},
+		];
+	}
+	if (
+		sourceExternalId === "marketing:posthog:visitor-signup" ||
+		sourceExternalId === "marketing:posthog:visitor-signup-rate"
+	) {
+		return [
+			{
+				name: "complete_marketing_pageview_coverage",
+				reason:
+					"The 7-day conversion rule is approved, but the current PostHog page-view source does not yet show complete docs and blog coverage. Atlas must not certify a partial Marketing visitor population.",
+			},
+		];
+	}
+	return [];
 }
 
 export function needsApprovedMetricDefinitionCheck(input: {

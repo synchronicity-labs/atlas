@@ -108,6 +108,32 @@ describe("question explanations", () => {
 		);
 	});
 
+	test("keeps Product Scoreboard explanations out of database language", () => {
+		const names = [
+			"V2 self-serve - Primary professional orgs",
+			"V2 self-serve - M3 accrued NDR",
+			"V3 cohort - Primary professional orgs",
+			"Activated to professional rate by surface",
+			"Coverage — latest month (target 25%)",
+			"Attribution 01 - Signups → activated → professional by source",
+			"Reactivation funnel by send — manual + automated",
+			"Triage queue — newest negative ratings with job ids and artifacts",
+		];
+
+		for (const name of names) {
+			const explanation = questionExplanation({
+				name,
+				description:
+					"Type: internal Input: raw_field. Description: Internal fallback.",
+			});
+			expect(explanation).not.toContain("Type:");
+			expect(explanation).not.toContain("Input:");
+			expect(explanation).not.toContain("organizationPlanType");
+			expect(explanation).not.toContain("M+2");
+			expect(explanation).toContain("Why it matters:");
+		}
+	});
+
 	test("explains every question on the Revenue close tab", () => {
 		const names = [
 			"Product accrual run-rate",

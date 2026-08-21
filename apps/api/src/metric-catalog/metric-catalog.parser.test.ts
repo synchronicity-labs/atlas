@@ -123,9 +123,66 @@ describe("metric catalog parser", () => {
 		]);
 
 		expect(candidates).toHaveLength(2);
-		expect(candidates.every((candidate) => candidate.ambiguities.length === 0)).toBe(
-			true,
-		);
+		expect(
+			candidates.every((candidate) => candidate.ambiguities.length === 0),
+		).toBe(true);
+	});
+
+	test("uses the Productions owner's confirmed definitions without certifying missing event history", () => {
+		const candidates = catalogCandidates([
+			{
+				id: 8,
+				title: "KPIs",
+				index: 0,
+				rows: [
+					[
+						"Domain",
+						"KPI",
+						"type",
+						"what it means",
+						"Source",
+						"Trackable Today?",
+					],
+					[
+						"Productions",
+						"Turnaround time against the quality bar",
+						"primary",
+						"Old definition",
+						"Manual (Slack, Sheets) → workspaces",
+						"Partially",
+					],
+					[
+						"Productions",
+						"Time spent per shot",
+						"input",
+						"Old definition",
+						"Manual (Slack threads) → workspaces",
+						"Barely",
+					],
+					[
+						"Productions",
+						"Iterations per shot",
+						"input",
+						"Old definition",
+						"Manual (Sheet ML + VFX versions) → workspaces",
+						"Barely",
+					],
+				],
+			},
+		]);
+
+		expect(candidates).toHaveLength(3);
+		expect(
+			candidates.every((candidate) => candidate.ambiguities.length === 0),
+		).toBe(true);
+		expect(
+			candidates.every(
+				(candidate) => candidate.readinessHint === "NEEDS_SOURCE",
+			),
+		).toBe(true);
+		expect(candidates[0]?.description).toContain("all usable source files");
+		expect(candidates[1]?.description).toContain("Actual human work hours");
+		expect(candidates[2]?.description).toContain("batch review round");
 	});
 
 	test("keeps confirmed Product rows as KPIs when repeated rows omit the type", () => {
@@ -147,12 +204,12 @@ describe("metric catalog parser", () => {
 			},
 		]);
 
-		expect(candidates.map((candidate) => [candidate.title, candidate.kind])).toEqual(
-			[
-				["# of monthly active professional orgs", "KPI"],
-				["$ avg monthly accrued value from professional orgs", "KPI"],
-			],
-		);
+		expect(
+			candidates.map((candidate) => [candidate.title, candidate.kind]),
+		).toEqual([
+			["# of monthly active professional orgs", "KPI"],
+			["$ avg monthly accrued value from professional orgs", "KPI"],
+		]);
 	});
 
 	test("requires a concrete connector before marking a metric ready", () => {

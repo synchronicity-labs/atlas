@@ -59,9 +59,7 @@ const CONFIRMED_PRODUCT_RULES: Record<string, ReadonlySet<string>> = {
 	[slug("% first-gen orgs returning on a 2nd day in 14d")]: new Set([
 		"cohort_and_denominator",
 	]),
-	[slug("% first-gen orgs activated in 14d")]: new Set([
-		"qualifying_event",
-	]),
+	[slug("% first-gen orgs activated in 14d")]: new Set(["qualifying_event"]),
 	[slug("% activated org-months reaching professional")]: new Set([
 		"qualifying_event",
 		"identity_and_population",
@@ -80,18 +78,31 @@ const CONFIRMED_PRODUCT_RULES: Record<string, ReadonlySet<string>> = {
 		"qualifying_event",
 		"economic_basis",
 	]),
-	[slug("% M3 accrued NDR")]: new Set([
-		"qualifying_event",
-		"economic_basis",
-	]),
-	[slug("% generation completion rate")]: new Set([
-		"outcome_and_clock",
-	]),
+	[slug("% M3 accrued NDR")]: new Set(["qualifying_event", "economic_basis"]),
+	[slug("% generation completion rate")]: new Set(["outcome_and_clock"]),
 	[slug("% accrued professional org-months paid-qualified")]: new Set([
 		"qualifying_event",
 		"identity_and_population",
 		"economic_basis",
 	]),
+};
+
+const CONFIRMED_PRODUCTIONS_RULES: Record<string, ReadonlySet<string>> = {
+	[slug("Turnaround time against the quality bar")]: new Set([
+		"outcome_and_clock",
+		"qualifying_event",
+	]),
+	[slug("Time spent per shot")]: new Set(["outcome_and_clock"]),
+	[slug("Iterations per shot")]: new Set(["outcome_and_clock"]),
+};
+
+const CONFIRMED_PRODUCTIONS_DESCRIPTIONS: Record<string, string> = {
+	[slug("Turnaround time against the quality bar")]:
+		"Time from confirmed client kickoff and receipt of all usable source files to either first client submission or final delivery. Atlas must show gross elapsed time and active production time separately. Active time excludes documented waits for client files, decisions, feedback, or approval. Client acceptance is a separate milestone. POCs and full Productions work must be reported separately and normalized by scope.",
+	[slug("Time spent per shot")]:
+		"Actual human work hours per processed shot across creation, generation, quality control, rework, and visual effects. Report POCs separately from full Productions work, and separate machine-learning-only work from machine learning plus visual effects and delivery. Current Sheets and Slack records do not capture these hours reliably, so Atlas cannot publish an exact result yet.",
+	[slug("Iterations per shot")]:
+		"Number of new output versions created after quality control sends a shot back. Machine-learning and visual-effects iterations stay separate. A batch review round is not another shot iteration. Current Sheets do not preserve complete version history, so Atlas cannot publish an exact result yet.",
 };
 
 function text(value: unknown): string {
@@ -112,6 +123,10 @@ function slug(value: string): string {
 		.replace(/[^a-z0-9]+/g, "-")
 		.replace(/^-|-$/g, "")
 		.slice(0, 120);
+}
+
+function confirmedDescription(title: string, description: string | null) {
+	return CONFIRMED_PRODUCTIONS_DESCRIPTIONS[slug(title)] ?? description;
 }
 
 function kindFrom(type: string, title: string): CatalogKind {
@@ -270,7 +285,9 @@ function ambiguitiesFor(title: string, description: string | null) {
 				"Confirm the qualifying outcome, clock boundaries, retries, and pauses.",
 		});
 	}
-	const confirmedRules = CONFIRMED_PRODUCT_RULES[slug(title)];
+	const confirmedRules =
+		CONFIRMED_PRODUCT_RULES[slug(title)] ??
+		CONFIRMED_PRODUCTIONS_RULES[slug(title)];
 	return confirmedRules
 		? ambiguities.filter((ambiguity) => !confirmedRules.has(ambiguity.key))
 		: ambiguities;
@@ -315,7 +332,7 @@ function candidatesFromKpiSheet(sheet: CatalogSheet): CatalogCandidate[] {
 		const domain = values[0] ?? "";
 		const title = values[1]?.trim() ?? "";
 		const type = values[2]?.trim() ?? "";
-		const description = values[3]?.trim() || null;
+		const sourceDescription = values[3]?.trim() || null;
 
 		if (domain && !SECTION_PATTERN.test(domain) && title)
 			inheritedOwner = domain;
@@ -327,6 +344,7 @@ function candidatesFromKpiSheet(sheet: CatalogSheet): CatalogCandidate[] {
 
 		const cleanTitle = title.replace(/^\s*↳\s*/, "").trim();
 		if (!cleanTitle) continue;
+		const description = confirmedDescription(cleanTitle, sourceDescription);
 		const sourceHint =
 			sourceColumn >= 0 ? text(raw[sourceColumn]) || null : null;
 		const trackability =
@@ -400,7 +418,10 @@ function candidatesFromTeamSheet(sheet: CatalogSheet): CatalogCandidate[] {
 			.join(" — ");
 		const title = taggedTitle || contextTitle || success;
 		if (!title) continue;
-		const description = success || descriptionFrom(values, title);
+		const description = confirmedDescription(
+			title,
+			success || descriptionFrom(values, title),
+		);
 		const kind = kindFrom(tag, combined);
 		const ambiguities = ambiguitiesFor(title, description);
 		const base = `${sheet.id}:${slug(title) || `row-${index + 1}`}`;

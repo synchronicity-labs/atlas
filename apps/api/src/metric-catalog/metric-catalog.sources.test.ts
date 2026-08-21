@@ -79,4 +79,33 @@ describe("metric catalog source resolution", () => {
 			]),
 		);
 	});
+
+	test("separates current Productions evidence from the future event source", () => {
+		const result = resolveCatalogSources(
+			{
+				title: "Turnaround time against the quality bar",
+				description: "Approved delivery clock",
+				ownerTeam: "Productions",
+				sourceTabName: "KPIs",
+				sourceHint: "Manual (Slack, Sheets) → workspaces",
+				kind: "KPI",
+			},
+			sources,
+		);
+
+		expect(result).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({
+					key: "manual:tracker",
+					label: "Production Sheets and Slack evidence",
+					reason: expect.stringContaining("not a complete event history"),
+				}),
+				expect.objectContaining({
+					key: "production:workspaces",
+					state: "MISSING",
+					reason: expect.stringContaining("status transitions"),
+				}),
+			]),
+		);
+	});
 });

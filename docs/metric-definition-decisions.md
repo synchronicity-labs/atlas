@@ -213,6 +213,38 @@ For the current incomplete UTC month, V2 usage and V3 top-ups are paced from the
 shared data-through time. Complete months show actual values. V3 credit consumption is
 an operating usage measure, not a revenue component.
 
+## Productions definitions
+
+Muhammad Hadi Yusufali approved the business definitions in
+[OPS-39](https://linear.app/sync-labs/issue/OPS-39/confirm-how-productions-turnaround-and-quality-should-be-measured).
+This resolves the meaning of the three current Productions KPIs. It does not verify a
+numeric result because the current workflow does not keep a complete event history.
+
+| Decision | Approved Productions rule |
+| --- | --- |
+| Operational start | Start when the client has confirmed kickoff and Productions has every usable source file needed to begin. If assets arrive later than the announced date, use the usable-assets-complete time. |
+| First submission | The first internally approved package sent to the client. |
+| Final delivery | Every agreed deliverable passes internal delivery quality control and is sent to the client. |
+| Client acceptance | A separate milestone. Do not include client review time in the main active-production clock. |
+| Turnaround clocks | Publish gross elapsed time and active production time separately. Gross time includes client waits. Active time excludes documented waits for client files, decisions, feedback, or approval. |
+| Quality pass | A shot passes when an internal quality-control reviewer explicitly approves it. A project passes internal quality control only when every in-scope shot is approved and the assembled deliverable passes final longplay or delivery quality control. |
+| Iteration | Count a new output version after quality control sends the shot back. Keep machine-learning and visual-effects iterations separate. A batch review round is not another shot iteration. |
+| Comparison groups | Keep proof-of-concept work separate from full Productions work. Keep machine-learning-only work separate from machine learning plus visual effects and delivery. Normalize by processed shot count, finished duration, complexity, and quality-control scope. |
+| Time per shot | Use actual human work hours across creation, generation, quality control, rework, and visual effects. Do not substitute wall-clock duration. |
+
+Current project Sheets hold the latest shot state, assignee, quality notes, severity,
+and status. Slack, email, and delivery tools hold most timing and version history. Atlas
+can reconstruct an explicitly labeled estimate from those records, but it must not call
+that result verified. A deterministic result needs Workspaces or Flow to emit status
+transitions, version history, assignments, approvals, time entries, delivery events,
+and documented pause intervals.
+
+The first reconstruction references are the NTR / Devara
+[project Sheet](https://docs.google.com/spreadsheets/d/12WlGYJQNg-8u6Z9Wk1S7roifd1LyhSuVEFuay5isa3Y/edit)
+and [execution thread](https://sync-labs-workspace.slack.com/archives/C0B0SKZB51P/p1785091428408359),
+plus the Apple TV / Where's Wanda [Linear issue](https://linear.app/sync-labs/issue/PRO-313/apple-tv-wheres-wanda-english-sync-poc)
+and [project Sheet](https://docs.google.com/spreadsheets/d/1BLqRz7nLktCbLH2i5FKGWmK3hxaZs4p6PWO7GnXggH4/edit).
+
 ## Decision record template
 
 For each answer, record:

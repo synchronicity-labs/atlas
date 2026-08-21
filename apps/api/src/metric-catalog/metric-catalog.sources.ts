@@ -51,6 +51,7 @@ export function resolveCatalogSources(
 		.join(" ")
 		.toLowerCase();
 	const hint = entry.sourceHint?.toLowerCase() ?? "";
+	const isProductions = entry.ownerTeam?.toLowerCase() === "productions";
 	const candidates: CandidateInput[] = [];
 	const add = (candidate: CandidateInput) => {
 		if (!candidates.some((current) => current.key === candidate.key)) {
@@ -103,8 +104,10 @@ export function resolveCatalogSources(
 	explicit(
 		/manual/,
 		"manual:tracker",
-		"Manual tracker",
-		"The current process is manual and still needs an automated system of record.",
+		isProductions ? "Production Sheets and Slack evidence" : "Manual tracker",
+		isProductions
+			? "Current project state is in Google Sheets, while most timing, review, and rework history is in Slack and delivery tools. Atlas can reconstruct estimates from these records, but they are not a complete event history."
+			: "The current process is manual and still needs an automated system of record.",
 	);
 	explicit(
 		/platform analytics/,
@@ -246,17 +249,17 @@ export function resolveCatalogSources(
 		});
 	}
 	if (
-		entry.ownerTeam?.toLowerCase() === "productions" ||
+		isProductions ||
 		/\b(shots?|episodes?|delivery|production coordinator|project kickoff)\b/.test(
 			value,
 		)
 	) {
 		add({
 			key: "production:workspaces",
-			label: "Production workspaces",
+			label: "Production Workspaces or Flow events",
 			confidence: "INFERRED",
 			reason:
-				"Project, shot, runtime, and delivery evidence belongs in production workspaces.",
+				"A deterministic result needs status transitions, version history, assignments, quality-control approvals, delivery events, and documented pause intervals. The current workflow does not emit this complete history.",
 		});
 	}
 	if (entry.kind === "ROADMAP_MEASURE") {

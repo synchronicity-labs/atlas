@@ -313,8 +313,8 @@ export class MetricCatalogService {
 					importedKind === MetricCatalogKind.KPI
 						? importedKind
 						: current?.kind && current.kind !== MetricCatalogKind.UNCLASSIFIED
-						? current.kind
-						: importedKind;
+							? current.kind
+							: importedKind;
 				const metric = this.matchMetric(candidate, metrics, current?.metricId);
 				const importedReadiness = readinessFor(candidate, metric);
 				const readiness = resolveMetricCatalogReadiness(
@@ -328,10 +328,23 @@ export class MetricCatalogService {
 					? evidenceQuestionByNumber.get(explicitQuestionNumber)
 					: null;
 				const metricQuestion = metric?.versions[0]?.questions[0] ?? null;
+				const catalogDraftQuestion =
+					kind === MetricCatalogKind.KPI &&
+					!metricQuestion &&
+					!explicitQuestion &&
+					(!current?.canonicalQuestion ||
+						current.canonicalQuestion.status === QuestionStatus.DRAFT)
+						? await this.ensureDraftQuestion({
+								candidate,
+								sourceId: draftSource.id,
+								number: nextQuestionNumber,
+							})
+						: null;
 				const selectedQuestion =
 					kind === MetricCatalogKind.KPI
 						? (metricQuestion ??
 							explicitQuestion ??
+							catalogDraftQuestion ??
 							current?.canonicalQuestion ??
 							(await this.ensureDraftQuestion({
 								candidate,
@@ -1025,8 +1038,6 @@ export class MetricCatalogService {
 			},
 			select: { id: true, number: true, status: true },
 		});
-		if (existing) return existing;
-
 		const decisions = input.candidate.ambiguities.map(
 			(ambiguity) => ambiguity.label,
 		);
@@ -1038,6 +1049,18 @@ export class MetricCatalogService {
 		]
 			.filter(Boolean)
 			.join(" ");
+		if (existing) {
+			if (existing.status === QuestionStatus.DRAFT) {
+				await this.db.question.update({
+					where: { id: existing.id },
+					data: {
+						name: input.candidate.title,
+						description,
+					},
+				});
+			}
+			return existing;
+		}
 
 		return this.db.question.create({
 			data: {
@@ -1226,7 +1249,7 @@ export class MetricCatalogService {
 				tabNumber: 1,
 				tabName: "Delivery",
 				description:
-					"Delivery speed and iteration quality. Values appear only after the production workflow emits the agreed start, stop, and quality events.",
+					"Approved definitions for delivery speed, work hours, and iteration quality. Current values remain unavailable or estimated because Sheets and Slack do not provide a complete event history. Each card shows the exact missing evidence needed for a verified result.",
 			},
 			{
 				team: "Engineering",

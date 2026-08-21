@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 import {
 	buildTinybirdEligibility,
 	type EligibilityRow,
+	governProductPostgresQuery,
 	governTinybirdQuery,
 } from "./tinybird-eligibility.service";
 
@@ -137,5 +138,107 @@ describe("product activity eligibility", () => {
 		expect(snapshot.excludedUserIds).toEqual(["internal", "never-paid"]);
 		expect(snapshot.excludedOrganizationIds).toEqual(["internal-org", "org-1"]);
 		expect(snapshot.excludedUserIds).not.toContain("paid-before-ban");
+	});
+
+	it("joins Product Postgres generations to the shared reporting population", () => {
+		const governed = governProductPostgresQuery(
+			"select count(*) from public.generations g",
+			"PRODUCT_ACTIVITY",
+		);
+
+		expect(governed.applied).toBe(true);
+		expect(governed.queryText).toContain("atlas_population_generation.user_id");
+		expect(governed.queryText).toContain(
+			"atlas_population_organization.first_subscribed_at",
+		);
+		expect(governed.queryText).toContain("atlas_population_user.banned");
+	});
+
+	it("keeps banned paying customers in Product Postgres money queries", () => {
+		const governed = governProductPostgresQuery(
+			"select count(*) from generations g",
+			"MONEY",
+		);
+
+		expect(governed.applied).toBe(true);
+		expect(governed.queryText).not.toContain("first_subscribed_at");
+		expect(governed.queryText).not.toContain("atlas_population_user.banned");
+	});
+
+	it("joins Product Postgres organizations to the same population", () => {
+		const governed = governProductPostgresQuery(
+			"select count(*) from public.organizations o",
+			"PRODUCT_ACTIVITY",
+		);
+
+		expect(governed.applied).toBe(true);
+		expect(governed.queryText).toContain("public.user_organizations");
+		expect(governed.queryText).toContain("atlas_population_user.email");
+	});
+
+	it("normalizes older clean-user clauses to the shared rule", () => {
+		const governed = governProductPostgresQuery(
+			`with clean_users as (
+  select id from auth.users
+  where coalesce(banned,false)=false
+    and coalesce(disabled,false)=false
+)
+select count(*) from public.generations g join clean_users u on u.id = g.user_id`,
+			"PRODUCT_ACTIVITY",
+		);
+
+		expect(governed.queryText).toContain(
+			"id in (select user_id from atlas_subscribed_users)",
+		);
+		expect(governed.queryText).toContain("and true");
+	});
+
+	it("preserves leading SQL comments before an existing CTE", () => {
+		const governed = governProductPostgresQuery(
+			`-- source definition
+-- second line
+with recent as (select * from public.generations)
+select count(*) from recent`,
+			"PRODUCT_ACTIVITY",
+		);
+
+		expect(governed.queryText).toContain(
+			"-- second line\nwith atlas_subscribed_users as",
+		);
+		expect(governed.queryText).not.toContain("\nwith recent as");
+	});
+
+	it("upgrades an existing clean-user join without wrapping the fact table", () => {
+		const governed = governProductPostgresQuery(
+			`with clean_users as (
+  select id from auth.users
+  where coalesce(banned, false) = false
+    and coalesce(disabled, false) = false
+    and coalesce(is_anonymous, false) = false
+    and lower(coalesce(email, '')) not like '%@sync.so'
+    and lower(coalesce(email, '')) not like '%@sync.labs'
+), gens as (
+  select g.id from public.generations g join clean_users u on u.id = g.user_id
+)
+select * from gens`,
+			"PRODUCT_ACTIVITY",
+		);
+
+		expect(governed.applied).toBe(true);
+		expect(governed.queryText).toContain("atlas_subscribed_users as");
+		expect(governed.queryText).toContain("from public.generations g");
+		expect(governed.queryText).not.toContain("atlas_population_generations");
+		expect(governed.queryText).toContain(
+			"coalesce(banned, false) = false or id in (select user_id from atlas_subscribed_users)",
+		);
+		expect(governed.queryText).toContain("and true");
+	});
+
+	it("does not change abuse questions that read users directly", () => {
+		const queryText = "select count(*) from auth.users where banned is true";
+		const governed = governProductPostgresQuery(queryText, "PRODUCT_ACTIVITY");
+
+		expect(governed.applied).toBe(false);
+		expect(governed.queryText).toBe(queryText);
 	});
 });

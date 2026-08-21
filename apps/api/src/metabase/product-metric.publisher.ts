@@ -78,6 +78,7 @@ export type PublishInput = {
 		returnedRows: number;
 		scope?: "ALL_IDENTITIES" | "SUBSCRIBED_ORGANIZATIONS";
 		policy?: "PRODUCT_ACTIVITY" | "MONEY";
+		enforcement?: "POSTGRES_LIVE_JOIN" | "TINYBIRD_ID_EXCLUSIONS";
 		limitation?: "BANNED_NEVER_SUBSCRIBED_JOIN_REQUIRED";
 	};
 	revenueDoorPolicy?: RevenueDoorPolicyEvidence;
@@ -2149,7 +2150,9 @@ function verificationRows(input: {
 	const eligibilityPassedReason =
 		eligibility?.policy === "MONEY"
 			? "Money policy: internal identities are excluded. A customer who subscribed or paid remains in historical money results even if the customer was later banned."
-			: "Product activity policy: internal identities and banned people who never subscribed are excluded. Paying customers and disabled accounts remain visible.";
+			: eligibility?.enforcement === "POSTGRES_LIVE_JOIN"
+				? "Atlas joined the product activity to the live user and organization records before aggregation. Internal identities and banned people who never subscribed are excluded. Paying customers and disabled accounts remain visible."
+				: "Product activity policy: internal identities and banned people who never subscribed are excluded. Paying customers and disabled accounts remain visible.";
 	return [
 		{
 			name: "read_only_query",

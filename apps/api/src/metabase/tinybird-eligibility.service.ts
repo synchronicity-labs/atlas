@@ -66,6 +66,7 @@ export type GovernedTinybirdQuery = {
 		returnedRows: number;
 		scope?: "ALL_IDENTITIES" | "SUBSCRIBED_ORGANIZATIONS";
 		policy?: "PRODUCT_ACTIVITY" | "MONEY";
+		enforcement?: "POSTGRES_LIVE_JOIN" | "TINYBIRD_ID_EXCLUSIONS";
 		limitation?: "BANNED_NEVER_SUBSCRIBED_JOIN_REQUIRED";
 	};
 };
@@ -219,6 +220,18 @@ export function governTinybirdQuery(
 	databaseExternalId: string | null,
 	eligibility: TinybirdEligibilitySnapshot,
 ): GovernedTinybirdQuery {
+	if (databaseExternalId === "34") {
+		const governed = governProductPostgresQuery(queryText, eligibility.policy);
+		return {
+			queryText: governed.queryText,
+			applied: governed.applied,
+			eligibility: {
+				...eligibilityEvidence(eligibility),
+				complete: governed.applied,
+				enforcement: "POSTGRES_LIVE_JOIN",
+			},
+		};
+	}
 	if (databaseExternalId !== "166" || !eligibility.complete) {
 		return {
 			queryText,
@@ -276,6 +289,83 @@ export function governTinybirdQuery(
 	};
 }
 
+export function governProductPostgresQuery(
+	queryText: string,
+	policy: TinybirdEligibilitySnapshot["policy"],
+): { queryText: string; applied: boolean } {
+	if (hasEmbeddedProductPopulation(queryText)) {
+		const normalized = normalizeEmbeddedProductPopulation(queryText, policy);
+		return {
+			queryText:
+				policy === "PRODUCT_ACTIVITY"
+					? prependPostgresCommonTableExpressions(normalized, [
+							subscribedUserPopulation(),
+						])
+					: normalized,
+			applied: true,
+		};
+	}
+	const usesGenerations = hasPostgresTableReference(queryText, "generations");
+	const usesOrganizations = hasPostgresTableReference(
+		queryText,
+		"organizations",
+	);
+	if (!usesGenerations && !usesOrganizations) {
+		return { queryText, applied: false };
+	}
+
+	let governed = normalizeEmbeddedProductPopulation(queryText, policy);
+	governed = replacePostgresTableReference(
+		governed,
+		"public.organizations",
+		"atlas_population_organizations",
+	);
+	governed = replacePostgresTableReference(
+		governed,
+		"organizations",
+		"atlas_population_organizations",
+	);
+	governed = replacePostgresTableReference(
+		governed,
+		"public.generations",
+		"atlas_population_generations",
+	);
+	governed = replacePostgresTableReference(
+		governed,
+		"generations",
+		"atlas_population_generations",
+	);
+
+	const commonTableExpressions =
+		policy === "PRODUCT_ACTIVITY" ? [subscribedUserPopulation()] : [];
+	if (usesOrganizations) {
+		commonTableExpressions.push(productOrganizationPopulation(policy));
+	}
+	if (usesGenerations) {
+		commonTableExpressions.push(productGenerationPopulation(policy));
+	}
+
+	return {
+		queryText: prependPostgresCommonTableExpressions(
+			governed,
+			commonTableExpressions,
+		),
+		applied: true,
+	};
+}
+
+function hasEmbeddedProductPopulation(queryText: string): boolean {
+	const normalized = queryText.toLowerCase();
+	return (
+		/\bclean_users\s+as\s*\(/.test(normalized) &&
+		/\bfrom\s+auth\.users\b/.test(normalized) &&
+		/\bjoin\s+clean_users\b/.test(normalized) &&
+		normalized.includes("is_anonymous") &&
+		normalized.includes("@sync.so") &&
+		normalized.includes("@sync.labs")
+	);
+}
+
 function isIneligible(
 	row: EligibilityRow,
 	policy: TinybirdEligibilitySnapshot["policy"],
@@ -315,8 +405,133 @@ function eligibilityEvidence(
 		returnedRows: eligibility.returnedRows,
 		scope: eligibility.scope,
 		policy: eligibility.policy,
+		enforcement: "TINYBIRD_ID_EXCLUSIONS" as const,
 		...(limitation ? { limitation } : {}),
 	};
+}
+
+function subscribedUserPopulation(): string {
+	return `atlas_subscribed_users as (
+	select distinct atlas_population_membership.user_id
+	from public.user_organizations atlas_population_membership
+	join public.organizations atlas_population_organization
+		on atlas_population_organization.id = atlas_population_membership.organization_id
+	where atlas_population_organization.first_subscribed_at is not null
+)`;
+}
+
+function productGenerationPopulation(
+	policy: TinybirdEligibilitySnapshot["policy"],
+): string {
+	const populationRule =
+		policy === "PRODUCT_ACTIVITY"
+			? `and (
+		coalesce(atlas_population_user.banned, false) = false
+		or atlas_population_user.id in (select user_id from atlas_subscribed_users)
+	)`
+			: "";
+	return `atlas_population_generations as (
+	select atlas_population_generation.*
+  from public.generations atlas_population_generation
+	join auth.users atlas_population_user
+    on atlas_population_user.id = atlas_population_generation.user_id
+	where coalesce(atlas_population_user.is_anonymous, false) = false
+		and lower(coalesce(atlas_population_user.email, '')) not like '%@sync.so'
+		and lower(coalesce(atlas_population_user.email, '')) not like '%@sync.labs'
+		${populationRule}
+)`;
+}
+
+function productOrganizationPopulation(
+	policy: TinybirdEligibilitySnapshot["policy"],
+): string {
+	const populationRule =
+		policy === "PRODUCT_ACTIVITY"
+			? `and (
+			coalesce(atlas_population_user.banned, false) = false
+			or atlas_population_user.id in (select user_id from atlas_subscribed_users)
+		)`
+			: "";
+	return `atlas_population_organizations as (
+	select atlas_population_organization.*
+  from public.organizations atlas_population_organization
+  where exists (
+    select 1
+    from public.user_organizations atlas_population_membership
+		join auth.users atlas_population_user
+      on atlas_population_user.id = atlas_population_membership.user_id
+    where atlas_population_membership.organization_id = atlas_population_organization.id
+		and coalesce(atlas_population_user.is_anonymous, false) = false
+		and lower(coalesce(atlas_population_user.email, '')) not like '%@sync.so'
+		and lower(coalesce(atlas_population_user.email, '')) not like '%@sync.labs'
+		${populationRule}
+	)
+)`;
+}
+
+function normalizeEmbeddedProductPopulation(
+	queryText: string,
+	policy: TinybirdEligibilitySnapshot["policy"],
+): string {
+	let normalized = queryText;
+	const dirtyPopulation =
+		/coalesce\(\s*(?:([a-z_][\w$]*)\.)?banned\s*,\s*false\s*\)\s+or\s+coalesce\(\s*(?:\1\.)?disabled\s*,\s*false\s*\)\s+or\s+coalesce\(\s*(?:\1\.)?is_anonymous\s*,\s*false\s*\)/gi;
+	normalized = normalized.replace(dirtyPopulation, (_match, alias?: string) => {
+		const qualifier = alias ? `${alias}.` : "";
+		return policy === "PRODUCT_ACTIVITY"
+			? `(coalesce(${qualifier}banned, false) and ${qualifier}id not in (select user_id from atlas_subscribed_users)) or coalesce(${qualifier}is_anonymous, false)`
+			: `coalesce(${qualifier}is_anonymous, false)`;
+	});
+	const cleanBanned =
+		/coalesce\(\s*(?:([a-z_][\w$]*)\.)?banned\s*,\s*false\s*\)\s*=\s*false/gi;
+	normalized = normalized.replace(cleanBanned, (_match, alias?: string) => {
+		if (policy === "MONEY") return "true";
+		const qualifier = alias ? `${alias}.` : "";
+		return `(coalesce(${qualifier}banned, false) = false or ${qualifier}id in (select user_id from atlas_subscribed_users))`;
+	});
+	return normalized.replace(
+		/coalesce\(\s*(?:[a-z_][\w$]*\.)?disabled\s*,\s*false\s*\)\s*=\s*false/gi,
+		"true",
+	);
+}
+
+function hasPostgresTableReference(queryText: string, table: string): boolean {
+	const qualified = `(?:public\\.)?${table.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`;
+	return new RegExp(`\\b(?:from|join)\\s+${qualified}\\b`, "i").test(queryText);
+}
+
+function replacePostgresTableReference(
+	queryText: string,
+	table: string,
+	replacement: string,
+): string {
+	const escaped = table.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+	return queryText.replace(
+		new RegExp(`\\b(from|join)\\s+${escaped}\\b`, "gi"),
+		(_match, clause: string) => `${clause} ${replacement}`,
+	);
+}
+
+function prependPostgresCommonTableExpressions(
+	queryText: string,
+	commonTableExpressions: string[],
+): string {
+	const prefix = commonTableExpressions.join(",\n");
+	const leadingComments =
+		queryText.match(
+			/^(?:(?:\s*--[^\r\n]*(?:\r?\n|$))|(?:\s*\/\*[\s\S]*?\*\/))*\s*/,
+		)?.[0] ?? "";
+	const statement = queryText.slice(leadingComments.length);
+	if (/^with\s+recursive\b/i.test(statement)) {
+		return `${leadingComments}${statement.replace(
+			/^\s*with\s+recursive\b/i,
+			`with recursive ${prefix},`,
+		)}`;
+	}
+	if (/^with\b/i.test(statement)) {
+		return `${leadingComments}${statement.replace(/^with\b/i, `with ${prefix},`)}`;
+	}
+	return `${leadingComments}with ${prefix}\n${statement}`;
 }
 
 function hasSubscribedPopulation(queryText: string): boolean {

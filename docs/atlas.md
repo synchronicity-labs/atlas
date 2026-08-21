@@ -271,6 +271,21 @@ and one user may appear in multiple organizations without destructive merging.
 The progressive sync also stores the current banned, disabled, and anonymous flags;
 these mutable fields inform new calculations but never rewrite an issued snapshot.
 
+Atlas applies one reporting-population rule before Product Postgres questions are
+aggregated. Product activity excludes anonymous and internal identities. It also
+excludes a banned person only when no organization membership has a
+`first_subscribed_at` value. A person who subscribed remains in historical product
+and money results after a later ban. Disabled accounts also remain in historical
+results and can be reported as a separate retention signal. Abuse questions do not
+use this filter because banned identities are their subject.
+
+The Product Postgres path applies this rule as a live join to `auth.users`,
+`user_organizations`, and `organizations` before it reads organizations or
+generations. It does not copy a large user-ID exclusion list into each question.
+TinyBird money questions use the governed subscribed-customer exclusion list. A
+TinyBird or PostHog question about unpaid activity remains pending until its source
+facts have a normalized product-user key that can apply the same rule.
+
 ## Customer identity bridge
 
 HubSpot companies and contacts are stored as source-backed CRM records. PostHog

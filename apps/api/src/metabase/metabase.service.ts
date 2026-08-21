@@ -555,7 +555,7 @@ export class MetabaseService {
 			const client = new MetabaseClient(config);
 			const generalEligibility = questions.some(
 				(question) =>
-					question.databaseExternalId === "166" &&
+					["34", "166"].includes(question.databaseExternalId ?? "") &&
 					question.versions[0]?.queryLanguage === QueryLanguage.SQL &&
 					!usesSubscribedRevenueEligibility(
 						question.number,
@@ -567,7 +567,7 @@ export class MetabaseService {
 				: null;
 			const revenueEligibility = questions.some(
 				(question) =>
-					question.databaseExternalId === "166" &&
+					["34", "166"].includes(question.databaseExternalId ?? "") &&
 					question.versions[0]?.queryLanguage === QueryLanguage.SQL &&
 					usesSubscribedRevenueEligibility(
 						question.number,

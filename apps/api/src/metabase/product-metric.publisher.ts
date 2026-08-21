@@ -170,6 +170,35 @@ export const PRODUCT_METRIC_SPECS: ProductMetricSpec[] = [
 		requiresCrossSourceEligibility: true,
 	},
 	{
+		questionNumber: 119,
+		sourceExternalId: "8168",
+		key: "product.professional_and_activated_organization_trend",
+		name: "Professional and activated organization trend",
+		description:
+			"Monthly V2 self-serve professional organizations and activated organizations shown together. Professional organizations also meet the $100+ accrued-value threshold.",
+		grain: FactGrain.MONTH,
+		source: {
+			key: "tinybird:usage",
+			kind: DataSourceKind.TINYBIRD,
+			label: "TinyBird product usage",
+		},
+		eventTimeField: "generationCreatedAt",
+		businessDefinition: {
+			entity: "organization_month",
+			population: "v2_self_serve",
+			periodAssignment: "generationCreatedAt in UTC",
+			activated:
+				"3+ completed generations created on a non-free plan across 2+ distinct UTC days",
+			professional:
+				"the activated definition plus $100+ accrued value in the same UTC month",
+		},
+		computation: {
+			aggregate: "count_organizations",
+			outputs: ["professional_orgs", "activated_org_pool"],
+		},
+		requiresCrossSourceEligibility: true,
+	},
+	{
 		questionNumber: 21,
 		sourceExternalId: "8170",
 		key: "product.first_generation_14d_activation",
@@ -273,6 +302,36 @@ export const PRODUCT_METRIC_SPECS: ProductMetricSpec[] = [
 				"$100+ accrued value, 3+ COMPLETED generations created on a non-free plan, and activity on 2+ distinct UTC days",
 		},
 		computation: { aggregate: "cohort_share", output: "value" },
+		requiresCrossSourceEligibility: true,
+	},
+	{
+		questionNumber: 120,
+		sourceExternalId: "8174",
+		key: "product.m3_requalification_and_accrued_ndr_trend",
+		name: "Month 3 requalification and accrued net dollar retention trend",
+		description:
+			"For each starting V2 self-serve professional cohort, shows the share that qualifies again two calendar months later and the accrued value retained by that same cohort.",
+		grain: FactGrain.MONTH,
+		source: {
+			key: "tinybird:usage",
+			kind: DataSourceKind.TINYBIRD,
+			label: "TinyBird product usage",
+		},
+		eventTimeField: "generationCreatedAt",
+		businessDefinition: {
+			entity: "starting_professional_organization_cohort",
+			population: "v2_self_serve",
+			periodAssignment: "generationCreatedAt in UTC",
+			requalificationMonthOffset: 2,
+			requalification:
+				"share of the starting professional cohort that meets the full professional definition again two calendar months later",
+			accruedNetDollarRetention:
+				"accrued value from the same cohort two calendar months later divided by its starting-month accrued value",
+		},
+		computation: {
+			aggregate: "cohort_retention",
+			outputs: ["m3_requalification_pct", "m3_accrued_ndr_pct"],
+		},
 		requiresCrossSourceEligibility: true,
 	},
 	{
@@ -391,6 +450,36 @@ export const PRODUCT_METRIC_SPECS: ProductMetricSpec[] = [
 					"V3 top-ups are successful one-time Stripe payments, not usage invoices. Confirm whether a V3 paid-qualified organization-month uses subscription invoices plus successful top-up payments in the same UTC month, subscription invoices only, or another rule.",
 			},
 		],
+	},
+	{
+		questionNumber: 160,
+		sourceExternalId: "atlas:product:qualified-then-deleted",
+		key: "product.professional_organizations_with_deleted_user",
+		name: "Professional organizations with a user deleted after qualifying",
+		description:
+			"Professional organizations that met the full monthly threshold before a contributing user chose to delete their account.",
+		grain: FactGrain.MONTH,
+		source: {
+			key: "atlas:product-eligibility",
+			kind: DataSourceKind.ATLAS,
+			label: "Atlas product eligibility",
+		},
+		eventTimeField: "period_start",
+		businessDefinition: {
+			entity: "professional_organization_month",
+			population: "v2_self_serve",
+			periodAssignment: "generationCreatedAt in UTC",
+			deletionEvent: "user-initiated account deletion",
+			historicalTreatment:
+				"keep the organization in the historical professional count and report the later deletion separately",
+		},
+		computation: {
+			aggregate: "count_organizations",
+			output: "organizations_with_qualified_then_deleted_user",
+		},
+		requiresCrossSourceEligibility: false,
+		ownerTeam: "Atlas",
+		createdBy: "atlas-operator-definition",
 	},
 	{
 		questionNumber: 42,
@@ -1777,10 +1866,8 @@ export class ProductMetricPublisher {
 					cadence: json(contract.cadence),
 					contentHash: contractHash,
 					createdBy,
-					approvedBy:
-						governanceVerified && definitionVerified ? "atlas-policy" : null,
-					approvedAt:
-						governanceVerified && definitionVerified ? input.capturedAt : null,
+					approvedBy: definitionVerified ? "atlas-policy" : null,
+					approvedAt: definitionVerified ? input.capturedAt : null,
 					inputs: {
 						create: {
 							datasetId: dataset.id,
@@ -1795,11 +1882,7 @@ export class ProductMetricPublisher {
 					},
 				},
 			});
-		} else if (
-			governanceVerified &&
-			definitionVerified &&
-			!metricVersion.approvedAt
-		) {
+		} else if (definitionVerified && !metricVersion.approvedAt) {
 			metricVersion = await this.db.metricVersion.update({
 				where: { id: metricVersion.id },
 				data: { approvedBy: "atlas-policy", approvedAt: input.capturedAt },

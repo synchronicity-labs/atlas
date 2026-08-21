@@ -55,6 +55,21 @@ describe("product feedback metric registry", () => {
 		});
 	});
 
+	test("registers the supporting Product views that reuse approved KPI definitions", () => {
+		const supporting = PRODUCT_METRIC_SPECS.filter((spec) =>
+			[119, 120, 160].includes(spec.questionNumber),
+		);
+
+		expect(supporting.map((spec) => spec.sourceExternalId)).toEqual([
+			"8168",
+			"8174",
+			"atlas:product:qualified-then-deleted",
+		]);
+		expect(supporting.every((spec) => !spec.pendingChecks?.length)).toBe(true);
+		expect(preferredAtlasQuestionNumber("8168")).toBe(119);
+		expect(preferredAtlasQuestionNumber("8174")).toBe(120);
+	});
+
 	test("registers the self-serve subscription, V2 usage, V3 top-up, variable, and total run-rate metrics", () => {
 		const revenueMetrics = REVENUE_METRIC_SPECS.filter((spec) =>
 			[1102, 1110, 1111, 1117, 1118].includes(spec.questionNumber),

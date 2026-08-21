@@ -50,7 +50,9 @@ describe("applyRevenueDoorPolicy", () => {
 		expect(usesRevenueDoorPolicy(1111)).toBe(true);
 		expect(usesRevenueDoorPolicy(1112)).toBe(true);
 		expect(usesRevenueDoorPolicy(1116)).toBe(true);
-		expect(usesRevenueDoorPolicy(1117)).toBe(false);
+		expect(usesRevenueDoorPolicy(1117)).toBe(true);
+		expect(usesRevenueDoorPolicy(1118)).toBe(true);
+		expect(usesRevenueDoorPolicy(1119)).toBe(false);
 		expect(usesSubscribedRevenueEligibility(1001)).toBe(true);
 		expect(usesSubscribedRevenueEligibility(1014)).toBe(true);
 		expect(usesSubscribedRevenueEligibility(1101)).toBe(true);
@@ -80,6 +82,8 @@ describe("applyRevenueDoorPolicy", () => {
 union all
 select * from sync_prod.sync_stripe_subscriptions_with_plan
 union all
+select * from sync_prod.sync_stripe_subscriptions
+union all
 select * from sync_prod.sync_stripe_invoices`,
 			policy,
 		);
@@ -96,6 +100,9 @@ select * from sync_prod.sync_stripe_invoices`,
 		);
 		expect(result.queryText).toContain(
 			`lower(coalesce(plan, '')) not in ('enterprise', 'partner', 'program')`,
+		);
+		expect(result.queryText).toContain(
+			`lower(coalesce(orgPlan, '')) not in ('enterprise', 'partner', 'program')`,
 		);
 		expect(result.queryText).toContain(
 			`from sync_prod.sync_stripe_invoices where "organizationId" not in ('org-fal', 'org-replicate')`,
@@ -160,6 +167,7 @@ select 'invoice' from sync_prod.sync_stripe_invoices`,
 			sourceRows: 1,
 			returnedRows: 1,
 			scope: "SUBSCRIBED_ORGANIZATIONS",
+			policy: "MONEY",
 		});
 
 		expect(governed.applied).toBe(true);

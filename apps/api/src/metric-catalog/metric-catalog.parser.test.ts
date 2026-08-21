@@ -98,6 +98,63 @@ describe("metric catalog parser", () => {
 		).toBe("active professional orgs");
 	});
 
+	test("does not reopen Product rules confirmed by the KPI sheet and owner", () => {
+		const candidates = catalogCandidates([
+			{
+				id: 5,
+				title: "KPIs",
+				index: 0,
+				rows: [
+					["Domain", "KPI", "type", "what it means"],
+					[
+						"Product",
+						"# of monthly active professional orgs",
+						"primary",
+						"$100+ accrued value, 3+ completed billable generations, and activity on 2+ distinct days.",
+					],
+					[
+						"Product",
+						"% generation completion rate",
+						"guardrail",
+						"Completed generation records divided by all non-deleted generation records.",
+					],
+				],
+			},
+		]);
+
+		expect(candidates).toHaveLength(2);
+		expect(candidates.every((candidate) => candidate.ambiguities.length === 0)).toBe(
+			true,
+		);
+	});
+
+	test("keeps confirmed Product rows as KPIs when repeated rows omit the type", () => {
+		const candidates = catalogCandidates([
+			{
+				id: 7,
+				title: "KPIs",
+				index: 0,
+				rows: [
+					["Domain", "KPI", "type", "what it means"],
+					["Product", "# of monthly active professional orgs", "primary", ""],
+					[
+						"",
+						"$ avg monthly accrued value from professional orgs",
+						"",
+						"Average monthly allocated subscription value plus usage consumed by active professional orgs.",
+					],
+				],
+			},
+		]);
+
+		expect(candidates.map((candidate) => [candidate.title, candidate.kind])).toEqual(
+			[
+				["# of monthly active professional orgs", "KPI"],
+				["$ avg monthly accrued value from professional orgs", "KPI"],
+			],
+		);
+	});
+
 	test("requires a concrete connector before marking a metric ready", () => {
 		const candidates = catalogCandidates([
 			{

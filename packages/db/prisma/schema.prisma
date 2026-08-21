@@ -1361,6 +1361,7 @@ model ResultSnapshot {
 model Question {
   id                        String          @id @default(cuid())
   number                    Int             @unique
+  publicNumber              Int             @unique @default(autoincrement())
   name                      String
   description               String?
   connector                 DataSourceKind

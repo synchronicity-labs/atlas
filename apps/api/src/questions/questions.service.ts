@@ -23,6 +23,7 @@ import {
 import { SalesService } from "../sales/sales.service";
 import { paginate, resolveOrderBy } from "../trpc/list-input";
 import { questionExplanation } from "./question-explanation";
+import { questionNumberWhere } from "./question-number";
 import type {
 	QuestionListInput,
 	QuestionPreviewInput,
@@ -34,7 +35,7 @@ const SORTABLE: Record<
 	string,
 	(dir: Prisma.SortOrder) => Prisma.QuestionOrderByWithRelationInput[]
 > = {
-	number: (dir) => [{ number: dir }],
+	number: (dir) => [{ publicNumber: dir }],
 	name: (dir) => [{ name: dir }],
 	updatedAt: (dir) => [{ updatedAt: dir }],
 };
@@ -63,6 +64,7 @@ export class QuestionsService {
 			...(term
 				? {
 						OR: [
+							...(/^\d+$/.test(term) ? [{ publicNumber: Number(term) }] : []),
 							{ name: { contains: term, mode: "insensitive" as const } },
 							{
 								description: { contains: term, mode: "insensitive" as const },
@@ -87,6 +89,7 @@ export class QuestionsService {
 				select: {
 					id: true,
 					number: true,
+					publicNumber: true,
 					name: true,
 					description: true,
 					connector: true,
@@ -146,6 +149,8 @@ export class QuestionsService {
 				const snapshot = row.metricVersion?.snapshots[0];
 				return {
 					...row,
+					number: row.publicNumber,
+					publicNumber: undefined,
 					explanation: questionExplanation({
 						name: row.name,
 						description: row.description,
@@ -175,11 +180,12 @@ export class QuestionsService {
 	}
 
 	async byNumber(number: number) {
-		const question = await this.db.question.findUnique({
-			where: { number },
+		const question = await this.db.question.findFirst({
+			where: questionNumberWhere(number),
 			select: {
 				id: true,
 				number: true,
+				publicNumber: true,
 				name: true,
 				description: true,
 				connector: true,
@@ -314,6 +320,8 @@ export class QuestionsService {
 
 		return {
 			...question,
+			number: question.publicNumber,
+			publicNumber: undefined,
 			explanation: questionExplanation({
 				name: question.name,
 				description: question.description,
@@ -370,9 +378,10 @@ export class QuestionsService {
 
 	async preview(input: QuestionPreviewInput) {
 		assertReadOnlyQuery(input.queryLanguage, input.queryText);
-		const question = await this.db.question.findUnique({
-			where: { number: input.number },
+		const question = await this.db.question.findFirst({
+			where: questionNumberWhere(input.number),
 			select: {
+				number: true,
 				databaseExternalId: true,
 				source: { select: { key: true } },
 			},
@@ -398,7 +407,7 @@ export class QuestionsService {
 								? await this.productEligibility.preview(input.queryText)
 								: await this.marketing.preview(input.queryText)
 				: await this.metabasePreview(
-						input.number,
+						question.number,
 						input.queryLanguage,
 						input.queryText,
 						question.databaseExternalId,
@@ -428,7 +437,7 @@ export class QuestionsService {
 				visualization: true,
 				status: true,
 				createdAt: true,
-				question: { select: { number: true } },
+				question: { select: { publicNumber: true } },
 			},
 		});
 		if (!proposal) {
@@ -436,7 +445,7 @@ export class QuestionsService {
 		}
 		return {
 			...proposal,
-			questionNumber: proposal.question.number,
+			questionNumber: proposal.question.publicNumber,
 			question: undefined,
 			createdAt: proposal.createdAt.toISOString(),
 		};
@@ -483,8 +492,8 @@ export class QuestionsService {
 	async saveVersion(input: QuestionSaveVersionInput, createdBy: string) {
 		assertReadOnlyQuery(input.queryLanguage, input.queryText);
 		return this.db.$transaction(async (tx) => {
-			const question = await tx.question.findUnique({
-				where: { number: input.number },
+			const question = await tx.question.findFirst({
+				where: questionNumberWhere(input.number),
 				select: { id: true },
 			});
 			if (!question) {

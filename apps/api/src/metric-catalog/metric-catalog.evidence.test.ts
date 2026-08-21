@@ -42,5 +42,11 @@ describe("metric catalog evidence", () => {
 				ownerTeam: "sync.",
 			}),
 		).toBeNull();
+		expect(
+			catalogCanonicalQuestionNumber({
+				title: "Channel Partner Revenue by Partner",
+				ownerTeam: "Sales",
+			}),
+		).toBe(1116);
 	});
 });

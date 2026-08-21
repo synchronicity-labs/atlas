@@ -31,6 +31,7 @@ const PAID_LOGO_RETENTION = `with paid_org_months as (
   left join paid_org_months next
     on next.organization_id = current.organization_id
     and next.month = addMonths(current.month, 1)
+  where current.month < (select max(month) from paid_org_months)
   group by current.month
 )
 select
@@ -74,16 +75,16 @@ order by month`;
 
 const ACTIVE_RATE = `with professional_orgs as (
   select
-    toStartOfMonth(toTimeZone("generationEndedAt", 'UTC')) as month,
+    toStartOfMonth(toTimeZone("generationCreatedAt", 'UTC')) as month,
     "organizationId" as organization_id
   from sync_prod.sync_usage3
-  where "generationEndedAt" >= addMonths(toStartOfMonth(toTimeZone(now(), 'UTC')), -6)
-    and "generationEndedAt" < toTimeZone(now(), 'UTC')
+  where "generationCreatedAt" >= addMonths(toStartOfMonth(toTimeZone(now(), 'UTC')), -6)
+    and "generationCreatedAt" < toTimeZone(now(), 'UTC')
     and "organizationId" != ''
     and "organizationPlanType" in ('hobbyist', 'creator', 'growth', 'scale')
   group by month, organization_id
   having countDistinct("generationId") >= 3
-    and countDistinct(toDate(toTimeZone("generationEndedAt", 'UTC'))) >= 2
+    and countDistinct(toDate(toTimeZone("generationCreatedAt", 'UTC'))) >= 2
     and sum("generationCostMillicents") / 100000.0 >= 100
 ), paid_orgs as (
   select
@@ -165,23 +166,6 @@ export function catalogQuestionSpec(
 				visualization: {},
 				provisionalDefinition:
 					"Provisional: HubSpot closed-won deals by close month. HubSpot does not expose a signed-contract timestamp in the current Atlas scope.",
-			};
-		case "channel partner revenue by partner":
-			return {
-				sourceKey: "hubspot:crm",
-				connector: DataSourceKind.HUBSPOT,
-				databaseExternalId: null,
-				queryLanguage: QueryLanguage.API,
-				queryText: JSON.stringify({
-					source: "hubspot",
-					report: "closed-won-by-company",
-					months: 13,
-					pipelines: ["2085894842"],
-				}),
-				display: "bar",
-				visualization: {},
-				provisionalDefinition:
-					"Provisional: closed-won deal amount in the HubSpot Channel Partners pipeline, grouped by associated company and UTC close month.",
 			};
 		case "gross margin":
 			return {

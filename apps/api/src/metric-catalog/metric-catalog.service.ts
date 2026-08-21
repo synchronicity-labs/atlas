@@ -308,10 +308,13 @@ export class MetricCatalogService {
 			const now = new Date();
 			for (const candidate of candidates) {
 				const current = existingByKey.get(candidate.externalKey);
+				const importedKind = enumKind(candidate.kind);
 				const kind =
-					current?.kind && current.kind !== MetricCatalogKind.UNCLASSIFIED
+					importedKind === MetricCatalogKind.KPI
+						? importedKind
+						: current?.kind && current.kind !== MetricCatalogKind.UNCLASSIFIED
 						? current.kind
-						: enumKind(candidate.kind);
+						: importedKind;
 				const metric = this.matchMetric(candidate, metrics, current?.metricId);
 				const importedReadiness = readinessFor(candidate, metric);
 				const readiness = resolveMetricCatalogReadiness(
@@ -540,6 +543,7 @@ export class MetricCatalogService {
 					canonicalQuestion: {
 						select: {
 							number: true,
+							publicNumber: true,
 							name: true,
 							status: true,
 						},
@@ -563,6 +567,7 @@ export class MetricCatalogService {
 							question: {
 								select: {
 									number: true,
+									publicNumber: true,
 									name: true,
 									sourceExternalId: true,
 									metricVersion: {
@@ -595,7 +600,7 @@ export class MetricCatalogService {
 									questions: {
 										orderBy: { number: "asc" },
 										take: 1,
-										select: { number: true },
+										select: { number: true, publicNumber: true },
 									},
 								},
 							},
@@ -636,6 +641,13 @@ export class MetricCatalogService {
 		}
 		return entries.map((entry) => ({
 			...entry,
+			canonicalQuestion: entry.canonicalQuestion
+				? {
+						...entry.canonicalQuestion,
+						number: entry.canonicalQuestion.publicNumber,
+						publicNumber: undefined,
+					}
+				: null,
 			latestAttempt: entry.attempts[0]
 				? {
 						...entry.attempts[0],
@@ -651,7 +663,7 @@ export class MetricCatalogService {
 				return {
 					id: evidence.id,
 					rationale: evidence.rationale,
-					questionNumber: evidence.question.number,
+					questionNumber: evidence.question.publicNumber,
 					questionName: evidence.question.name,
 					state: metricSnapshot?.trustStatus ?? "AVAILABLE",
 					dataThrough:
@@ -673,7 +685,7 @@ export class MetricCatalogService {
 						name: entry.metric.name,
 						status: entry.metric.status,
 						questionNumber:
-							entry.metric.versions[0]?.questions[0]?.number ?? null,
+							entry.metric.versions[0]?.questions[0]?.publicNumber ?? null,
 					}
 				: null,
 			lastSeenAt: entry.lastSeenAt.toISOString(),
@@ -877,6 +889,7 @@ export class MetricCatalogService {
 					canonicalQuestion: {
 						select: {
 							number: true,
+							publicNumber: true,
 							name: true,
 							status: true,
 							metricVersion: {
@@ -912,7 +925,7 @@ export class MetricCatalogService {
 			const snapshot = question.metricVersion?.snapshots[0];
 			if (!version) {
 				questionResults.set(question.number, {
-					questionNumber: question.number,
+					questionNumber: question.publicNumber,
 					questionName: question.name,
 					outcome: "QUERY_FAILED",
 					rowCount: null,
@@ -925,12 +938,12 @@ export class MetricCatalogService {
 			}
 			try {
 				const result = await this.questions.preview({
-					number: question.number,
+					number: question.publicNumber,
 					queryLanguage: version.queryLanguage,
 					queryText: version.queryText,
 				});
 				questionResults.set(question.number, {
-					questionNumber: question.number,
+					questionNumber: question.publicNumber,
 					questionName: question.name,
 					outcome: result.rowCount > 0 ? "DATA_FOUND" : "NO_ROWS",
 					rowCount: result.rowCount,
@@ -941,7 +954,7 @@ export class MetricCatalogService {
 				});
 			} catch (error) {
 				questionResults.set(question.number, {
-					questionNumber: question.number,
+					questionNumber: question.publicNumber,
 					questionName: question.name,
 					outcome: "QUERY_FAILED",
 					rowCount: null,
@@ -976,21 +989,17 @@ export class MetricCatalogService {
 			};
 		});
 
-		await this.db.$transaction(
-			attempts.map(({ entry, observations, result }) =>
-				this.db.metricCatalogAttempt.create({
-					data: {
-						catalogEntryId: entry.id,
-						runKey,
-						outcome: result.outcome,
-						trustStatus: result.trustStatus,
-						detail: result.detail,
-						observations: json(observations),
-						attemptedAt,
-					},
-				}),
-			),
-		);
+		await this.db.metricCatalogAttempt.createMany({
+			data: attempts.map(({ entry, observations, result }) => ({
+				catalogEntryId: entry.id,
+				runKey,
+				outcome: result.outcome,
+				trustStatus: result.trustStatus,
+				detail: result.detail,
+				observations: json(observations),
+				attemptedAt,
+			})),
+		});
 
 		return {
 			runKey,

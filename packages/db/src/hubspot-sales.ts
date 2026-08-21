@@ -388,6 +388,12 @@ export async function executeHubspotSalesQuery(
 		query.report === "lead-stage-view"
 	) {
 		const payload = record(activities.get("report:lead-stage-view"));
+		if (stringValue(payload.status) === "unavailable") {
+			throw new Error(
+				stringValue(payload.error) ||
+					"HubSpot lead stages are unavailable with the current read access.",
+			);
+		}
 		const stages = Array.isArray(payload.stages) ? payload.stages : [];
 		return {
 			columns: [

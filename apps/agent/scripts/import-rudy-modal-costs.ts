@@ -1,6 +1,7 @@
 const remoteCollector = `
 import json
 import os
+import shlex
 import subprocess
 import sys
 from collections import defaultdict
@@ -34,11 +35,12 @@ month_start = today.replace(day=1)
 previous_start = (month_start - timedelta(days=1)).replace(day=1)
 entries = []
 env = dict(os.environ)
-env["MODAL_PROFILE"] = "synchronicity-labs"
+env["MODAL_PROFILE"] = os.environ.get("MODAL_PROFILE", "synchronicity-labs")
+modal_command = shlex.split(os.environ.get("ATLAS_MODAL_COMMAND", "modal"))
 
 for start, end in [(previous_start, month_start), (month_start, today)]:
     result = subprocess.run(
-        ["modal", "billing", "report", "--start", start.isoformat(), "--end", end.isoformat(), "--json"],
+        [*modal_command, "billing", "report", "--start", start.isoformat(), "--end", end.isoformat(), "--json"],
         capture_output=True,
         text=True,
         timeout=120,
@@ -50,13 +52,13 @@ for start, end in [(previous_start, month_start), (month_start, today)]:
 
 aggregated = defaultdict(float)
 for entry in entries:
-    period = str(entry.get("Interval Start") or "")[:7]
+    period = str(entry.get("interval_start") or entry.get("Interval Start") or "")[:7]
     if not period:
         continue
-    target = model(entry.get("Object ID") or "")
+    target = model(entry.get("object_id") or entry.get("Object ID") or "")
     if target == "other":
-        target = model(entry.get("Description") or "")
-    aggregated[(period, target)] += float(entry.get("Cost") or 0)
+        target = model(entry.get("description") or entry.get("Description") or "")
+    aggregated[(period, target)] += float(entry.get("cost") or entry.get("Cost") or 0)
 
 payload = {
     "capturedAt": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
@@ -72,18 +74,38 @@ json.dump(payload, sys.stdout)
 const secret = process.env.CRON_SECRET?.trim();
 if (!secret) throw new Error("CRON_SECRET is required.");
 
-const child = Bun.spawn(
-	[
-		"ssh",
-		"-o",
-		"BatchMode=yes",
-		"-o",
-		"ConnectTimeout=8",
-		process.env.RUDY_SSH_HOST?.trim() || "rudy",
-		"sudo -n -H python3 -",
-	],
-	{ stdin: "pipe", stdout: "pipe", stderr: "pipe" },
+const python = Bun.which("python3");
+const modal = Bun.which("modal");
+const uvx = Bun.which("uvx");
+const hasLocalModal = Boolean(
+	python &&
+		(modal || uvx) &&
+		process.env.MODAL_TOKEN_ID?.trim() &&
+		process.env.MODAL_TOKEN_SECRET?.trim(),
 );
+const command = hasLocalModal
+	? [python as string, "-"]
+	: [
+			"ssh",
+			"-o",
+			"BatchMode=yes",
+			"-o",
+			"ConnectTimeout=8",
+			process.env.RUDY_SSH_HOST?.trim() || "rudy",
+			"sudo -n -H python3 -",
+		];
+const env = hasLocalModal
+	? {
+			...process.env,
+			ATLAS_MODAL_COMMAND: modal || `${uvx} modal`,
+		}
+	: undefined;
+const child = Bun.spawn(command, {
+	env,
+	stdin: "pipe",
+	stdout: "pipe",
+	stderr: "pipe",
+});
 child.stdin.write(remoteCollector);
 await child.stdin.end();
 const [payload, error, exitCode] = await Promise.all([
@@ -92,11 +114,11 @@ const [payload, error, exitCode] = await Promise.all([
 	child.exited,
 ]);
 if (exitCode !== 0) {
-	throw new Error(error.trim() || "Rudy Modal collector failed.");
+	throw new Error(error.trim() || "Modal billing collector failed.");
 }
 const parsed = JSON.parse(payload) as { rows?: unknown[] };
 if (!Array.isArray(parsed.rows) || parsed.rows.length === 0) {
-	throw new Error("Rudy returned no aggregate Modal cost rows.");
+	throw new Error("Modal returned no aggregate billing rows.");
 }
 const baseUrl = process.env.API_URL?.trim() || "http://localhost:3001";
 const response = await fetch(new URL("/internal/sync/modal", baseUrl), {

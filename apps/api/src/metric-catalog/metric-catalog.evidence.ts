@@ -23,6 +23,7 @@ export function catalogCanonicalQuestionNumber(
 	if (title === "seo / geo breakdown") return 2010;
 	if (title === "mql / pql / sql breakdown") return 3025;
 	if (title === "new logos closed (by segment)") return 3003;
+	if (title === "channel partner revenue by partner") return 1116;
 	if (title === "enterprise usage" && owner === "cs") return 1103;
 	return null;
 }
@@ -41,7 +42,7 @@ const REVENUE_INTERPRETATIONS: CatalogEvidenceCandidate[] = [
 	{
 		questionNumber: 1102,
 		rationale:
-			"Shows current product run-rate from licensed subscriptions plus projected accrued usage. It is not booked or recognized revenue.",
+			"Shows an estimated month-end self-serve total from subscriptions, V2 usage, and V3 top-ups. It is not booked or recognized revenue.",
 	},
 ];
 
@@ -126,6 +127,15 @@ export function catalogEvidenceFor(
 				questionNumber: 3003,
 				rationale:
 					"Shows HubSpot closed-won bookings as a comparison. It does not prove that an SOW or MSA was signed, so the contract event still needs its own source.",
+			},
+		];
+	}
+	if (title === "channel partner revenue by partner") {
+		return [
+			{
+				questionNumber: 1116,
+				rationale:
+					"Shows usage, invoices raised, and cash evidence by partner from the governed partner register. Contract and Stripe mappings that are still unresolved remain visible as verification gaps.",
 			},
 		];
 	}

@@ -50,6 +50,50 @@ const SECTION_PATTERN =
 const CONNECTED_SOURCE_PATTERN =
 	/\b(ga4|google analytics|posthog|metabase|tinybird|stripe|hubspot|search console|postgres|database|data warehouse)\b/i;
 
+const CONFIRMED_PRODUCT_RULES: Record<string, ReadonlySet<string>> = {
+	[slug("# of monthly active professional orgs")]: new Set([
+		"qualifying_event",
+		"economic_basis",
+	]),
+	[slug("# of monthly activated orgs")]: new Set(["qualifying_event"]),
+	[slug("% first-gen orgs returning on a 2nd day in 14d")]: new Set([
+		"cohort_and_denominator",
+	]),
+	[slug("% first-gen orgs activated in 14d")]: new Set([
+		"qualifying_event",
+	]),
+	[slug("% activated org-months reaching professional")]: new Set([
+		"qualifying_event",
+		"identity_and_population",
+		"economic_basis",
+	]),
+	[slug("30d product-led subscription conversion")]: new Set([
+		"cohort_and_denominator",
+	]),
+	[slug("% M3 professional-org requalification")]: new Set([
+		"qualifying_event",
+		"identity_and_population",
+		"economic_basis",
+		"cohort_and_denominator",
+	]),
+	[slug("$ avg monthly accrued value from professional orgs")]: new Set([
+		"qualifying_event",
+		"economic_basis",
+	]),
+	[slug("% M3 accrued NDR")]: new Set([
+		"qualifying_event",
+		"economic_basis",
+	]),
+	[slug("% generation completion rate")]: new Set([
+		"outcome_and_clock",
+	]),
+	[slug("% accrued professional org-months paid-qualified")]: new Set([
+		"qualifying_event",
+		"identity_and_population",
+		"economic_basis",
+	]),
+};
+
 function text(value: unknown): string {
 	if (value === null || value === undefined) return "";
 	return String(value).replace(/\s+/g, " ").trim();
@@ -226,7 +270,10 @@ function ambiguitiesFor(title: string, description: string | null) {
 				"Confirm the qualifying outcome, clock boundaries, retries, and pauses.",
 		});
 	}
-	return ambiguities;
+	const confirmedRules = CONFIRMED_PRODUCT_RULES[slug(title)];
+	return confirmedRules
+		? ambiguities.filter((ambiguity) => !confirmedRules.has(ambiguity.key))
+		: ambiguities;
 }
 
 function readinessHint(
@@ -284,7 +331,11 @@ function candidatesFromKpiSheet(sheet: CatalogSheet): CatalogCandidate[] {
 			sourceColumn >= 0 ? text(raw[sourceColumn]) || null : null;
 		const trackability =
 			trackabilityColumn >= 0 ? text(raw[trackabilityColumn]) || null : null;
-		const kind = !type && !domain ? "VIEW" : kindFrom(type, title);
+		const kind = CONFIRMED_PRODUCT_RULES[slug(cleanTitle)]
+			? "KPI"
+			: !type && !domain
+				? "VIEW"
+				: kindFrom(type, title);
 		const ambiguities = ambiguitiesFor(cleanTitle, description);
 		const base = `${sheet.id}:${slug(cleanTitle) || `row-${index + 1}`}`;
 		const occurrence = (occurrences.get(base) ?? 0) + 1;

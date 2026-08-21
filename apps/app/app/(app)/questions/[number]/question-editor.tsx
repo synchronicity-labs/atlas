@@ -517,6 +517,7 @@ export function QuestionEditor({ number }: { number: number }) {
 			) : null}
 
 			<QuestionExplanationPanel
+				questionName={data.name}
 				explanation={data.explanation}
 				definition={data.metric?.contract.businessDefinition}
 			/>

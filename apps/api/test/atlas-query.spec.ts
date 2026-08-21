@@ -43,7 +43,7 @@ describe("Atlas agent query freshness", () => {
 			}),
 		).toEqual({
 			status: "pending",
-			reason: "Metric verification is not complete.",
+			reason: "The result exists, but one or more required checks are still open.",
 		});
 	});
 

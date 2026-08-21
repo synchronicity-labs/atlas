@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { MetricTrustStatus } from "@crm/db";
 import {
+	metricTrustStatus,
 	PRODUCT_METRIC_SPECS,
 	preferredAtlasQuestionNumber,
 	REVENUE_CLOSE_METRIC_SPECS,
@@ -18,21 +20,80 @@ describe("product feedback metric registry", () => {
 		).flatMap((spec) => spec.pendingChecks?.map((check) => check.name) ?? []);
 
 		expect(checks).toEqual([
-			"approved_rating_definition",
-			"approved_completed_status",
+			"approved_feedback_instrument_rule",
+			"approved_feedback_coverage_denominator",
 		]);
 	});
 
-	test("registers separate self-serve usage, subscription, and combined run-rate metrics", () => {
+	test("records the confirmed Product KPI contract", () => {
+		const professional = PRODUCT_METRIC_SPECS.find(
+			(spec) => spec.questionNumber === 15,
+		);
+		const completion = PRODUCT_METRIC_SPECS.find(
+			(spec) => spec.questionNumber === 8,
+		);
+		const m3 = PRODUCT_METRIC_SPECS.find((spec) => spec.questionNumber === 17);
+
+		expect(professional?.eventTimeField).toBe("generationCreatedAt");
+		expect(professional?.businessDefinition).toMatchObject({
+			periodAssignment: "generationCreatedAt in UTC",
+			professional: {
+				completedStatus: "COMPLETED",
+				billableDefinition:
+					"generation started while its organization was on a non-free plan",
+				sourcePlanSnapshot:
+					"Product Generations.organizationPlan is captured when the generation starts; V2 TinyBird organizationPlanType is derived from that admission snapshot",
+			},
+		});
+		expect(professional?.pendingChecks).toBeUndefined();
+		expect(completion?.businessDefinition).toMatchObject({
+			completedStatus: "COMPLETED",
+			denominator: "all_non_deleted_generations",
+		});
+		expect(m3?.businessDefinition).toMatchObject({
+			requalificationMonthOffset: 2,
+		});
+	});
+
+	test("registers the self-serve subscription, V2 usage, V3 top-up, variable, and total run-rate metrics", () => {
 		const revenueMetrics = REVENUE_METRIC_SPECS.filter((spec) =>
-			[1102, 1110, 1111].includes(spec.questionNumber),
+			[1102, 1110, 1111, 1117, 1118].includes(spec.questionNumber),
 		).map((spec) => spec.name);
 
 		expect(revenueMetrics).toEqual([
-			"Self-serve combined run-rate",
-			"Self-serve usage run-rate",
+			"Estimated self-serve month-end revenue",
+			"Estimated self-serve V2 usage month-end",
 			"Self-serve subscription run-rate",
+			"Estimated self-serve V3 top-ups month-end",
+			"Estimated self-serve variable revenue month-end",
 		]);
+	});
+
+	test("reads subscription prices from Stripe and accepts new self-serve plans", () => {
+		const overview = REVENUE_METRIC_SPECS.find(
+			(spec) => spec.questionNumber === 1101,
+		);
+		const byPlan = REVENUE_METRIC_SPECS.find(
+			(spec) => spec.questionNumber === 1104,
+		);
+		const subscriptionRunRate = REVENUE_METRIC_SPECS.find(
+			(spec) => spec.questionNumber === 1111,
+		);
+
+		expect(overview?.businessDefinition).toMatchObject({
+			newPlanHandling: expect.stringContaining("without a code change"),
+		});
+		expect(byPlan?.businessDefinition).toMatchObject({
+			billingType: {
+				V2: ["hobbyist", "creator", "growth", "scale"],
+				V3: expect.stringContaining("every other non-empty self-serve plan"),
+			},
+			priceSource: expect.stringContaining("Stripe item unit_amount"),
+		});
+		expect(subscriptionRunRate?.businessDefinition).toMatchObject({
+			valueBasis: expect.stringContaining("Stripe item unit_amount"),
+			newPlanHandling: expect.stringContaining("flow through automatically"),
+		});
 	});
 
 	test("registers every Revenue close question in the governed metric layer", () => {
@@ -67,5 +128,27 @@ describe("product feedback metric registry", () => {
 			"Channel-partner usage by partner",
 			"Channel-partner revenue reconciliation",
 		]);
+	});
+
+	test("keeps successful empty results in review instead of marking them failed", () => {
+		expect(
+			metricTrustStatus({
+				resultPresent: false,
+				definitionFailed: false,
+				governanceVerified: true,
+				definitionVerified: true,
+			}),
+		).toBe(MetricTrustStatus.PENDING);
+	});
+
+	test("keeps failed definition checks red", () => {
+		expect(
+			metricTrustStatus({
+				resultPresent: true,
+				definitionFailed: true,
+				governanceVerified: true,
+				definitionVerified: true,
+			}),
+		).toBe(MetricTrustStatus.FAILED);
 	});
 });

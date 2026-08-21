@@ -25,7 +25,7 @@ describe("metric verification summaries", () => {
 		});
 
 		expect(summary.status).toBe("VERIFIED");
-		expect(summary.checks[0]?.label).toBe("Immutable source snapshot stored");
+		expect(summary.checks[0]?.label).toBe("Source result is saved");
 		expect(summary.dataThrough).toBe("2026-08-01T00:00:00.000Z");
 	});
 
@@ -49,7 +49,9 @@ describe("metric verification summaries", () => {
 			},
 		});
 
-		expect(summary.checks[0]?.label).toBe("Clean-user filter");
+		expect(summary.checks[0]?.label).toBe(
+			"The question population rule is applied",
+		);
 		expect(summary.checks[0]?.status).toBe("PENDING");
 	});
 

@@ -216,6 +216,20 @@ Console.
 
 ## Revenue definitions
 
+The governed self-serve revenue model keeps each billing event separate before it combines them:
+
+- Subscription run-rate includes recurring V2 and V3 self-serve plans.
+- V2 usage revenue is postpaid usage, grouped by `generationEndedAt` in UTC.
+- V3 top-up revenue is successful credit top-up payments. V3 credit consumption is not counted as new revenue.
+- Variable revenue is V2 usage plus V3 top-ups.
+- Total self-serve run-rate is subscriptions plus V2 usage plus V3 top-ups.
+- The current UTC month uses an explicit MTD pace. Complete months use actual values.
+- Subscription value uses the recurring licensed Stripe item price and quantity from
+  the raw subscription payload. It does not use a hard-coded price table.
+- Hobbyist, Creator, Growth, and Scale are V2. Every other non-empty self-serve plan
+  accepted by the governed revenue-door policy is treated as V3, so new V3 tiers do
+  not need a query change.
+
 Dashboard 2 uses the finance-correct model for its active question versions:
 
 - Paid usage is grouped by `generationEndedAt`.
@@ -353,9 +367,11 @@ seven questions combine TinyBird database 166 usage with aggregate Modal billing
   assigned to production.
 
 Every question version contains the exact read-only TinyBird SQL. Modal credentials
-remain on Rudy. `bun run modal:import:rudy` executes the billing collector there and
-sends only month/model/cost aggregates to `POST /internal/sync/modal`; it never stores
-the Modal token, app identifiers, or raw billing descriptions in Atlas. Then
+stay in Doppler and are injected only into the collector process. `bun run
+modal:import:rudy` uses the Atlas Modal credential when it is configured and falls
+back to the collector on Rudy when it is not. It sends only month/model/cost
+aggregates to `POST /internal/sync/modal`; it never stores the Modal token, app
+identifiers, or raw billing descriptions in Atlas. Then
 `bun run economics:sync` persists new content-addressed results. Modal aggregates
 expire after 30 hours so a stopped collector produces an explicit stale/error state.
 The generated deployment refreshes dashboard 6 every eight hours.

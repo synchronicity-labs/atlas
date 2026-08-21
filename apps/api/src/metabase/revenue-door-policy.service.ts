@@ -11,6 +11,7 @@ import { InjectDatabase } from "../database/database.constants";
 const POLICY_ID = "company-revenue-doors";
 const USAGE_TABLE = "sync_prod.sync_usage3";
 const SUBSCRIPTION_TABLE = "sync_prod.sync_stripe_subscriptions_with_plan";
+const RAW_SUBSCRIPTION_TABLE = "sync_prod.sync_stripe_subscriptions";
 const ORGANIZATION_TABLES = [
 	"sync_prod.sync_stripe_invoice_items",
 	"sync_prod.sync_stripe_invoices",
@@ -45,7 +46,7 @@ export type RevenueDoorPolicyEvidence = {
 type ResolvedRevenueDoorPolicy = Omit<RevenueDoorPolicyEvidence, "applied">;
 
 export function usesRevenueDoorPolicy(questionNumber: number): boolean {
-	return questionNumber >= 1101 && questionNumber <= 1116;
+	return questionNumber >= 1101 && questionNumber <= 1118;
 }
 
 export function usesSubscribedRevenueEligibility(
@@ -319,8 +320,18 @@ export function applyPartnerRevenueDoorPolicy(
 			policy,
 		),
 	);
-	let governed = subscriptions.queryText;
-	let applied = usage.applied || subscriptions.applied;
+	const rawSubscriptions = wrapTable(
+		subscriptions.queryText,
+		RAW_SUBSCRIPTION_TABLE,
+		partnerCombinedPredicate(
+			"lower(coalesce(orgPlan, ''))",
+			'"organizationId"',
+			policy,
+		),
+	);
+	let governed = rawSubscriptions.queryText;
+	let applied =
+		usage.applied || subscriptions.applied || rawSubscriptions.applied;
 	for (const table of ORGANIZATION_TABLES) {
 		const result = wrapTable(
 			governed,
@@ -360,8 +371,18 @@ export function applyRevenueDoorPolicy(
 		SUBSCRIPTION_TABLE,
 		combinedPredicate("lower(coalesce(plan, ''))", '"organizationId"', policy),
 	);
-	let governed = subscriptions.queryText;
-	let applied = usage.applied || subscriptions.applied;
+	const rawSubscriptions = wrapTable(
+		subscriptions.queryText,
+		RAW_SUBSCRIPTION_TABLE,
+		combinedPredicate(
+			"lower(coalesce(orgPlan, ''))",
+			'"organizationId"',
+			policy,
+		),
+	);
+	let governed = rawSubscriptions.queryText;
+	let applied =
+		usage.applied || subscriptions.applied || rawSubscriptions.applied;
 	for (const table of ORGANIZATION_TABLES) {
 		const result = wrapTable(
 			governed,

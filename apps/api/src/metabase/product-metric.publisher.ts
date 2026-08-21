@@ -77,6 +77,8 @@ export type PublishInput = {
 		sourceRows: number;
 		returnedRows: number;
 		scope?: "ALL_IDENTITIES" | "SUBSCRIBED_ORGANIZATIONS";
+		policy?: "PRODUCT_ACTIVITY" | "MONEY";
+		limitation?: "BANNED_NEVER_SUBSCRIBED_JOIN_REQUIRED";
 	};
 	revenueDoorPolicy?: RevenueDoorPolicyEvidence;
 	verificationChecks?: PublishVerificationCheck[];
@@ -94,8 +96,9 @@ const sharedNormalizationPolicy = {
 	timeZone: "UTC",
 	periodBoundaries: "half_open",
 	internalDomains: ["sync.so", "sync.labs"],
-	excludedUserStates: ["banned", "anonymous"],
+	excludedUserStates: ["banned_never_subscribed"],
 	observedLifecycleStates: ["disabled"],
+	moneyMetricBanPolicy: "keep_historical_paying_customers",
 	retroactiveEligibility: "current_known_state",
 };
 
@@ -106,7 +109,7 @@ export const PRODUCT_METRIC_SPECS: ProductMetricSpec[] = [
 		key: "product.monthly_professional_organizations",
 		name: "Monthly professional organizations",
 		description:
-			"Self-serve organizations that meet the professional usage and accrued-value definition.",
+			"V2 self-serve organizations with $100+ accrued value, 3+ completed generations created on a non-free plan, and generation activity on 2+ distinct UTC days in the month.",
 		grain: FactGrain.MONTH,
 		source: {
 			key: "tinybird:usage",
@@ -117,10 +120,18 @@ export const PRODUCT_METRIC_SPECS: ProductMetricSpec[] = [
 		businessDefinition: {
 			entity: "organization_month",
 			population: "v2_self_serve",
+			periodAssignment: "generationCreatedAt in UTC",
 			professional: {
 				minimumAccruedValueUsd: 100,
 				minimumCompletedBillableGenerations: 3,
 				minimumActiveDays: 2,
+				completedStatus: "COMPLETED",
+				billableDefinition:
+					"generation started while its organization was on a non-free plan",
+				sourcePlanSnapshot:
+					"Product Generations.organizationPlan is captured when the generation starts; V2 TinyBird organizationPlanType is derived from that admission snapshot",
+				activeDayDefinition:
+					"a distinct UTC date with a completed generation created on a non-free plan",
 			},
 		},
 		computation: { aggregate: "count_organizations", output: "value" },
@@ -132,7 +143,7 @@ export const PRODUCT_METRIC_SPECS: ProductMetricSpec[] = [
 		key: "product.monthly_activated_organizations",
 		name: "Monthly activated organizations",
 		description:
-			"Self-serve organizations with 3+ billable generations on 2+ distinct UTC days.",
+			"V2 self-serve organizations with 3+ completed generations created on a non-free plan across 2+ distinct UTC days in the month, before applying the $100 accrued-value gate.",
 		grain: FactGrain.MONTH,
 		source: {
 			key: "tinybird:usage",
@@ -143,8 +154,16 @@ export const PRODUCT_METRIC_SPECS: ProductMetricSpec[] = [
 		businessDefinition: {
 			entity: "organization_month",
 			population: "v2_self_serve",
+			periodAssignment: "generationCreatedAt in UTC",
 			minimumCompletedGenerations: 3,
 			minimumActiveDays: 2,
+			completedStatus: "COMPLETED",
+			billableDefinition:
+				"generation started while its organization was on a non-free plan",
+			sourcePlanSnapshot:
+				"Product Generations.organizationPlan is captured when the generation starts; V2 TinyBird organizationPlanType is derived from that admission snapshot",
+			activeDayDefinition:
+				"a distinct UTC date with a completed generation created on a non-free plan",
 		},
 		computation: { aggregate: "count_organizations", output: "value" },
 		requiresCrossSourceEligibility: true,
@@ -195,6 +214,12 @@ export const PRODUCT_METRIC_SPECS: ProductMetricSpec[] = [
 			numerator: "professional_organization_months",
 			denominator: "activated_organization_months",
 			professionalAccruedValueUsd: 100,
+			periodAssignment: "generationCreatedAt in UTC",
+			completedStatus: "COMPLETED",
+			billableDefinition:
+				"generation started while its organization was on a non-free plan",
+			sourcePlanSnapshot:
+				"Product Generations.organizationPlan is captured when the generation starts; V2 TinyBird organizationPlanType is derived from that admission snapshot",
 		},
 		computation: {
 			aggregate: "percentage",
@@ -242,8 +267,9 @@ export const PRODUCT_METRIC_SPECS: ProductMetricSpec[] = [
 		businessDefinition: {
 			entity: "starting_professional_organization_cohort",
 			requalificationMonthOffset: 2,
+			periodAssignment: "generationCreatedAt in UTC",
 			professionalDefinition:
-				"$100+ accrued value, 3+ billable generations, and generations on 2+ distinct UTC days",
+				"$100+ accrued value, 3+ COMPLETED generations created on a non-free plan, and activity on 2+ distinct UTC days",
 		},
 		computation: { aggregate: "cohort_share", output: "value" },
 		requiresCrossSourceEligibility: true,
@@ -265,6 +291,9 @@ export const PRODUCT_METRIC_SPECS: ProductMetricSpec[] = [
 		businessDefinition: {
 			entity: "professional_organization_month",
 			valueBasis: "accrued_operating_value",
+			periodAssignment: "generationCreatedAt in UTC",
+			professionalDefinition:
+				"$100+ accrued value, 3+ COMPLETED generations created on a non-free plan, and activity on 2+ distinct UTC days",
 			cashBasis: false,
 		},
 		computation: { aggregate: "sum", output: "accrued_value_usd" },
@@ -287,6 +316,7 @@ export const PRODUCT_METRIC_SPECS: ProductMetricSpec[] = [
 		businessDefinition: {
 			entity: "starting_professional_organization_cohort",
 			currentMonthOffset: 2,
+			periodAssignment: "generationCreatedAt in UTC",
 			numerator: "same_cohort_month_three_accrued_value",
 			denominator: "starting_month_accrued_value",
 		},
@@ -311,6 +341,8 @@ export const PRODUCT_METRIC_SPECS: ProductMetricSpec[] = [
 			numerator: "completed_non_deleted_generations",
 			denominator: "all_non_deleted_generations",
 			statusBasis: "final_database_status",
+			completedStatus: "COMPLETED",
+			periodAssignment: "generation created_at in UTC",
 		},
 		computation: {
 			aggregate: "ratio_percentage",
@@ -324,7 +356,7 @@ export const PRODUCT_METRIC_SPECS: ProductMetricSpec[] = [
 		key: "product.accrued_professional_paid_qualified",
 		name: "Accrued professional organization-months paid-qualified",
 		description:
-			"Accrued professional organization-months with $100+ in paid subscription and usage invoices in the same month.",
+			"Accrued professional organization-months that also meet the approved paid-value threshold for their billing version in the same month.",
 		grain: FactGrain.MONTH,
 		source: {
 			key: "tinybird:usage-billing",
@@ -335,13 +367,29 @@ export const PRODUCT_METRIC_SPECS: ProductMetricSpec[] = [
 		businessDefinition: {
 			numerator: "accrued_professional_org_months_with_100_usd_paid",
 			denominator: "accrued_professional_org_months",
-			paidValueIncludes: ["subscription_invoices", "usage_invoices"],
+			periodAssignment: "generationCreatedAt in UTC",
+			completedStatus: "COMPLETED",
+			billableDefinition:
+				"generation started while its organization was on a non-free plan",
+			sourcePlanSnapshot:
+				"Product Generations.organizationPlan is captured when the generation starts; V2 TinyBird organizationPlanType is derived from that admission snapshot",
+			paidValueByBillingVersion: {
+				V2: ["subscription_invoices", "usage_invoices"],
+				V3: ["subscription_invoices", "successful_top_up_payments"],
+			},
 		},
 		computation: {
 			aggregate: "ratio_percentage",
 			output: "paid_qualified_pct",
 		},
 		requiresCrossSourceEligibility: true,
+		pendingChecks: [
+			{
+				name: "v3_paid_qualified_payment_basis",
+				reason:
+					"V3 top-ups are successful one-time Stripe payments, not usage invoices. Confirm whether a V3 paid-qualified organization-month uses subscription invoices plus successful top-up payments in the same UTC month, subscription invoices only, or another rule.",
+			},
+		],
 	},
 	{
 		questionNumber: 42,
@@ -370,9 +418,9 @@ export const PRODUCT_METRIC_SPECS: ProductMetricSpec[] = [
 		requiresCrossSourceEligibility: true,
 		pendingChecks: [
 			{
-				name: "approved_rating_definition",
+				name: "approved_feedback_instrument_rule",
 				reason:
-					"Confirm which feedback values count as positive and how ratings on retried or deleted generations are treated.",
+					"Confirm whether positive means thumbs-up, 4-5 stars, or both, and whether one generation with more than one rating counts once or more than once.",
 			},
 		],
 	},
@@ -403,9 +451,9 @@ export const PRODUCT_METRIC_SPECS: ProductMetricSpec[] = [
 		requiresCrossSourceEligibility: true,
 		pendingChecks: [
 			{
-				name: "approved_completed_status",
+				name: "approved_feedback_coverage_denominator",
 				reason:
-					"Confirm that the denominator is final completed app generations and how retried or deleted generations are treated.",
+					"Confirm whether the official coverage denominator is first generations, all clean COMPLETED generations, or all clean terminal generations.",
 			},
 		],
 	},
@@ -786,7 +834,7 @@ export const REVENUE_METRIC_SPECS: ProductMetricSpec[] = [
 		key: "company.weekly_revenue_lite_overview",
 		name: "Weekly Revenue Lite overview",
 		description:
-			"Current self-serve licensed base, accrued usage pace, run-rate, annualized run-rate, and Stripe cash reconciliation at one UTC cutoff.",
+			"Current self-serve subscription value, V2 postpaid usage pace, V3 top-up pace, total run-rate, annualized run-rate, and Stripe cash reconciliation at one UTC cutoff.",
 		grain: FactGrain.MONTH,
 		source: {
 			key: "tinybird:revenue",
@@ -797,25 +845,38 @@ export const REVENUE_METRIC_SPECS: ProductMetricSpec[] = [
 		businessDefinition: {
 			revenueDoor: "sync.tools",
 			licensedBase:
-				"latest active or past-due self-serve subscriptions at the current v2 or v3 plan price",
-			usageActual: "paid-plan generation value grouped by generationEndedAt",
-			usagePace:
-				"month-to-date accrued usage divided by exact elapsed UTC seconds and multiplied by seconds in the calendar month",
-			productRunRate: "licensed base plus projected accrued usage",
+				"latest active or past-due self-serve subscriptions at the recurring licensed Stripe item price and quantity stored in the subscription payload",
+			newPlanHandling:
+				"a non-empty plan that passes the governed sync.tools revenue-door policy is included without a code change",
+			v2UsageActual:
+				"V2 postpaid generation value grouped by generationEndedAt",
+			v2UsagePace:
+				"month-to-date V2 postpaid usage divided by exact elapsed UTC seconds and multiplied by seconds in the calendar month",
+			v3TopUpsActual:
+				"successful V3 one-time Stripe top-up payments grouped by payment createdAt",
+			v3TopUpPace:
+				"month-to-date successful V3 top-up payments divided by exact elapsed UTC seconds and multiplied by seconds in the calendar month",
+			variableRevenueRunRate:
+				"estimated month-end V2 postpaid usage plus estimated month-end V3 top-up payments",
+			productRunRate:
+				"licensed subscription base plus estimated month-end V2 usage plus estimated month-end V3 top-up payments",
 			annualizedRunRate: "product run-rate multiplied by 12",
 			excluded: [
 				"enterprise plans",
 				"program plans",
 				"channel partners in the governed revenue-door registry",
 			],
-			channelPartnerRegistryStatus: "partial",
+			channelPartnerRegistryStatus: "complete",
 		},
 		computation: {
 			aggregate: "run_rate_reconstruction",
 			outputs: [
 				"licensed_subscription_base",
-				"usage_accrual_mtd",
-				"projected_usage_accrual",
+				"v2_usage_accrual_mtd",
+				"projected_v2_usage_accrual",
+				"v3_top_up_payments_mtd",
+				"projected_v3_top_up_payments",
+				"variable_revenue_run_rate",
 				"product_run_rate",
 				"annualized_product_run_rate",
 			],
@@ -829,9 +890,9 @@ export const REVENUE_METRIC_SPECS: ProductMetricSpec[] = [
 		questionNumber: 1102,
 		sourceExternalId: "weekly-revenue:product-run-rate",
 		key: "company.product_run_rate",
-		name: "Self-serve combined run-rate",
+		name: "Estimated self-serve month-end revenue",
 		description:
-			"Self-serve subscription run-rate plus projected current-month usage accrual at one UTC cutoff. Excludes enterprise and program plans, plus known channel partners in the governed revenue-door registry. The channel-partner list is still being completed.",
+			"Estimated self-serve month-end revenue at one UTC cutoff. It combines current subscription value with paced V2 postpaid usage and paced V3 top-up payments. This is an operating estimate, not booked revenue or cash collected.",
 		grain: FactGrain.MONTH,
 		source: {
 			key: "tinybird:revenue",
@@ -841,10 +902,11 @@ export const REVENUE_METRIC_SPECS: ProductMetricSpec[] = [
 		eventTimeField: "generationEndedAt",
 		businessDefinition: {
 			revenueDoor: "sync.tools",
-			formula: "licensed_subscription_base + projected_usage_accrual",
+			formula:
+				"licensed_subscription_base + estimated_month_end_v2_usage + estimated_month_end_v3_top_ups",
 			enterpriseCommitmentsIncluded: false,
 			channelPartnersIncluded: false,
-			channelPartnerRegistryStatus: "partial",
+			channelPartnerRegistryStatus: "complete",
 		},
 		computation: { aggregate: "sum", output: "product_run_rate" },
 		requiresCrossSourceEligibility: true,
@@ -856,9 +918,9 @@ export const REVENUE_METRIC_SPECS: ProductMetricSpec[] = [
 		questionNumber: 1103,
 		sourceExternalId: "weekly-revenue:usage-history-pace",
 		key: "company.paid_plan_usage_accrual",
-		name: "Self-serve usage accrual and MTD pace",
+		name: "Self-serve revenue history and current-month pace",
 		description:
-			"Completed-month usage accrual plus current-month actual and projected pace, using generationEndedAt in UTC. Excludes enterprise and program plans, plus known channel partners in the governed revenue-door registry. The channel-partner list is still being completed.",
+			"Six months of self-serve subscription value, V2 postpaid usage, and V3 top-up payments. Completed months show actual values. The open month also shows an estimated month-end total from the shared UTC data-through time.",
 		grain: FactGrain.MONTH,
 		source: {
 			key: "tinybird:revenue",
@@ -870,12 +932,23 @@ export const REVENUE_METRIC_SPECS: ProductMetricSpec[] = [
 			revenueDoor: "sync.tools",
 			valueBasis: "generationCostMillicents divided by 100000",
 			timeField: "generationEndedAt",
+			billingComponents: [
+				"V2 postpaid usage",
+				"V3 successful top-up payments",
+				"V2 and V3 subscription value",
+			],
 			population:
 				"self-serve organizations after governed revenue-door exclusions",
 		},
 		computation: {
-			aggregate: "monthly_sum_and_current_month_pace",
-			outputs: ["usage_accrual", "projected_usage_accrual"],
+			aggregate: "monthly_components_and_current_month_pace",
+			outputs: [
+				"subscription_value",
+				"v2_usage_revenue",
+				"v3_top_up_revenue",
+				"total_revenue",
+				"estimated_month_end_total",
+			],
 		},
 		requiresCrossSourceEligibility: true,
 		ownerTeam: "Company",
@@ -888,7 +961,7 @@ export const REVENUE_METRIC_SPECS: ProductMetricSpec[] = [
 		key: "company.active_licensed_subscription_base",
 		name: "Self-serve subscription run-rate by billing type and plan",
 		description:
-			"Latest active or past-due self-serve Stripe subscriptions multiplied by the current monthly plan price, grouped by V2 or V3 billing type and plan. Excludes enterprise and program plans, plus known channel partners in the governed revenue-door registry. The channel-partner list is still being completed. This is subscription run-rate, not cash collected.",
+			"Latest active or past-due self-serve Stripe subscriptions multiplied by the current monthly plan price, grouped by V2 or V3 billing type and plan. Excludes enterprise and program plans, plus channel partners in the governed revenue-door registry. This is subscription run-rate, not cash collected.",
 		grain: FactGrain.MONTH,
 		source: {
 			key: "tinybird:revenue",
@@ -901,18 +974,13 @@ export const REVENUE_METRIC_SPECS: ProductMetricSpec[] = [
 			entity: "latest_subscription",
 			billingType: {
 				V2: ["hobbyist", "creator", "growth", "scale"],
-				V3: ["starter", "pro", "team"],
+				V3: "every other non-empty self-serve plan allowed by the governed revenue-door policy",
 			},
 			includedStatuses: ["active", "past_due"],
-			includedPlans: [
-				"hobbyist",
-				"creator",
-				"growth",
-				"scale",
-				"starter",
-				"pro",
-				"team",
-			],
+			priceSource:
+				"recurring licensed Stripe item unit_amount multiplied by quantity from the latest raw subscription payload for the plan",
+			newPlanHandling:
+				"new self-serve plans flow through automatically after the revenue-door policy accepts them",
 			excludedPlans: ["enterprise", "program", "partner"],
 		},
 		computation: {
@@ -928,9 +996,9 @@ export const REVENUE_METRIC_SPECS: ProductMetricSpec[] = [
 		questionNumber: 1110,
 		sourceExternalId: "weekly-revenue:usage-run-rate",
 		key: "company.self_serve_usage_run_rate",
-		name: "Self-serve usage run-rate",
+		name: "Estimated self-serve V2 usage month-end",
 		description:
-			"Projected self-serve usage accrual for the current UTC month compared with the previous complete month. Completed months use actual accrued usage. Excludes enterprise and program plans, plus known channel partners in the governed revenue-door registry. The channel-partner list is still being completed.",
+			"Estimated month-end V2 postpaid usage compared with the previous complete month. This is one component of self-serve revenue, not the headline company booked-revenue measure.",
 		grain: FactGrain.MONTH,
 		source: {
 			key: "tinybird:revenue",
@@ -942,10 +1010,11 @@ export const REVENUE_METRIC_SPECS: ProductMetricSpec[] = [
 			revenueDoor: "sync.tools",
 			valueBasis: "generationCostMillicents divided by 100000",
 			timeField: "generationEndedAt",
+			billingVersion: "V2 postpaid usage only",
 			currentMonth:
-				"month-to-date accrual projected over the full UTC calendar month using exact elapsed seconds",
+				"month-to-date accrual estimated over the full UTC calendar month using exact elapsed seconds",
 			channelPartnersIncluded: false,
-			channelPartnerRegistryStatus: "partial",
+			channelPartnerRegistryStatus: "complete",
 		},
 		computation: {
 			aggregate: "monthly_sum_or_current_month_pace",
@@ -962,7 +1031,7 @@ export const REVENUE_METRIC_SPECS: ProductMetricSpec[] = [
 		key: "company.self_serve_subscription_run_rate",
 		name: "Self-serve subscription run-rate",
 		description:
-			"Active or past-due self-serve subscriptions at the plan price in effect at each UTC cutoff, compared with the previous month-end. Excludes enterprise and program plans, plus known channel partners in the governed revenue-door registry. The channel-partner list is still being completed.",
+			"Active or past-due self-serve subscriptions at the plan price in effect at each UTC cutoff, compared with the previous month-end. Excludes enterprise and program plans, plus channel partners in the governed revenue-door registry.",
 		grain: FactGrain.MONTH,
 		source: {
 			key: "tinybird:revenue",
@@ -973,13 +1042,79 @@ export const REVENUE_METRIC_SPECS: ProductMetricSpec[] = [
 		businessDefinition: {
 			revenueDoor: "sync.tools",
 			includedStatuses: ["active", "past_due"],
-			valueBasis: "subscription count multiplied by monthly plan price",
+			valueBasis:
+				"recurring licensed Stripe item unit_amount multiplied by quantity from the latest raw subscription payload",
+			newPlanHandling:
+				"new self-serve plans flow through automatically after the revenue-door policy accepts them",
 			channelPartnersIncluded: false,
-			channelPartnerRegistryStatus: "partial",
+			channelPartnerRegistryStatus: "complete",
 		},
 		computation: {
 			aggregate: "subscription_count_times_plan_price",
 			output: "subscription_run_rate",
+		},
+		requiresCrossSourceEligibility: true,
+		ownerTeam: "Company",
+		createdBy: "atlas-revenue-registry",
+		cadenceMinutes: 8 * 60,
+	},
+	{
+		questionNumber: 1117,
+		sourceExternalId: "weekly-revenue:v3-top-up-run-rate",
+		key: "company.self_serve_v3_top_up_run_rate",
+		name: "Estimated self-serve V3 top-ups month-end",
+		description:
+			"Estimated month-end V3 credit top-up payments compared with the previous complete month. This is successful top-up payment volume, not V3 credit consumption or company cash flow.",
+		grain: FactGrain.MONTH,
+		source: {
+			key: "tinybird:revenue",
+			kind: DataSourceKind.TINYBIRD,
+			label: "TinyBird Stripe payment mirror",
+		},
+		eventTimeField: "createdAt",
+		businessDefinition: {
+			revenueDoor: "sync.tools",
+			billingVersion: "V3",
+			paymentStatus: "succeeded",
+			valueBasis: "successful one-time Stripe top-up payment amount",
+			timeField: "payment createdAt",
+			currentMonth:
+				"month-to-date successful top-up payments estimated over the full UTC calendar month using exact elapsed seconds",
+			v3UsageConsumptionIncluded: false,
+		},
+		computation: {
+			aggregate: "monthly_sum_or_current_month_pace",
+			output: "v3_top_up_run_rate",
+		},
+		requiresCrossSourceEligibility: true,
+		ownerTeam: "Company",
+		createdBy: "atlas-revenue-registry",
+		cadenceMinutes: 8 * 60,
+	},
+	{
+		questionNumber: 1118,
+		sourceExternalId: "weekly-revenue:variable-run-rate",
+		key: "company.self_serve_variable_revenue_run_rate",
+		name: "Estimated self-serve variable revenue month-end",
+		description:
+			"Estimated month-end V2 postpaid usage plus V3 top-up payments, compared with the previous complete month. This excludes recurring subscription value and V3 credit consumption.",
+		grain: FactGrain.MONTH,
+		source: {
+			key: "tinybird:revenue",
+			kind: DataSourceKind.TINYBIRD,
+			label: "TinyBird usage and Stripe payment mirror",
+		},
+		eventTimeField: "generationEndedAt and payment createdAt",
+		businessDefinition: {
+			revenueDoor: "sync.tools",
+			formula:
+				"estimated month-end V2 usage plus estimated month-end V3 top-up payments",
+			subscriptionValueIncluded: false,
+			v3UsageConsumptionIncluded: false,
+		},
+		computation: {
+			aggregate: "sum",
+			output: "variable_revenue_run_rate",
 		},
 		requiresCrossSourceEligibility: true,
 		ownerTeam: "Company",
@@ -992,7 +1127,7 @@ export const REVENUE_METRIC_SPECS: ProductMetricSpec[] = [
 		key: "company.partner_usage_run_rate",
 		name: "Channel-partner usage run-rate",
 		description:
-			"Accrued usage from organizations in the governed sync.partners registry. The current month is projected from the exact UTC data-through time and compared with the previous complete month.",
+			"Accrued usage from organizations in the governed sync.partners registry. The current month is estimated from the exact UTC data-through time and compared with the previous complete month.",
 		grain: FactGrain.MONTH,
 		source: {
 			key: "tinybird:revenue",
@@ -1005,8 +1140,8 @@ export const REVENUE_METRIC_SPECS: ProductMetricSpec[] = [
 			valueBasis: "generationCostMillicents divided by 100000",
 			timeField: "generationEndedAt",
 			currentMonth:
-				"month-to-date accrual projected over the full UTC calendar month using exact elapsed seconds",
-			partnerRegistryStatus: "partial",
+				"month-to-date accrual estimated over the full UTC calendar month using exact elapsed seconds",
+			partnerRegistryStatus: "complete",
 		},
 		computation: {
 			aggregate: "monthly_sum_or_current_month_pace",
@@ -1079,7 +1214,7 @@ export const REVENUE_METRIC_SPECS: ProductMetricSpec[] = [
 		key: "company.partner_usage_history",
 		name: "Channel-partner usage by partner",
 		description:
-			"Monthly accrued usage for the four known channel-partner domains and any additional organizations already marked with the partner plan. The current month is month to date.",
+			"Monthly accrued usage for organizations resolved through the governed channel-partner registry. The current month is month to date.",
 		grain: FactGrain.MONTH,
 		source: {
 			key: "tinybird:revenue",
@@ -1091,7 +1226,7 @@ export const REVENUE_METRIC_SPECS: ProductMetricSpec[] = [
 			revenueDoor: "sync.partners",
 			breakdown: "governed partner label",
 			valueBasis: "accrued usage",
-			partnerRegistryStatus: "partial",
+			partnerRegistryStatus: "complete",
 		},
 		computation: { aggregate: "monthly_sum_by_partner" },
 		requiresCrossSourceEligibility: true,
@@ -1105,7 +1240,7 @@ export const REVENUE_METRIC_SPECS: ProductMetricSpec[] = [
 		key: "company.partner_revenue_reconciliation",
 		name: "Channel-partner revenue reconciliation",
 		description:
-			"Monthly partner usage incurred, Stripe invoices raised, and cash collected shown together by partner. These are different accounting views and must not be added together.",
+			"Monthly partner usage incurred and Stripe invoices raised, shown together by partner. Invoices raised are the current booked-revenue view. Stripe cash collected is reference-only until DualEntry is ready. These views must not be added together.",
 		grain: FactGrain.MONTH,
 		source: {
 			key: "tinybird:revenue",
@@ -1116,6 +1251,10 @@ export const REVENUE_METRIC_SPECS: ProductMetricSpec[] = [
 		businessDefinition: {
 			revenueDoor: "sync.partners",
 			measures: ["usage_incurred", "invoices_raised", "cash_collected"],
+			bookedRevenueBasis:
+				"Stripe invoice amount due, grouped by the time the invoice was raised",
+			cashCollectedStatus:
+				"reference only until cash flow is sourced from DualEntry",
 			warning: "the three measures are reconciliations, not additive revenue",
 		},
 		computation: { aggregate: "monthly_sum_by_partner_and_basis" },
@@ -1343,7 +1482,7 @@ function buildQuestionMetricSpec(
 		description:
 			linkedMetric?.metric.description ??
 			input.question.description ??
-			`The governed result for Atlas question ${input.question.number}, ${input.question.name}.`,
+			`The governed result for ${input.question.name}.`,
 		grain: inferQuestionGrain(input.question.name, input.version.queryText),
 		source: {
 			key: `atlas-question-source:${sourceKind.toLowerCase()}:${input.question.databaseExternalId ?? "local"}`,
@@ -1734,12 +1873,12 @@ export class ProductMetricPublisher {
 		if (existing) return existing;
 
 		const resultPresent = input.result.rows.length > 0;
-		const trustStatus =
-			!resultPresent || definitionFailed
-				? MetricTrustStatus.FAILED
-				: governanceVerified && definitionVerified
-					? MetricTrustStatus.VERIFIED
-					: MetricTrustStatus.PENDING;
+		const trustStatus = metricTrustStatus({
+			resultPresent,
+			definitionFailed,
+			governanceVerified,
+			definitionVerified,
+		});
 		const metricRun = await this.db.metricRun.create({
 			data: {
 				runKey: `${metricVersion.id}:${input.capturedAt.toISOString()}:${outputHash}`,
@@ -1873,7 +2012,7 @@ type MetricWindow = {
 
 export function hasRequiredEligibilityPredicates(queryText: string): boolean {
 	const normalized = queryText.toLowerCase();
-	return ["banned", "is_anonymous", "@sync.so", "@sync.labs"].every((term) =>
+	return ["banned", "@sync.so", "@sync.labs"].every((term) =>
 		normalized.includes(term),
 	);
 }
@@ -2002,16 +2141,15 @@ function verificationRows(input: {
 	};
 	const eligibility = input.eligibility;
 	const incompleteEligibilityReason =
-		eligibility?.scope === "SUBSCRIBED_ORGANIZATIONS" &&
-		!input.eligibilityVerified
-			? "Atlas applied the smaller subscribed-customer exclusion list. This keeps known paying banned and internal identities out, but it does not certify the wider free-user population."
+		eligibility?.limitation === "BANNED_NEVER_SUBSCRIBED_JOIN_REQUIRED"
+			? "This question includes people who have not subscribed. Atlas applied the shared internal-user filter, but it still needs the governed banned-user join before it can approve the population."
 			: eligibility && eligibility.complete === false
-				? `Atlas could load only ${eligibility.returnedRows.toLocaleString()} of ${eligibility.sourceRows.toLocaleString()} identity and organization membership records because the source response was capped. This is not the number of customers in this metric. Atlas did not apply or approve a partial banned, anonymous, and internal identity filter.`
-				: "TinyBird usage must be joined to the governed product-user eligibility dataset.";
+				? `Atlas could load only ${eligibility.returnedRows.toLocaleString()} of ${eligibility.sourceRows.toLocaleString()} internal and banned-user records because the source response was capped. Atlas did not apply or approve a partial population rule.`
+				: "The query has not yet applied the shared Atlas population rule.";
 	const eligibilityPassedReason =
-		eligibility?.scope === "SUBSCRIBED_ORGANIZATIONS"
-			? "The revenue query requires subscription history, then excludes banned, anonymous, and internal identities linked to that population."
-			: "The source query applies the canonical exclusions.";
+		eligibility?.policy === "MONEY"
+			? "Money policy: internal identities are excluded. A customer who subscribed or paid remains in historical money results even if the customer was later banned."
+			: "Product activity policy: internal identities and banned people who never subscribed are excluded. Paying customers and disabled accounts remain visible.";
 	return [
 		{
 			name: "read_only_query",
@@ -2034,11 +2172,17 @@ function verificationRows(input: {
 			referenceType: "row_count",
 			referenceValue: json({ minimum: 1 }),
 			actualValue: json({ passed: input.resultPresent }),
+			evidence: input.resultPresent
+				? undefined
+				: json({
+						reason:
+							"The query ran successfully but returned no rows for this period. Confirm whether zero rows are expected or make the query return an explicit zero.",
+					}),
 			status: input.resultPresent
 				? VerificationStatus.PASSED
-				: VerificationStatus.FAILED,
-			verifiedBy: "atlas-policy",
-			verifiedAt: input.capturedAt,
+				: VerificationStatus.PENDING,
+			verifiedBy: input.resultPresent ? "atlas-policy" : null,
+			verifiedAt: input.resultPresent ? input.capturedAt : null,
 		},
 		...(input.requiresEligibility
 			? [
@@ -2125,6 +2269,20 @@ function verificationRows(input: {
 			};
 		}),
 	];
+}
+
+export function metricTrustStatus(input: {
+	resultPresent: boolean;
+	definitionFailed: boolean;
+	governanceVerified: boolean;
+	definitionVerified: boolean;
+}): MetricTrustStatus {
+	if (input.definitionFailed) return MetricTrustStatus.FAILED;
+	if (!input.resultPresent) return MetricTrustStatus.PENDING;
+	if (input.governanceVerified && input.definitionVerified) {
+		return MetricTrustStatus.VERIFIED;
+	}
+	return MetricTrustStatus.PENDING;
 }
 
 function hash(value: unknown): string {

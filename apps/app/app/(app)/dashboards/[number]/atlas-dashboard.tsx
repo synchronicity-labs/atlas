@@ -192,6 +192,24 @@ function booleanSetting(
 	return (value as Record<string, unknown>)[key] === true;
 }
 
+function stringArraySetting(
+	card: { displaySettings: unknown },
+	key: string,
+): string[] {
+	const value = card.displaySettings;
+	if (!value || typeof value !== "object" || Array.isArray(value)) return [];
+	const candidate = (value as Record<string, unknown>)[key];
+	if (!Array.isArray(candidate)) return [];
+	return candidate.filter((item): item is string => typeof item === "string");
+}
+
+function visibleColumnEntries(card: DashboardCard) {
+	const hiddenColumns = new Set(stringArraySetting(card, "hiddenColumns"));
+	return columns(card.snapshot)
+		.map((column, index) => ({ column, index }))
+		.filter(({ column }) => !hiddenColumns.has(column.name));
+}
+
 function chartPeriod(value: unknown, compact = false): string {
 	if (typeof value !== "string") return String(value ?? "");
 	if (/^\d{4}-\d{2}-\d{2}T(?!00:00:00)/.test(value)) {
@@ -217,8 +235,8 @@ function chartPeriod(value: unknown, compact = false): string {
 function timeframeLabel(card: DashboardCard): string | null {
 	const explicit = setting(card, "timeframe") ?? setting(card, "periodLabel");
 	if (explicit) return explicit;
-	if ([1102, 1110].includes(card.question.number)) {
-		return "Previous month actual → current month projected";
+	if ([1102, 1110, 1117, 1118].includes(card.question.number)) {
+		return "Previous month actual → current month estimated";
 	}
 	if (card.question.number === 1111) {
 		return "Previous month-end → current value";
@@ -332,15 +350,18 @@ function chartData(card: DashboardCard): {
 	const cardColumns = columns(card.snapshot);
 	const sourceRows = rows(card.snapshot);
 	const xKey = cardColumns[0]?.name ?? "period";
-	const series = cardColumns
-		.slice(1)
-		.filter(
-			(column) =>
-				!/(^|_)(period_end|window_end|data_through|captured_at)$/i.test(
-					column.name,
-				),
-		)
-		.map((column) => column.name);
+	const series: string[] = [];
+	for (let index = 1; index < cardColumns.length; index += 1) {
+		const column = cardColumns[index];
+		if (
+			column &&
+			!/(^|_)(period_end|window_end|data_through|captured_at)$/i.test(
+				column.name,
+			)
+		) {
+			series.push(column.name);
+		}
+	}
 	return {
 		xKey,
 		series,
@@ -383,17 +404,32 @@ function ScalarCard({ card }: { card: DashboardCard }) {
 				? currentValue - previousValue
 				: ((currentValue - previousValue) / previousValue) * 100
 			: null;
-	const runRateComparison = [1102, 1110, 1111].includes(card.question.number);
-	const currentPeriodLabel =
-		typeof period === "string"
-			? card.question.number === 1110
-				? `${formatMonthPeriod(period)} projected usage`
-				: card.question.number === 1111
-					? `${formatMonthPeriod(period)} current subscription value`
-					: card.question.number === 1102
-						? `${formatMonthPeriod(period)} projected run-rate`
-						: formatMonthPeriod(period, { includeMtd: true })
-			: null;
+	const runRateComparison = [1102, 1110, 1111, 1117, 1118].includes(
+		card.question.number,
+	);
+	let currentPeriodLabel: string | null = null;
+	if (typeof period === "string") {
+		const formattedPeriod = formatMonthPeriod(period);
+		switch (card.question.number) {
+			case 1110:
+				currentPeriodLabel = `${formattedPeriod} estimated month-end usage`;
+				break;
+			case 1111:
+				currentPeriodLabel = `${formattedPeriod} current subscription value`;
+				break;
+			case 1117:
+				currentPeriodLabel = `${formattedPeriod} estimated month-end top-ups`;
+				break;
+			case 1118:
+				currentPeriodLabel = `${formattedPeriod} estimated month-end variable revenue`;
+				break;
+			case 1102:
+				currentPeriodLabel = `${formattedPeriod} estimated month-end revenue`;
+				break;
+			default:
+				currentPeriodLabel = formatMonthPeriod(period, { includeMtd: true });
+		}
+	}
 	const previousPeriodLabel =
 		typeof previousPeriod === "string"
 			? card.question.number === 1111
@@ -584,12 +620,18 @@ function SeriesChart({ card }: { card: DashboardCard }) {
 	} | null = null;
 
 	if (candidateLeftKeys.length > 0 && candidateRightKeys.length > 0) {
-		const leftValues = data
-			.flatMap((point) => candidateLeftKeys.map((key) => Number(point[key])))
-			.filter(Number.isFinite);
-		const rightValues = data
-			.flatMap((point) => candidateRightKeys.map((key) => Number(point[key])))
-			.filter(Number.isFinite);
+		const leftValues: number[] = [];
+		const rightValues: number[] = [];
+		for (const point of data) {
+			for (const key of candidateLeftKeys) {
+				const value = Number(point[key]);
+				if (Number.isFinite(value)) leftValues.push(value);
+			}
+			for (const key of candidateRightKeys) {
+				const value = Number(point[key]);
+				if (Number.isFinite(value)) rightValues.push(value);
+			}
+		}
 		if (leftValues.length > 0 && rightValues.length > 0) {
 			const leftMin = Math.min(0, ...leftValues);
 			const leftMax = Math.max(0, ...leftValues);
@@ -599,12 +641,13 @@ function SeriesChart({ card }: { card: DashboardCard }) {
 			const rightRange = Math.max(1, rightMax - rightMin);
 			rightKeys = candidateRightKeys;
 			rightScale = { min: rightMin, max: rightMax, leftMin, leftMax };
+			const rightKeySet = new Set(rightKeys);
 			data = data.map(
 				(point) =>
 					Object.fromEntries(
 						Object.entries(point).map(([key, value]) => [
 							key,
-							rightKeys.includes(key) && typeof value === "number"
+							rightKeySet.has(key) && typeof value === "number"
 								? leftMin + ((value - rightMin) / rightRange) * leftRange
 								: value,
 						]),
@@ -687,11 +730,11 @@ function SeriesChart({ card }: { card: DashboardCard }) {
 }
 
 function TableCard({ card }: { card: DashboardCard }) {
-	const cardColumns = columns(card.snapshot);
+	const columnEntries = visibleColumnEntries(card);
 	const allRows = rows(card.snapshot);
 	const sourceRows =
 		setting(card, "visibleRows") === "all" ? allRows : allRows.slice(0, 8);
-	if (cardColumns.length === 0) return <CardUnavailable />;
+	if (columnEntries.length === 0) return <CardUnavailable />;
 	return (
 		<div
 			className={cn(
@@ -703,7 +746,7 @@ function TableCard({ card }: { card: DashboardCard }) {
 			<table className="w-full text-left text-xs">
 				<thead className="sticky top-0 bg-card text-muted-foreground">
 					<tr>
-						{cardColumns.map((column) => (
+						{columnEntries.map(({ column }) => (
 							<th key={column.name} className="border-b px-3 py-2 font-normal">
 								{humanize(column.displayName ?? column.name)}
 							</th>
@@ -716,9 +759,9 @@ function TableCard({ card }: { card: DashboardCard }) {
 							key={`${card.id}:${JSON.stringify(row)}`}
 							className="border-b last:border-0"
 						>
-							{cardColumns.map((column, columnIndex) => (
+							{columnEntries.map(({ column, index }) => (
 								<td key={column.name} className="max-w-48 truncate px-3 py-2">
-									{formatCell(row[columnIndex], column)}
+									{formatCell(row[index], column)}
 								</td>
 							))}
 						</tr>
@@ -741,13 +784,15 @@ function csvValue(value: unknown): string {
 }
 
 function exportCardCsv(card: DashboardCard) {
-	const cardColumns = columns(card.snapshot);
+	const columnEntries = visibleColumnEntries(card);
 	const sourceRows = rows(card.snapshot);
-	if (cardColumns.length === 0) return;
+	if (columnEntries.length === 0) return;
 	const csv = [
-		cardColumns.map((column) => csvValue(column.displayName ?? column.name)),
+		columnEntries.map(({ column }) =>
+			csvValue(column.displayName ?? column.name),
+		),
 		...sourceRows.map((row) =>
-			cardColumns.map((_, index) => csvValue(row[index])),
+			columnEntries.map(({ index }) => csvValue(row[index])),
 		),
 	]
 		.map((row) => row.join(","))
@@ -825,7 +870,7 @@ function PendingKpiRail({ cards }: { cards: DashboardCard[] }) {
 				{cards.map((card) => (
 					<Link
 						key={card.id}
-						href={`/questions/${card.question.number}`}
+						href={`/questions/${card.question.publicNumber}`}
 						className="group flex min-w-0 items-start justify-between gap-4 px-4 py-3 hover:bg-muted/35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
 					>
 						<div className="min-w-0">
@@ -1042,12 +1087,16 @@ const QuestionCard = memo(
 					)}
 				>
 					<QuestionExplanationTooltip
+						questionName={card.question.name}
 						explanation={card.question.explanation}
 						definition={questionDefinition}
 					/>
 					<RudyChatTrigger
-						record={{ kind: "question", id: String(card.question.number) }}
-						label={`Ask Rudy about question ${card.question.number}`}
+						record={{
+							kind: "question",
+							id: String(card.question.publicNumber),
+						}}
+						label={`Ask Rudy about question ${card.question.publicNumber}`}
 						iconOnly
 						variant="ghost"
 					/>
@@ -1058,7 +1107,7 @@ const QuestionCard = memo(
 						aria-label="Open question"
 					>
 						<Link
-							href={`/questions/${card.question.number}`}
+							href={`/questions/${card.question.publicNumber}`}
 							draggable={false}
 							onPointerDown={(event) => event.stopPropagation()}
 							onClick={(event) => event.stopPropagation()}

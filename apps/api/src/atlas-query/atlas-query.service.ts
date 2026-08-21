@@ -7,6 +7,7 @@ import {
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { InjectDatabase } from "../database/database.constants";
 import { questionExplanation } from "../questions/question-explanation";
+import { questionNumberWhere } from "../questions/question-number";
 import type { AtlasQuestionQuery } from "./atlas-query.contracts";
 
 @Injectable()
@@ -29,7 +30,7 @@ export class AtlasQueryService {
 					cards: {
 						orderBy: { position: "asc" },
 						select: {
-							question: { select: { number: true } },
+							question: { select: { publicNumber: true } },
 							tab: { select: { number: true } },
 						},
 					},
@@ -40,6 +41,7 @@ export class AtlasQueryService {
 				orderBy: { number: "asc" },
 				select: {
 					number: true,
+					publicNumber: true,
 					name: true,
 					description: true,
 					connector: true,
@@ -196,7 +198,7 @@ export class AtlasQueryService {
 				updatedAt: dashboard.updatedAt.toISOString(),
 				tabs: dashboard.tabs,
 				questions: dashboard.cards.map((card) => ({
-					number: card.question.number,
+					number: card.question.publicNumber,
 					tab: card.tab?.number ?? null,
 				})),
 			})),
@@ -209,7 +211,7 @@ export class AtlasQueryService {
 					: undefined;
 				const version = question.versions[0];
 				return {
-					number: question.number,
+					number: question.publicNumber,
 					name: question.name,
 					description: question.description,
 					explanation: questionExplanation({
@@ -261,10 +263,11 @@ export class AtlasQueryService {
 	}
 
 	async question(number: number, input: AtlasQuestionQuery) {
-		const question = await this.db.question.findUnique({
-			where: { number },
+		const question = await this.db.question.findFirst({
+			where: questionNumberWhere(number),
 			select: {
 				number: true,
+				publicNumber: true,
 				name: true,
 				description: true,
 				connector: true,
@@ -355,7 +358,8 @@ export class AtlasQueryService {
 		if (!question) {
 			throw new NotFoundException(`No Atlas question ${number}.`);
 		}
-		const externalId = question.sourceExternalId ?? `question:${number}`;
+		const externalId =
+			question.sourceExternalId ?? `question:${question.number}`;
 		const [snapshot, metricSnapshot] = await Promise.all([
 			this.db.resultSnapshot.findFirst({
 				where: {
@@ -442,7 +446,7 @@ export class AtlasQueryService {
 		return {
 			schemaVersion: "atlas.query.v1",
 			question: {
-				number: question.number,
+				number: question.publicNumber,
 				name: question.name,
 				description: question.description,
 				explanation: questionExplanation({
@@ -585,7 +589,7 @@ export function resolveMetricFreshness(input: {
 	if (!input.hasResult) {
 		return {
 			status: "unavailable" as const,
-			reason: "No governed metric snapshot exists.",
+			reason: "No verified result has been saved yet.",
 		};
 	}
 	if (input.historical) {
@@ -600,13 +604,14 @@ export function resolveMetricFreshness(input: {
 	if (input.trustStatus === MetricTrustStatus.STALE) {
 		return {
 			status: "stale" as const,
-			reason: "One or more source freshness deadlines passed.",
+			reason: "One or more source updates are late.",
 		};
 	}
 	if (input.trustStatus !== MetricTrustStatus.VERIFIED) {
 		return {
 			status: "pending" as const,
-			reason: "Metric verification is not complete.",
+			reason:
+				"The result exists, but one or more required checks are still open.",
 		};
 	}
 	return { status: "fresh" as const, reason: null };

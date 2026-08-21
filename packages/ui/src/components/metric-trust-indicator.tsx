@@ -45,7 +45,7 @@ const STATUS: Record<
 		iconClass: "text-success",
 	},
 	PENDING: {
-		label: "Verification pending",
+		label: "Checks open",
 		tone: "warning",
 		icon: PendingFilled,
 		iconClass: "text-warning",
@@ -57,7 +57,7 @@ const STATUS: Record<
 		iconClass: "text-destructive",
 	},
 	STALE: {
-		label: "Verification stale",
+		label: "Data is stale",
 		tone: "warning",
 		icon: WarningAltFilled,
 		iconClass: "text-warning",
@@ -74,7 +74,7 @@ export function MetricTrustIndicator({
 	const state = summary
 		? STATUS[summary.status]
 		: {
-				label: "Not governed",
+				label: "Not checked yet",
 				tone: "neutral" as const,
 				icon: HelpFilled,
 				iconClass: "text-muted-foreground",
@@ -96,11 +96,11 @@ export function MetricTrustIndicator({
 				</span>
 			</TooltipTrigger>
 			<TooltipContent variant="surface">
-				<span className="flex max-w-xs flex-col gap-2">
+				<span className="flex max-w-sm flex-col gap-2">
 					<span className="font-medium">{state.label}</span>
 					<span className="opacity-80">
 						{summary?.reason ??
-							"This question does not have a governed metric snapshot yet."}
+							"Atlas has not checked this question yet."}
 					</span>
 					{summary?.checks.length ? (
 						<span className="flex flex-col gap-1 border-t border-border pt-2">
@@ -110,8 +110,13 @@ export function MetricTrustIndicator({
 										tone={checkTone(check.status)}
 										className="mt-1"
 									/>
-									<span>
-										<span className="block">{check.label}</span>
+									<span className="min-w-0 flex-1">
+										<span className="flex items-start justify-between gap-3">
+											<span>{check.label}</span>
+											<span className="shrink-0 opacity-65">
+												{checkStatusLabel(check.status)}
+											</span>
+										</span>
 										{check.detail ? (
 											<span className="block opacity-65">{check.detail}</span>
 										) : null}
@@ -122,7 +127,7 @@ export function MetricTrustIndicator({
 					) : null}
 					{summary?.dataThrough ? (
 						<span className="border-t border-border pt-2 opacity-65">
-							Data through {new Date(summary.dataThrough).toLocaleString("en-US", {
+							Data included through {new Date(summary.dataThrough).toLocaleString("en-US", {
 								timeZone: "UTC",
 								timeZoneName: "short",
 							})}
@@ -143,4 +148,11 @@ function checkTone(status: CheckStatus): StatusTone {
 	if (status === "PASSED" || status === "WAIVED") return "success";
 	if (status === "FAILED") return "error";
 	return "warning";
+}
+
+function checkStatusLabel(status: CheckStatus): string {
+	if (status === "PASSED") return "Passed";
+	if (status === "FAILED") return "Failed";
+	if (status === "WAIVED") return "Not required";
+	return "Open";
 }

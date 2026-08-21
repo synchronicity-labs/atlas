@@ -198,6 +198,7 @@ export class AtlasDashboardsService {
 						question: {
 							select: {
 								number: true,
+								publicNumber: true,
 								name: true,
 								description: true,
 								lastCheckedAt: true,

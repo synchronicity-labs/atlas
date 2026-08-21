@@ -11,6 +11,15 @@ if (!connectionString) {
 	);
 }
 
+const connectionUrl = new URL(connectionString);
+const sslMode = connectionUrl.searchParams.get("sslmode");
+
+if (sslMode && ["prefer", "require", "verify-ca"].includes(sslMode)) {
+	connectionUrl.searchParams.set("sslmode", "verify-full");
+}
+
+const secureConnectionString = connectionUrl.toString();
+
 export interface PrismaLogRecord {
 	level: Prisma.LogLevel;
 	message: string;
@@ -54,7 +63,7 @@ const logDefinitions: Prisma.LogDefinition[] = [
 
 const createPrismaClient = () => {
 	const client = new PrismaClient({
-		adapter: new PrismaPg({ connectionString }),
+		adapter: new PrismaPg({ connectionString: secureConnectionString }),
 		log: logDefinitions,
 	});
 

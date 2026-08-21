@@ -68,8 +68,8 @@ different ways. A published metric should not use a loose word such as `users`,
 | Activated organization | An eligible organization that reaches the metric's stated activation event. | The V2 scoreboard currently uses 3+ billable generations on 2+ distinct UTC days. Each metric version must state its exact threshold. |
 | Professional organization | An eligible organization that passes the approved accrued-value, completed-generation, and active-day gates for the period. | The threshold and billing-version population belong in the metric version, not only in dashboard copy. |
 | Recurring or retained | The same starting entity satisfies an explicitly named later-period condition. | The metric must say whether retention means product activity, subscription status, spend, or full requalification. |
-| Completed generation | A generation whose final Product status is `COMPLETED`. | Do not use this as a synonym for billable until Product confirms the billing-status rule. |
-| Billable generation | A generation that the approved billing logic treats as chargeable. | Product must confirm statuses, retries, rejected records, deletions, and billing-version behavior. |
+| Completed generation | A generation whose final Product status is `COMPLETED`. | Confirmed by the Product owner for the scorecard. |
+| Billable generation | A generation started while its organization is on a non-free plan. Product stores the plan and billing source when the generation is accepted. | Confirmed by the Product owner. Billing or collection problems are measured by the separate paid-qualified guardrail. |
 | Booked | A commercial commitment at a stated event, such as contract signature or CRM Closed Won. | The event is still owner-defined. Contract signature and HubSpot stage entry are not interchangeable. |
 | Billed | An invoice was created or finalized. | The metric must name which invoice event and whether open invoices count. |
 | Accrued | Economic value assigned to the period in which usage or service occurred, whether or not cash arrived. | Product usage currently follows generation activity; Finance must approve other accrual rules. |
@@ -116,7 +116,7 @@ Company revenue is measured as four separate businesses:
 
 | Revenue door | Meaning | Current Atlas treatment |
 | --- | --- | --- |
-| `sync.tools` | Self-serve subscription and accrued usage revenue | The Weekly Revenue questions calculate this door. |
+| `sync.tools` | V2 and V3 self-serve subscriptions, V2 postpaid usage, and V3 top-up payments | The Weekly Revenue questions calculate each component and the combined total. |
 | `sync.partners` | Channel-partner revenue | Excluded from `sync.tools` and measured separately. |
 | `sync.productions` | Professional services and enterprise commitments | Excluded from `sync.tools` and measured separately. |
 | `sync.enterprise` | Contracted enterprise revenue | Excluded from `sync.tools`; Prady asked to define this last. |
@@ -127,22 +127,33 @@ door, match type, value, evidence, and active state. The current rules exclude
 `enterprise`, `program`, and `partner` plans. They also exclude organizations linked
 to `fal.ai`, `higgsfield.ai`, `replicate.com`, and `magichour.ai` from `sync.tools`.
 
-The domain list is partial. Atlas applies the known exclusions, but keeps the revenue
-metrics in `PENDING` trust state until the partner registry is reviewed and marked
-complete. A new partner is added as a registry rule. Existing report snapshots remain
-immutable; later runs use the new policy version and evidence hash.
+Sanjit's partner register names seven current partners: Fal, Higgsfield, Replicate,
+MagicHour, Adapt Global, Runware, and Segmind. Atlas resolves those partners from the
+listed domains and live Product organization records. The register still needs three
+mapping corrections: Replicate repeats Higgsfield's billing mapping, MagicHour and
+Runware share one Product organization mapping, and Adapt Global has no Product
+organization mapping. Atlas applies confirmed matches but keeps affected revenue
+results in `PENDING` trust state until those exceptions are resolved. Existing report
+snapshots remain immutable; later runs use the corrected policy version and evidence
+hash.
 
 Ask these in one review. Record each answer in a new metric version before the report
 is called certified.
 
 | Decision | Current Atlas behavior | Alternatives to confirm | Why it changes the answer |
 | --- | --- | --- | --- |
-| Master product run-rate | Active self-serve licensed plan value plus projected accrued usage | Contracted ARR, invoiced revenue, recognized revenue, or cash | These measure different economic events and must not share one label. |
-| Usage event time | `generationEndedAt` | `generationCreatedAt` or invoice time | A generation can cross a period boundary or fail after creation. |
+| Self-serve month-end estimate | Active V2 and V3 subscription value plus estimated V2 postpaid usage plus estimated successful V3 top-up payments | Contracted ARR, invoiced revenue, recognized revenue, or cash | These measure different economic events and must not share one label. V3 credit consumption is not added as revenue. Complete months always use actual values. |
+| Product activity period | `generationCreatedAt` in UTC | Completion or settlement time | This keeps behavioral cohorts stable when a generation crosses a period boundary. |
+| V2 usage revenue period | Successful V2 postpaid usage after completion, represented by `generationEndedAt` in TinyBird | Start time or invoice time | Failed generations are not billed. Revenue therefore cannot use the activity clock without changing the economics. V3 credit consumption is excluded from revenue. |
+| V2 plan and billing path | The organization plan and billing source are fixed when the generation starts | Use completion-time plan | Product persists `Generations.organizationPlan` and `billingSource` at admission. TinyBird V2 usage uses that plan snapshot. This part is confirmed. |
+| V2 price and discount timing | The current Stripe price can still be resolved when successful usage is reported after completion | Freeze the price and discount when the generation starts | A user can change subscription price or discount while a generation is running. This decision is still open. |
+| V3 credit settlement | Reserve at generation start, capture actual usage after success, and release the hold after failure | Charge immediately or price again at completion | The persisted hold and billing source keep the accepted billing path stable through the generation lifecycle. |
+| V3 revenue event | Successful one-time Stripe top-up payments plus recurring V3 subscription value | V3 credit consumption or usage value | V3 consumption spends prepaid credits and is not new revenue. The top-up payment is the variable revenue event. |
+| V3 paid-qualified month | V3 subscription invoices plus successful top-up payments in the same UTC month | Subscription invoices only, top-up payments only, or another threshold | V3 does not produce postpaid usage invoices. The Product owner must confirm the paid-qualified guardrail. |
 | Stripe reconciliation line | Cash from invoices whose Stripe `paid_at` is inside the cutoff | Invoice creation, invoice finalization, due date, service period, or payment settlement | “Created,” “billed,” and “paid” answer different questions. If invoice creation is wanted, Atlas should add an `invoice billings` metric instead of changing `cash collected`. |
 | Enterprise and Studio bookings date | HubSpot stage-entry history is used for CRM verification | Contract signature timestamp or work-start timestamp | A contract can be signed before Sales moves the deal, and work can start later. |
 | Signed amount precedence | HubSpot amount is accepted only as CRM evidence; a conflicting signed amount remains partial | Signed contract always wins, HubSpot always wins, or a named reconciliation owner resolves conflicts | USC is `$292` in HubSpot and `$334.25` in the cited source thread. |
-| Licensed subscription base | Current active or past-due subscriptions multiplied by current plan price | Invoice-item accrual, contracted price, or collected license cash | Current state is useful for run-rate but cannot replay an old close without lifecycle ingestion time. |
+| Licensed subscription base | Current active or past-due subscriptions multiplied by the recurring licensed Stripe item price and quantity stored in the raw subscription payload | Invoice-item accrual, contracted price, or collected license cash | Current state is useful for run-rate but cannot replay an old close without lifecycle ingestion time. New self-serve plans flow through after the governed revenue-door policy accepts them. |
 | Enterprise commitments | Excluded from master Product run-rate | Include contracted commitments, usage drawdown, or only the unused commitment balance | Adding commitments and usage can double count the same economics. |
 | Complete channel-partner list | Known partner domains and `partner` plans are excluded from `sync.tools`; the registry is partial | Confirm every partner organization and its effective date | A missed partner inflates self-serve revenue and retention. |
 | Partner pricing source | Product plan and domain identify the door; contract-specific tiers are not yet normalized | Signed agreement, Stripe price, CRM deal, or an approved plan configuration | Partners can share one commercial structure while using different prices and thresholds. |
@@ -153,19 +164,54 @@ collections**. It is not a decision that Prady wants cash as the operating KPI. 
 wants invoice creation or contract signature, Atlas should publish a separate metric
 with that exact name and event timestamp.
 
-## Questions for Tair: Product Scoreboard
+## Product Scoreboard decisions
 
-| Decision | Current state | Owner answer needed |
-| --- | --- | --- |
-| Generation event time | Legacy Product questions use `generationCreatedAt`; the verified revenue work uses `generationEndedAt`. | Should every completed, billable, and accrued Product KPI use `generationEndedAt`? |
-| Billable generation | Existing cards use the source card logic. | Which final statuses count, and how are retries, deleted records, and rejected generations handled? |
-| `$100 accrued` | Product definitions say accrued operating value, not paid cash. | Confirm the exact subscription allocation plus consumed-usage formula and billing-version treatment. |
-| V2 population | Core Scoreboard cards use hobbyist, creator, growth, and scale. | Confirm how later billing versions appear without rewriting the historical V2 cohort. |
-| Active day | Existing logic counts distinct generation dates. | Confirm whether the day follows creation or completion time and whether one billable completion is enough. |
-| API-key attribution | A generation can have a user ID, API key ID, both, or neither. | Confirm that API-key activity belongs to its owner and define the fail-closed rule for an unresolved principal. |
-| M3 | Existing logic means two calendar months after the starting month. | Confirm this is the intended meaning rather than 90 elapsed days or the third renewal. |
-| Completion rate denominator | The current certified definition is completed, non-deleted generations divided by all non-deleted generation records. | Confirm which terminal and non-terminal statuses belong in the denominator. |
-| Paid-qualified | The draft metric compares accrued-professional organization-months with at least `$100` in subscription and usage invoices. | Confirm invoice creation, service period, or payment time and treatment of credits, refunds, and open invoices. |
+Tair confirmed the following rules. They now belong in the metric versions and query
+verification evidence, not in an open-question list.
+
+| Decision | Confirmed Product rule |
+| --- | --- |
+| Generation period | Assign a generation to the UTC month when it started. A generation started on July 31 and completed on August 1 belongs to July. |
+| Completed status | Only final Product status `COMPLETED` counts as completed. |
+| Billable generation | The generation started while its organization was on a non-free plan. Product persists the plan and billing source when the generation is accepted. V2 TinyBird `organizationPlanType` is derived from that admission snapshot. |
+| Failed generation billing | Failed generations do not become usage revenue. V3 reserves credits at start and releases the hold after failure. |
+| Professional organization | A V2 self-serve organization-month with `$100+` accrued value, 3+ completed billable generations, and activity on 2+ distinct UTC days. |
+| Activated organization | A V2 self-serve organization-month with 3+ completed billable generations across 2+ distinct UTC days, before the `$100` gate. |
+| M3 | The same fixed starting cohort two calendar months after the starting month. It is not 90 elapsed days. |
+| Completion rate | Weekly `COMPLETED` non-deleted generation records divided by all non-deleted generation records, using final Product status. |
+
+Two feedback decisions remain open because the Product sheet defines upvote rate and
+coverage as separate measures:
+
+1. For generation upvote rate, does positive mean thumbs-up, 4–5 stars, or both? If a
+   generation has more than one rating, does it count once or more than once?
+2. For feedback coverage, which denominator is the official scorecard measure: first
+   generation per organization, all eligible `COMPLETED` generations, or all eligible
+   terminal generations?
+
+Two billing decisions remain open:
+
+3. If an organization changes its Stripe price or discount while a V2 generation is
+   running, should the generation use the price from start time or the price visible
+   when successful usage is reported? The plan and billing source are already fixed at
+   start, but the price can still be resolved at completion.
+4. For the V3 paid-qualified guardrail, should the monthly paid amount include the V3
+   subscription invoice plus successful top-up payments, subscription invoices only,
+   or another approved amount?
+
+The approved self-serve revenue model is:
+
+- subscription run-rate: active V2 and V3 recurring plan value;
+- V2 usage run-rate: completed V2 postpaid usage, assigned by `generationEndedAt`;
+- V3 top-up run-rate: successful one-time V3 top-up payments, assigned by payment
+  `createdAt`;
+- variable revenue run-rate: V2 usage run-rate plus V3 top-up run-rate;
+- total self-serve run-rate: subscription run-rate plus V2 usage run-rate plus V3
+  top-up run-rate.
+
+For the current incomplete UTC month, V2 usage and V3 top-ups are paced from the exact
+shared data-through time. Complete months show actual values. V3 credit consumption is
+an operating usage measure, not a revenue component.
 
 ## Decision record template
 

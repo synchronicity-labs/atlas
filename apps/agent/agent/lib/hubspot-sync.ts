@@ -1204,5 +1204,6 @@ export async function syncHubspotSales(maxPages = 10) {
 	});
 	const pipelines = await syncPipelines(source.id, client);
 	const owners = await syncOwners(source.id, client);
-	return { configured: true, deals, pipelines, owners };
+	const reports = await syncReportMetrics(source.id, client);
+	return { configured: true, deals, pipelines, owners, reports };
 }

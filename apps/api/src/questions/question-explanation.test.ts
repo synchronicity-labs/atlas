@@ -65,7 +65,7 @@ describe("question explanations", () => {
 					"Type: primary Input: Latest complete month vs previous month. Description: Current V2 self-serve professional orgs. Why: Top-line north-star movement.",
 			}),
 		).toBe(
-			"Counts V2 self-serve organizations with $100+ accrued value and 3+ billable generations on 2+ distinct UTC days in a complete month. Why it matters: This is the main measure of qualified self-serve organizations.",
+			"How many V2 self-serve organizations reached $100+ accrued value and completed 3+ billable generations on 2+ distinct UTC days in a complete month? Why it matters: This is the main measure of qualified self-serve organizations.",
 		);
 	});
 
@@ -130,6 +130,26 @@ describe("question explanations", () => {
 			expect(questionExplanation({ name })).not.toContain(
 				"Open it to see the exact query",
 			);
+		}
+	});
+
+	test("explains every self-serve revenue component", () => {
+		const names = [
+			"Estimated self-serve month-end revenue",
+			"Self-serve revenue history and current-month pace",
+			"Self-serve subscription run-rate by billing type and plan",
+			"Estimated self-serve V2 usage month-end",
+			"Self-serve subscription run-rate",
+			"Estimated self-serve V3 top-ups month-end",
+			"Estimated self-serve variable revenue month-end",
+		];
+
+		for (const name of names) {
+			const explanation = questionExplanation({ name });
+			expect(explanation).not.toContain(
+				"does not have a plain-language definition",
+			);
+			expect(explanation).toContain("Why it matters:");
 		}
 	});
 });

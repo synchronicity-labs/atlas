@@ -38,6 +38,7 @@ type PosthogReport = {
 };
 
 const PERCENT_METRICS = new Set(["engagementRate", "bounceRate"]);
+const POSTHOG_RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504]);
 
 function displayName(value: string): string {
 	return value
@@ -81,7 +82,10 @@ function numericMetric(name: string, value: string | undefined): number {
 export class MarketingClient {
 	private readonly google: GoogleServiceAccountClient;
 
-	constructor(private readonly config: MarketingConfig) {
+	constructor(
+		private readonly config: MarketingConfig,
+		private readonly posthogRetryDelayMs = 500,
+	) {
 		this.google = new GoogleServiceAccountClient(config.google);
 	}
 
@@ -344,33 +348,41 @@ export class MarketingClient {
 	private async posthog(query: string): Promise<MarketingResult> {
 		const config = this.config.posthog;
 		if (!config) throw new Error("PostHog is not configured.");
-		const response = await fetch(
-			`${config.host}/api/projects/${config.projectId}/query/`,
-			{
-				method: "POST",
-				headers: {
-					Authorization: `Bearer ${config.apiKey}`,
-					"Content-Type": "application/json",
+		for (let attempt = 1; attempt <= 3; attempt += 1) {
+			const response = await fetch(
+				`${config.host}/api/projects/${config.projectId}/query/`,
+				{
+					method: "POST",
+					headers: {
+						Authorization: `Bearer ${config.apiKey}`,
+						"Content-Type": "application/json",
+					},
+					body: JSON.stringify({ query: { kind: "HogQLQuery", query } }),
 				},
-				body: JSON.stringify({ query: { kind: "HogQLQuery", query } }),
-			},
-		);
-		const body = (await response.json()) as PosthogReport;
-		if (!response.ok || body.error) {
-			throw new Error(`PostHog query failed (${response.status}).`);
+			);
+			const body = (await response.json().catch(() => ({}))) as PosthogReport;
+			if (response.ok && !body.error) {
+				const types = new Map(body.types ?? []);
+				return {
+					columns: (body.columns ?? []).map((name) => ({
+						name,
+						displayName: displayName(name),
+						baseType: /Date|DateTime/i.test(types.get(name) ?? "")
+							? "type/DateTime"
+							: /Int|Float|Decimal/i.test(types.get(name) ?? "")
+								? "type/Decimal"
+								: "type/Text",
+					})),
+					rows: body.results ?? [],
+				};
+			}
+			if (attempt === 3 || !POSTHOG_RETRYABLE_STATUS.has(response.status)) {
+				throw new Error(`PostHog query failed (${response.status}).`);
+			}
+			await new Promise((resolve) =>
+				setTimeout(resolve, this.posthogRetryDelayMs * attempt),
+			);
 		}
-		const types = new Map(body.types ?? []);
-		return {
-			columns: (body.columns ?? []).map((name) => ({
-				name,
-				displayName: displayName(name),
-				baseType: /Date|DateTime/i.test(types.get(name) ?? "")
-					? "type/DateTime"
-					: /Int|Float|Decimal/i.test(types.get(name) ?? "")
-						? "type/Decimal"
-						: "type/Text",
-			})),
-			rows: body.results ?? [],
-		};
+		throw new Error("PostHog query failed after retrying.");
 	}
 }

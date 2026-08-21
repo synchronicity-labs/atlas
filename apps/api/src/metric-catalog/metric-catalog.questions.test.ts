@@ -1,5 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { DataSourceKind, QueryLanguage } from "@crm/db";
 import type { CatalogCandidate } from "./metric-catalog.parser";
 import { catalogQuestionSpec } from "./metric-catalog.questions";
 
@@ -27,7 +26,6 @@ describe("metric catalog question specs", () => {
 	test.each([
 		"Gross Logo Retention",
 		"SOWs/ MSA's signed",
-		"Channel Partner Revenue by Partner",
 		"gross margin",
 		"revenue concentration",
 		"active rate (north star ÷ paid teams)",
@@ -39,19 +37,29 @@ describe("metric catalog question specs", () => {
 		expect(spec?.provisionalDefinition).toStartWith("Provisional:");
 	});
 
-	test("uses HubSpot company grouping for channel partner revenue", () => {
+	test("does not replace the governed partner reconciliation with a HubSpot estimate", () => {
 		const spec = catalogQuestionSpec(
 			candidate("Channel Partner Revenue by Partner"),
 		);
 
-		expect(spec).toMatchObject({
-			connector: DataSourceKind.HUBSPOT,
-			queryLanguage: QueryLanguage.API,
-		});
-		expect(JSON.parse(spec?.queryText ?? "{}")).toMatchObject({
-			report: "closed-won-by-company",
-			pipelines: ["2085894842"],
-		});
+		expect(spec).toBeNull();
+	});
+
+	test("does not publish retention for a cohort without a complete next month", () => {
+		const spec = catalogQuestionSpec(candidate("Gross Logo Retention"));
+
+		expect(spec?.queryText).toContain(
+			"where current.month < (select max(month) from paid_org_months)",
+		);
+	});
+
+	test("assigns Product activity to the month when a generation started", () => {
+		const spec = catalogQuestionSpec(
+			candidate("active rate (north star ÷ paid teams)"),
+		);
+
+		expect(spec?.queryText).toContain('"generationCreatedAt"');
+		expect(spec?.queryText).not.toContain('"generationEndedAt"');
 	});
 
 	test("does not invent a query for an unknown KPI", () => {

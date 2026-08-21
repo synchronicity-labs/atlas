@@ -7,13 +7,13 @@ type QuestionExplanationInput = {
 
 const EXPLANATIONS_BY_NAME: Record<string, string> = {
 	"V2 self-serve - Primary professional orgs":
-		"Counts V2 self-serve organizations with $100+ accrued value and 3+ billable generations on 2+ distinct UTC days in a complete month. Why it matters: This is the main measure of qualified self-serve organizations.",
+		"How many V2 self-serve organizations reached $100+ accrued value and completed 3+ billable generations on 2+ distinct UTC days in a complete month? Why it matters: This is the main measure of qualified self-serve organizations.",
 	"V2 self-serve - Activated org pool":
-		"Counts V2 self-serve organizations with 3+ billable generations on 2+ distinct UTC days in a complete month. Why it matters: This is the pool that can become professional.",
+		"How many V2 self-serve organizations completed 3+ billable generations on 2+ distinct UTC days in a complete month? The $100+ accrued-value rule does not apply here. Why it matters: This is the pool that can become professional.",
 	"V2 self-serve - M3 requalification":
-		"Shows the share of a starting professional-organization cohort that meets the same professional threshold again two calendar months later. Why it matters: It shows whether professional organizations keep qualifying.",
+		"Of the organizations that were professional in the starting month, what share met the same rules again two calendar months later? Why it matters: It shows whether professional organizations keep qualifying.",
 	"V2 self-serve - M3 accrued NDR":
-		"Compares the same starting cohort’s accrued value two calendar months later with its accrued value in the starting month. Why it matters: It shows whether that cohort’s economic value grew or shrank.",
+		"How did total accrued value change for the same professional organizations two calendar months later? Atlas divides their later value by their starting-month value. An organization with no later value contributes zero. Why it matters: It shows whether the group’s economic value grew or shrank.",
 	"Product accrual run-rate":
 		"Adds monthly usage incurred when generations finish to the licensed invoice-item base. This is a run-rate reconstruction, not cash collected or recognized revenue. Why it matters: It shows the monthly product revenue pace used in the original Revenue close model.",
 	"Paid usage accrual":
@@ -21,7 +21,7 @@ const EXPLANATIONS_BY_NAME: Record<string, string> = {
 	"Licensed subscription base proxy":
 		"Sums licensed Stripe invoice-item value after keeping one latest state per invoice-item id. This is an invoice-item proxy, not the live active-subscription base. Why it matters: It estimates the subscription part of the original product run-rate.",
 	"Paid customer monthly revenue":
-		"Sums the warehouse paid-customer revenue table as a native SQL replacement for Metabase question 1256. Atlas compares both results on each refresh before it marks this question as verified.",
+		"Sums the warehouse paid-customer revenue table by UTC month. This is the native SQL version of Metabase question 1256. Atlas only marks it verified when both versions match for the same months. Why it matters: It gives the revenue close an auditable paid-customer total.",
 	"Stripe paid invoice collections":
 		"Sums cash paid on Stripe invoices after keeping one latest state per invoice id. This is money collected, not invoices raised or recognized revenue. Why it matters: It reconciles the run-rate model with cash received.",
 	"Stripe paid + open invoice billings":
@@ -42,6 +42,20 @@ const EXPLANATIONS_BY_NAME: Record<string, string> = {
 		"Shows the starting-month usage for the fixed organization cohort. This is the denominator of Usage-spend NDR.",
 	"NDR retained cohort spend":
 		"Shows next-month usage from the fixed starting cohort. This is the numerator of Usage-spend NDR.",
+	"Estimated self-serve month-end revenue":
+		"What will self-serve revenue be by the end of the current UTC month if the month-to-date pace continues? Atlas adds the current V2 and V3 subscription value, estimated V2 postpaid usage, and estimated V3 top-up payments. This is an open-month operating estimate, not booked revenue or cash collected. Why it matters: It gives an early view of the full-month self-serve result.",
+	"Self-serve revenue history and current-month pace":
+		"How did self-serve revenue change by month? Complete months use actual V2 and V3 subscription value, V2 postpaid usage, and V3 top-up payments. Only the open month includes a month-end estimate. Why it matters: It shows the actual revenue mix and the current month’s direction without treating V3 credit consumption as new revenue.",
+	"Self-serve subscription run-rate by billing type and plan":
+		"What is the monthly value of active or past-due self-serve subscriptions, split by billing type and plan? Atlas reads each plan’s recurring licensed price and quantity from Stripe. Hobbyist, Creator, Growth, and Scale are V2; every other allowed self-serve plan is V3. Why it matters: It shows the recurring base and lets new V3 plans appear without a code change.",
+	"Estimated self-serve V2 usage month-end":
+		"What will V2 postpaid usage revenue be by the end of the current UTC month if the month-to-date pace continues? Complete months use actual successful usage grouped by generation finish time. Failed generations and V3 credit consumption are excluded. Why it matters: It isolates the variable revenue produced by V2 usage.",
+	"Self-serve subscription run-rate":
+		"What is the current monthly value of active or past-due V2 and V3 self-serve subscriptions? Atlas reads the recurring licensed price and quantity from Stripe and compares the result with the previous month-end. Why it matters: It shows the recurring part of self-serve revenue separately from usage and top-ups.",
+	"Estimated self-serve V3 top-ups month-end":
+		"What will successful V3 top-up payments total by the end of the current UTC month if the month-to-date pace continues? V3 credit consumption is excluded because it spends prepaid credits instead of creating new revenue. Why it matters: It isolates the variable revenue event for V3.",
+	"Estimated self-serve variable revenue month-end":
+		"What will variable self-serve revenue be by the end of the current UTC month if the month-to-date pace continues? Atlas adds estimated V2 postpaid usage and estimated V3 top-up payments. Subscription value and V3 credit consumption are excluded. Why it matters: It compares the two variable billing paths without double counting revenue.",
 	"Negative generation feedback":
 		"Lists generations that received negative feedback so the team can inspect the affected user, model, workflow, and failure context.",
 	"Coverage by surface, monthly":
@@ -132,5 +146,5 @@ export function questionExplanation({
 		if (normalized) return normalizeDescription(normalized);
 	}
 
-	return `This question returns the data behind “${name}”. Open it to see the exact query, source, and timeframe.`;
+	return `“${name}” does not have a plain-language definition yet. Treat the result as a draft until the metric owner confirms what it should measure. Why it matters: Atlas should not present an unexplained number as trusted.`;
 }

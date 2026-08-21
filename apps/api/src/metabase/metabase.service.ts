@@ -21,7 +21,6 @@ import {
 	type MetabaseResult,
 } from "./metabase.client";
 import { type MetabaseConfig, metabaseConfig } from "./metabase.config";
-import { ProductEligibilityService } from "./product-eligibility.service";
 import {
 	ProductMetricPublisher,
 	type PublishVerificationCheck,
@@ -41,6 +40,7 @@ const USERS_SCOPE = "product-users";
 const FRESHNESS_MS = 8 * 60 * 60 * 1000;
 const ATLAS_DASHBOARD_CONCURRENCY = 4;
 const ATLAS_DASHBOARD_QUESTION_BATCH_SIZE = 12;
+const USER_PERSIST_CHUNK_SIZE = 100;
 
 const USER_COLUMNS = new Set([
 	"id",
@@ -141,7 +141,6 @@ export class MetabaseService {
 	constructor(
 		@InjectDatabase() private readonly db: Db,
 		private readonly productMetrics: ProductMetricPublisher,
-		private readonly productEligibility: ProductEligibilityService,
 		private readonly revenueDoorPolicy: RevenueDoorPolicyService,
 		private readonly tinybirdEligibility: TinybirdEligibilityService,
 	) {}
@@ -623,10 +622,10 @@ export class MetabaseService {
 								)
 							: null;
 						const executedQueryText =
-							language === "SQL" && governed && question.number !== 15
+							language === "SQL" && governed
 								? governed.queryText
 								: classifiedQueryText;
-						let result = await client.preview({
+						const result = await client.preview({
 							language,
 							queryText: executedQueryText,
 							databaseExternalId: question.databaseExternalId,
@@ -659,32 +658,9 @@ export class MetabaseService {
 								});
 							}
 						}
-						let publishEligibility = governed
+						const publishEligibility = governed
 							? { applied: governed.applied, ...governed.eligibility }
 							: undefined;
-						if (question.number === 15) {
-							try {
-								const joined =
-									await this.productEligibility.governProfessionalResult(
-										result,
-									);
-								result = joined.result;
-								publishEligibility = joined.eligibility;
-							} catch (error) {
-								publishEligibility = publishEligibility
-									? {
-											...publishEligibility,
-											applied: false,
-											complete: false,
-										}
-									: undefined;
-								this.logger.warn({
-									message: "Product eligibility join did not complete",
-									questionNumber: question.number,
-									error: error instanceof Error ? error.message : String(error),
-								});
-							}
-						}
 						const payload = { columns: result.columns, rows: result.rows };
 						const contentHash = stableHash(payload);
 						const externalId =
@@ -1231,156 +1207,170 @@ export class MetabaseService {
 	private async persistUsers(sourceId: string, rows: SafeUserRow[]) {
 		let snapshots = 0;
 
-		await this.db.$transaction(
-			async (tx) => {
-				for (const row of rows) {
-					const email = identifierString(row.email, 320)?.toLowerCase() ?? null;
-					const user = await tx.productUser.upsert({
-						where: { sourceId_externalId: { sourceId, externalId: row.id } },
-						create: {
-							sourceId,
-							externalId: row.id,
-							email,
-							displayName: boundedString(row.display_name, 500),
-							role: boundedString(row.role, 128),
-							disabled: booleanValue(row.disabled),
-							banned: booleanValue(row.banned),
-							isAnonymous: booleanValue(row.is_anonymous),
-							traits: json(row),
-							syncedAt: new Date(),
-						},
-						update: {
-							email,
-							displayName: boundedString(row.display_name, 500),
-							role: boundedString(row.role, 128),
-							disabled: booleanValue(row.disabled),
-							banned: booleanValue(row.banned),
-							isAnonymous: booleanValue(row.is_anonymous),
-							traits: json(row),
-							syncedAt: new Date(),
-						},
-					});
-
-					await tx.productUserIdentity.upsert({
-						where: {
-							productUserId_kind_normalizedValue: {
-								productUserId: user.id,
-								kind: "user_id",
-								normalizedValue: row.id.toLowerCase(),
+		for (
+			let offset = 0;
+			offset < rows.length;
+			offset += USER_PERSIST_CHUNK_SIZE
+		) {
+			const chunk = rows.slice(offset, offset + USER_PERSIST_CHUNK_SIZE);
+			await this.db.$transaction(
+				async (tx) => {
+					for (const row of chunk) {
+						const email =
+							identifierString(row.email, 320)?.toLowerCase() ?? null;
+						const user = await tx.productUser.upsert({
+							where: { sourceId_externalId: { sourceId, externalId: row.id } },
+							create: {
+								sourceId,
+								externalId: row.id,
+								email,
+								displayName: boundedString(row.display_name, 500),
+								role: boundedString(row.role, 128),
+								disabled: booleanValue(row.disabled),
+								banned: booleanValue(row.banned),
+								isAnonymous: booleanValue(row.is_anonymous),
+								traits: json(row),
+								syncedAt: new Date(),
 							},
-						},
-						create: {
-							productUserId: user.id,
-							kind: "user_id",
-							value: row.id,
-							normalizedValue: row.id.toLowerCase(),
-							source: "metabase",
-						},
-						update: { value: row.id },
-					});
+							update: {
+								email,
+								displayName: boundedString(row.display_name, 500),
+								role: boundedString(row.role, 128),
+								disabled: booleanValue(row.disabled),
+								banned: booleanValue(row.banned),
+								isAnonymous: booleanValue(row.is_anonymous),
+								traits: json(row),
+								syncedAt: new Date(),
+							},
+						});
 
-					if (email) {
 						await tx.productUserIdentity.upsert({
 							where: {
 								productUserId_kind_normalizedValue: {
 									productUserId: user.id,
-									kind: "email",
-									normalizedValue: email,
+									kind: "user_id",
+									normalizedValue: row.id.toLowerCase(),
 								},
 							},
 							create: {
 								productUserId: user.id,
-								kind: "email",
-								value: email,
-								normalizedValue: email,
+								kind: "user_id",
+								value: row.id,
+								normalizedValue: row.id.toLowerCase(),
 								source: "metabase",
 							},
-							update: { value: email },
-						});
-					}
-
-					const organizationId = identifierString(row.organization_id, 255);
-					if (organizationId) {
-						const organization = await tx.productOrganization.upsert({
-							where: {
-								sourceId_externalId: { sourceId, externalId: organizationId },
-							},
-							create: {
-								sourceId,
-								externalId: organizationId,
-								name: boundedString(row.name, 500),
-								plan: boundedString(row.plan, 128),
-								paymentStatus: json(row.payment_status),
-								stripeSubscriptionId: identifierString(
-									row.stripe_subscription_id,
-									255,
-								),
-								stripeCustomerId: identifierString(row.stripe_customer_id, 255),
-								traits: json({
-									name: row.name,
-									plan: row.plan,
-									payment_status: row.payment_status,
-								}),
-								syncedAt: new Date(),
-							},
-							update: {
-								name: boundedString(row.name, 500),
-								plan: boundedString(row.plan, 128),
-								paymentStatus: json(row.payment_status),
-								stripeSubscriptionId: identifierString(
-									row.stripe_subscription_id,
-									255,
-								),
-								stripeCustomerId: identifierString(row.stripe_customer_id, 255),
-								traits: json({
-									name: row.name,
-									plan: row.plan,
-									payment_status: row.payment_status,
-								}),
-								syncedAt: new Date(),
-							},
+							update: { value: row.id },
 						});
 
-						await tx.productOrganizationMembership.upsert({
-							where: {
-								productUserId_productOrganizationId: {
+						if (email) {
+							await tx.productUserIdentity.upsert({
+								where: {
+									productUserId_kind_normalizedValue: {
+										productUserId: user.id,
+										kind: "email",
+										normalizedValue: email,
+									},
+								},
+								create: {
+									productUserId: user.id,
+									kind: "email",
+									value: email,
+									normalizedValue: email,
+									source: "metabase",
+								},
+								update: { value: email },
+							});
+						}
+
+						const organizationId = identifierString(row.organization_id, 255);
+						if (organizationId) {
+							const organization = await tx.productOrganization.upsert({
+								where: {
+									sourceId_externalId: { sourceId, externalId: organizationId },
+								},
+								create: {
+									sourceId,
+									externalId: organizationId,
+									name: boundedString(row.name, 500),
+									plan: boundedString(row.plan, 128),
+									paymentStatus: json(row.payment_status),
+									stripeSubscriptionId: identifierString(
+										row.stripe_subscription_id,
+										255,
+									),
+									stripeCustomerId: identifierString(
+										row.stripe_customer_id,
+										255,
+									),
+									traits: json({
+										name: row.name,
+										plan: row.plan,
+										payment_status: row.payment_status,
+									}),
+									syncedAt: new Date(),
+								},
+								update: {
+									name: boundedString(row.name, 500),
+									plan: boundedString(row.plan, 128),
+									paymentStatus: json(row.payment_status),
+									stripeSubscriptionId: identifierString(
+										row.stripe_subscription_id,
+										255,
+									),
+									stripeCustomerId: identifierString(
+										row.stripe_customer_id,
+										255,
+									),
+									traits: json({
+										name: row.name,
+										plan: row.plan,
+										payment_status: row.payment_status,
+									}),
+									syncedAt: new Date(),
+								},
+							});
+
+							await tx.productOrganizationMembership.upsert({
+								where: {
+									productUserId_productOrganizationId: {
+										productUserId: user.id,
+										productOrganizationId: organization.id,
+									},
+								},
+								create: {
 									productUserId: user.id,
 									productOrganizationId: organization.id,
+									role: boundedString(row.role, 128),
+									syncedAt: new Date(),
 								},
-							},
-							create: {
-								productUserId: user.id,
-								productOrganizationId: organization.id,
-								role: boundedString(row.role, 128),
-								syncedAt: new Date(),
-							},
-							update: {
-								role: boundedString(row.role, 128),
-								syncedAt: new Date(),
-							},
-						});
-					}
+								update: {
+									role: boundedString(row.role, 128),
+									syncedAt: new Date(),
+								},
+							});
+						}
 
-					const contentHash = stableHash(row);
-					const idempotencyKey = `metabase:user:${row.id}:${organizationId ?? "none"}:${contentHash}`;
-					const result = await tx.productUserSnapshot.createMany({
-						data: [
-							{
-								idempotencyKey,
-								sourceId,
-								productUserId: user.id,
-								capturedAt: new Date(),
-								contentHash,
-								payload: json(row),
-							},
-						],
-						skipDuplicates: true,
-					});
-					snapshots += result.count;
-				}
-			},
-			{ maxWait: 15_000, timeout: 120_000 },
-		);
+						const contentHash = stableHash(row);
+						const idempotencyKey = `metabase:user:${row.id}:${organizationId ?? "none"}:${contentHash}`;
+						const result = await tx.productUserSnapshot.createMany({
+							data: [
+								{
+									idempotencyKey,
+									sourceId,
+									productUserId: user.id,
+									capturedAt: new Date(),
+									contentHash,
+									payload: json(row),
+								},
+							],
+							skipDuplicates: true,
+						});
+						snapshots += result.count;
+					}
+				},
+				{ maxWait: 15_000, timeout: 120_000 },
+			);
+		}
 
 		return { snapshots };
 	}

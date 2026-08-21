@@ -8,6 +8,7 @@ import {
 } from "@nestjs/common";
 import { z } from "zod";
 import { InjectDatabase } from "../database/database.constants";
+import { questionNumberWhere } from "../questions/question-number";
 import { assertReadOnlyQuery } from "../questions/read-only-query";
 import { RudyClient, textContent } from "./rudy.client";
 import type { RudyContext, RudySendInput } from "./rudy.contracts";
@@ -69,7 +70,7 @@ export class RudyService {
 					id: true,
 					summary: true,
 					status: true,
-					question: { select: { number: true, name: true } },
+					question: { select: { publicNumber: true, name: true } },
 				},
 			}),
 		]);
@@ -89,9 +90,9 @@ export class RudyService {
 				id: proposal.id,
 				summary: proposal.summary,
 				status: proposal.status,
-				questionNumber: proposal.question.number,
+				questionNumber: proposal.question.publicNumber,
 				questionName: proposal.question.name,
-				reviewUrl: `/questions/${proposal.question.number}?proposal=${proposal.id}`,
+				reviewUrl: `/questions/${proposal.question.publicNumber}?proposal=${proposal.id}`,
 			})),
 		};
 	}
@@ -190,24 +191,33 @@ export class RudyService {
 				}),
 				this.db.question.findMany({
 					where: { status: QuestionStatus.ACTIVE },
-					orderBy: { number: "asc" },
+					orderBy: { publicNumber: "asc" },
 					select: {
-						number: true,
+						publicNumber: true,
 						name: true,
 						connector: true,
 						updatedAt: true,
 					},
 				}),
 			]);
-			return { schema: "atlas.workspace.v1", dashboards, questions };
+			return {
+				schema: "atlas.workspace.v1",
+				dashboards,
+				questions: questions.map((question) => ({
+					...question,
+					number: question.publicNumber,
+					publicNumber: undefined,
+				})),
+			};
 		}
 
 		const number = Number(context.id);
 		if (context.kind === "question") {
-			const question = await this.db.question.findUnique({
-				where: { number },
+			const question = await this.db.question.findFirst({
+				where: questionNumberWhere(number),
 				select: {
 					number: true,
+					publicNumber: true,
 					name: true,
 					description: true,
 					connector: true,
@@ -256,7 +266,11 @@ export class RudyService {
 				: [];
 			return {
 				schema: "atlas.question.context.v1",
-				question,
+				question: {
+					...question,
+					number: question.publicNumber,
+					publicNumber: undefined,
+				},
 				snapshots: snapshots.map(compactSnapshot),
 			};
 		}
@@ -288,6 +302,7 @@ export class RudyService {
 						question: {
 							select: {
 								number: true,
+								publicNumber: true,
 								name: true,
 								description: true,
 								connector: true,
@@ -338,6 +353,11 @@ export class RudyService {
 				...dashboard,
 				cards: dashboard.cards.map((card) => ({
 					...card,
+					question: {
+						...card.question,
+						number: card.question.publicNumber,
+						publicNumber: undefined,
+					},
 					latestResult: card.question.sourceExternalId
 						? compactSnapshot(latest.get(card.question.sourceExternalId))
 						: null,
@@ -388,10 +408,11 @@ export class RudyService {
 					parsed.number ??
 					(input.context.kind === "question" ? Number(input.context.id) : NaN);
 				if (!Number.isInteger(number) || number <= 0) continue;
-				const question = await this.db.question.findUnique({
-					where: { number },
+				const question = await this.db.question.findFirst({
+					where: questionNumberWhere(number),
 					select: {
 						id: true,
+						publicNumber: true,
 						name: true,
 						description: true,
 						versions: {
@@ -432,8 +453,8 @@ export class RudyService {
 				proposals.push({
 					id: proposal.id,
 					summary: proposal.summary,
-					questionNumber: number,
-					reviewUrl: `/questions/${number}?proposal=${proposal.id}`,
+					questionNumber: question.publicNumber,
+					reviewUrl: `/questions/${question.publicNumber}?proposal=${proposal.id}`,
 				});
 			} catch (error) {
 				this.logger.warn({

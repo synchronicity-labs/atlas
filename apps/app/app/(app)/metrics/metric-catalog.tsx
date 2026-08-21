@@ -234,8 +234,12 @@ function DecisionTooltip({ decisions }: { decisions: CatalogDecision[] }) {
 				variant="surface"
 				className="max-w-96 space-y-2 text-pretty"
 			>
-				<p className="font-medium">Decisions to confirm</p>
-				<ul className="space-y-2 text-muted-foreground text-xs">
+				<p className="font-medium">What needs a decision</p>
+				<p className="text-muted-foreground text-xs">
+					The metric owner needs to confirm these rules before Atlas can call
+					the result verified.
+				</p>
+				<ul className="list-disc space-y-2 pl-4 text-muted-foreground text-xs">
 					{decisions.map((decision) => (
 						<li key={decision.key}>{decision.label}</li>
 					))}
@@ -527,7 +531,7 @@ function Stat({
 	detail: string;
 }) {
 	return (
-		<div className="rounded-lg border bg-card p-4">
+		<div className="min-w-0 rounded-lg border bg-card p-4">
 			<p className="text-muted-foreground text-xs uppercase tracking-[0.12em]">
 				{label}
 			</p>
@@ -549,6 +553,8 @@ function CatalogOverview({
 	sourceCounts,
 	accessNeeded,
 	readinessCounts,
+	activeReadiness,
+	onReadinessChange,
 	query,
 	onQueryChange,
 }: {
@@ -563,6 +569,8 @@ function CatalogOverview({
 	sourceCounts: SourceCounts;
 	accessNeeded: AccessGroup[];
 	readinessCounts: Partial<Record<Entry["readiness"], number>>;
+	activeReadiness: Entry["readiness"] | null;
+	onReadinessChange: (readiness: Entry["readiness"] | null) => void;
 	query: string;
 	onQueryChange: (value: string) => void;
 }) {
@@ -604,10 +612,10 @@ function CatalogOverview({
 			>
 				<TabsList>
 					<TabsTrigger value="METRICS">
-						Company metrics {summary.kpiTotal}
+						Company KPIs {summary.kpiTotal}
 					</TabsTrigger>
 					<TabsTrigger value="SUPPORTING">
-						Supporting {supportingTotal}
+						Supporting measures {supportingTotal}
 					</TabsTrigger>
 				</TabsList>
 			</Tabs>
@@ -615,14 +623,14 @@ function CatalogOverview({
 			{scope === "METRICS" ? (
 				<div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
 					<Stat
-						label="KPI questions"
+						label="Questions created"
 						value={summary.kpiQuestions}
-						detail={`${percent(summary.kpiQuestions, summary.kpiTotal)}% of ${summary.kpiTotal} KPIs have one canonical question`}
+						detail={`${percent(summary.kpiQuestions, summary.kpiTotal)}% of company KPIs have a shareable Atlas question`}
 					/>
 					<Stat
-						label="KPIs checked"
+						label="Checks run"
 						value={summary.kpiAttempted}
-						detail={`${percent(summary.kpiAttempted, summary.kpiTotal)}% have a recorded attempt`}
+						detail={`${percent(summary.kpiAttempted, summary.kpiTotal)}% of company KPI questions have been run`}
 					/>
 					<Stat
 						label="Data returned"
@@ -630,19 +638,19 @@ function CatalogOverview({
 						detail="The canonical question ran and returned rows"
 					/>
 					<Stat
-						label="KPIs verified"
+						label="Fully verified"
 						value={summary.kpiVerified}
-						detail={`${percent(summary.kpiVerified, summary.kpiTotal)}% fully trusted`}
+						detail={`${percent(summary.kpiVerified, summary.kpiTotal)}% passed every required check`}
 					/>
 					<Stat
-						label="Query gaps"
+						label="Query problems"
 						value={summary.kpiQueryNotBuilt + summary.kpiQueryFailed}
 						detail={`${summary.kpiQueryNotBuilt} not built · ${summary.kpiQueryFailed} failed`}
 					/>
 					<Stat
-						label="Source blocked"
+						label="Source access needed"
 						value={summary.kpiSourceBlocked}
-						detail="Missing, broken, or unknown source access"
+						detail="Needs a new connection or a permission change"
 					/>
 				</div>
 			) : null}
@@ -667,7 +675,7 @@ function CatalogOverview({
 				</div>
 			) : null}
 
-			<p className="text-muted-foreground text-xs">
+			<p className="text-muted-foreground text-xs leading-5">
 				{lastCheckAt ? (
 					<>
 						Last {scopeLabel(scope)} check{" "}
@@ -677,15 +685,14 @@ function CatalogOverview({
 						{" · "}
 					</>
 				) : null}
-				Source map for {scopeLabel(scope)}: {sourceCounts.connected} connected ·{" "}
-				{sourceCounts.attention} need connector attention ·{" "}
-				{sourceCounts.missing} need a new connection ·{" "}
-				{sourceCounts.unclassified} still unclassified
+				Source coverage: {sourceCounts.connected} connected ·{" "}
+				{sourceCounts.attention} need an access fix · {sourceCounts.missing}{" "}
+				need a new connection · {sourceCounts.unclassified} need source review
 			</p>
 
 			{accessNeeded.length > 0 ? (
 				<div className="rounded-lg border bg-card p-4">
-					<p className="font-medium">Data access needed</p>
+					<p className="font-medium">Source access to add</p>
 					<p className="mt-1 text-muted-foreground text-sm">
 						These are the permissions or connections needed to unblock the
 						selected {scopeLabel(scope)}.
@@ -721,30 +728,42 @@ function CatalogOverview({
 				</div>
 			) : null}
 
-			<div className="flex flex-wrap gap-2">
-				{Object.entries(READINESS_LABELS).map(([key, label]) => {
-					const readiness = key as Entry["readiness"];
-					return (
-						<ReadinessTooltip key={key} readiness={readiness}>
-							<button
-								type="button"
-								className="inline-flex cursor-help items-center gap-1.5 rounded-full border bg-muted/25 px-2.5 py-1 text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
-							>
-								<span className={readinessTone(readiness)}>●</span>
-								{label}
-								<span className="text-muted-foreground tabular-nums">
-									{readinessCounts[readiness] ?? 0}
-								</span>
-							</button>
-						</ReadinessTooltip>
-					);
-				})}
+			<div className="space-y-2">
+				<p className="text-muted-foreground text-xs">
+					Filter by readiness. Hover any state for its meaning.
+				</p>
+				<div className="flex flex-wrap gap-2">
+					{Object.entries(READINESS_LABELS).map(([key, label]) => {
+						const readiness = key as Entry["readiness"];
+						const selected = activeReadiness === readiness;
+						return (
+							<ReadinessTooltip key={key} readiness={readiness}>
+								<button
+									type="button"
+									aria-pressed={selected}
+									onClick={() => onReadinessChange(selected ? null : readiness)}
+									className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/60 ${
+										selected
+											? "border-foreground/35 bg-muted text-foreground"
+											: "bg-muted/25 text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+									}`}
+								>
+									<span className={readinessTone(readiness)}>●</span>
+									{label}
+									<span className="tabular-nums opacity-70">
+										{readinessCounts[readiness] ?? 0}
+									</span>
+								</button>
+							</ReadinessTooltip>
+						);
+					})}
+				</div>
 			</div>
 
 			<Input
 				value={query}
 				onChange={(event) => onQueryChange(event.target.value)}
-				placeholder={`Search ${scopeLabel(scope)}, teams, sources, or evidence`}
+				placeholder={`Search ${scopeLabel(scope)}, teams, sources, or open decisions`}
 				aria-label="Search metric catalog"
 			/>
 		</>
@@ -894,6 +913,9 @@ export function MetricCatalog() {
 	const entries = useQuery(trpc.metricCatalog.list.queryOptions());
 	const [query, setQuery] = useState("");
 	const [scope, setScope] = useState<CatalogScope>("METRICS");
+	const [activeReadiness, setActiveReadiness] = useState<
+		Entry["readiness"] | null
+	>(null);
 	const sync = useMutation(
 		trpc.metricCatalog.sync.mutationOptions({
 			onSuccess: async (result) => {
@@ -933,9 +955,12 @@ export function MetricCatalog() {
 	);
 
 	const filtered = useMemo(() => {
+		const readinessFiltered = activeReadiness
+			? scopedEntries.filter((entry) => entry.readiness === activeReadiness)
+			: scopedEntries;
 		const needle = query.trim().toLowerCase();
-		if (!needle) return scopedEntries;
-		return scopedEntries.filter((entry) =>
+		if (!needle) return readinessFiltered;
+		return readinessFiltered.filter((entry) =>
 			[
 				entry.title,
 				entry.description,
@@ -950,7 +975,7 @@ export function MetricCatalog() {
 				.filter(Boolean)
 				.some((value) => String(value).toLowerCase().includes(needle)),
 		);
-	}, [query, scopedEntries]);
+	}, [activeReadiness, query, scopedEntries]);
 	const accessNeeded = useMemo(() => {
 		const groups = new Map<
 			string,
@@ -1026,7 +1051,10 @@ export function MetricCatalog() {
 			<CatalogOverview
 				summary={summary.data}
 				scope={scope}
-				onScopeChange={setScope}
+				onScopeChange={(nextScope) => {
+					setScope(nextScope);
+					setActiveReadiness(null);
+				}}
 				supportingTotal={supportingTotal}
 				activity={{
 					busy: isBusy,
@@ -1039,6 +1067,8 @@ export function MetricCatalog() {
 				sourceCounts={scopedSources}
 				accessNeeded={accessNeeded}
 				readinessCounts={scopedReadiness}
+				activeReadiness={activeReadiness}
+				onReadinessChange={setActiveReadiness}
 				query={query}
 				onQueryChange={setQuery}
 			/>

@@ -12,36 +12,13 @@ const ELIGIBILITY_QUERY = `select
   lower(coalesce(uo.role, '')) as membership_role,
   o.id::text as organization_id,
   o.stripe_customer_id::text as customer_id,
+  (o.first_subscribed_at is not null) as has_subscribed,
   count(*) over()::bigint as source_row_count
 from auth.users u
 left join public.user_organizations uo on uo.user_id = u.id
 left join public.organizations o on o.id = uo.organization_id
-where coalesce(u.banned, false)
-  or coalesce(u.is_anonymous, false)
-  or lower(coalesce(u.email, '')) like '%@sync.so'
+where lower(coalesce(u.email, '')) like '%@sync.so'
   or lower(coalesce(u.email, '')) like '%@sync.labs'
-order by u.id, o.id`;
-
-const REVENUE_ELIGIBILITY_QUERY = `select
-  u.id::text as user_id,
-  lower(coalesce(u.email, '')) as email,
-  coalesce(u.banned, false) as banned,
-  coalesce(u.disabled, false) as disabled,
-  coalesce(u.is_anonymous, false) as is_anonymous,
-  lower(coalesce(uo.role, '')) as membership_role,
-  o.id::text as organization_id,
-  o.stripe_customer_id::text as customer_id,
-  count(*) over()::bigint as source_row_count
-from auth.users u
-join public.user_organizations uo on uo.user_id = u.id
-join public.organizations o on o.id = uo.organization_id
-where o.first_subscribed_at is not null
-  and (
-    coalesce(u.banned, false)
-    or coalesce(u.is_anonymous, false)
-    or lower(coalesce(u.email, '')) like '%@sync.so'
-    or lower(coalesce(u.email, '')) like '%@sync.labs'
-  )
 order by u.id, o.id`;
 
 const USER_TABLES = [
@@ -72,6 +49,7 @@ export type TinybirdEligibilitySnapshot = {
 	sourceRows: number;
 	returnedRows: number;
 	scope: "ALL_IDENTITIES" | "SUBSCRIBED_ORGANIZATIONS";
+	policy: "PRODUCT_ACTIVITY" | "MONEY";
 };
 
 export type GovernedTinybirdQuery = {
@@ -87,6 +65,8 @@ export type GovernedTinybirdQuery = {
 		sourceRows: number;
 		returnedRows: number;
 		scope?: "ALL_IDENTITIES" | "SUBSCRIBED_ORGANIZATIONS";
+		policy?: "PRODUCT_ACTIVITY" | "MONEY";
+		limitation?: "BANNED_NEVER_SUBSCRIBED_JOIN_REQUIRED";
 	};
 };
 
@@ -99,27 +79,49 @@ export type EligibilityRow = {
 	membershipRole: string;
 	organizationId: string;
 	customerId: string;
+	hasSubscribed: boolean;
 };
 
 @Injectable()
 export class TinybirdEligibilityService {
+	private baseCache:
+		| {
+				expiresAt: number;
+				capturedAt: Date;
+				sourceRows: number;
+				rows: EligibilityRow[];
+		  }
+		| undefined;
+
 	async current(): Promise<TinybirdEligibilitySnapshot> {
-		return this.load(ELIGIBILITY_QUERY, "ALL_IDENTITIES");
+		return this.load("ALL_IDENTITIES");
 	}
 
 	async currentForRevenue(): Promise<TinybirdEligibilitySnapshot> {
-		return this.load(REVENUE_ELIGIBILITY_QUERY, "SUBSCRIBED_ORGANIZATIONS");
+		return this.load("SUBSCRIBED_ORGANIZATIONS");
 	}
 
 	private async load(
-		queryText: string,
 		scope: TinybirdEligibilitySnapshot["scope"],
 	): Promise<TinybirdEligibilitySnapshot> {
+		const base = await this.baseRows();
+		return buildTinybirdEligibility(
+			base.rows,
+			base.capturedAt,
+			base.sourceRows,
+			scope,
+		);
+	}
+
+	private async baseRows() {
+		if (this.baseCache && this.baseCache.expiresAt > Date.now()) {
+			return this.baseCache;
+		}
 		const config = metabaseConfig();
 		if (!config) throw new Error("Metabase is not configured.");
 		const result = await new MetabaseClient(config).preview({
 			language: "SQL",
-			queryText,
+			queryText: ELIGIBILITY_QUERY,
 			databaseExternalId: "34",
 		});
 		const rows = result.rows.map((values) =>
@@ -131,8 +133,12 @@ export class TinybirdEligibilityService {
 			),
 		);
 		const sourceRows = number(rows[0]?.source_row_count, rows.length);
-		return buildTinybirdEligibility(
-			rows.map((row) => ({
+		const capturedAt = new Date();
+		this.baseCache = {
+			expiresAt: Date.now() + 5 * 60 * 1000,
+			capturedAt,
+			sourceRows,
+			rows: rows.map((row) => ({
 				userId: text(row.user_id),
 				email: text(row.email),
 				banned: bool(row.banned),
@@ -141,11 +147,10 @@ export class TinybirdEligibilityService {
 				membershipRole: text(row.membership_role),
 				organizationId: text(row.organization_id),
 				customerId: text(row.customer_id),
+				hasSubscribed: bool(row.has_subscribed),
 			})),
-			new Date(),
-			sourceRows,
-			scope,
-		);
+		};
+		return this.baseCache;
 	}
 
 	govern(
@@ -163,12 +168,25 @@ export function buildTinybirdEligibility(
 	sourceRows = rows.length,
 	scope: TinybirdEligibilitySnapshot["scope"] = "ALL_IDENTITIES",
 ): TinybirdEligibilitySnapshot {
+	const policy: TinybirdEligibilitySnapshot["policy"] =
+		scope === "SUBSCRIBED_ORGANIZATIONS" ? "MONEY" : "PRODUCT_ACTIVITY";
+	const subscribedByUser = new Map<string, boolean>();
+	for (const row of rows) {
+		subscribedByUser.set(
+			row.userId,
+			Boolean(subscribedByUser.get(row.userId)) || row.hasSubscribed,
+		);
+	}
 	const excludedUserIds = sortedUnique(
-		rows.filter(isIneligible).map((row) => row.userId),
+		rows
+			.filter((row) =>
+				isIneligible(row, policy, Boolean(subscribedByUser.get(row.userId))),
+			)
+			.map((row) => row.userId),
 	);
 	const ownerRows = rows.filter(
 		(row) =>
-			isIneligible(row) &&
+			isIneligible(row, policy, Boolean(subscribedByUser.get(row.userId))) &&
 			(row.membershipRole === "owner" || row.membershipRole === ""),
 	);
 	const excludedOrganizationIds = sortedUnique(
@@ -185,6 +203,7 @@ export function buildTinybirdEligibility(
 		sourceRows,
 		returnedRows: rows.length,
 		scope,
+		policy,
 	};
 	return {
 		capturedAt,
@@ -213,7 +232,10 @@ export function governTinybirdQuery(
 		const result = wrapTable(
 			governed,
 			table,
-			userPredicate(eligibility.excludedUserIds),
+			userPredicate(
+				eligibility.excludedUserIds,
+				eligibility.excludedOrganizationIds,
+			),
 		);
 		governed = result.queryText;
 		applied ||= result.applied;
@@ -239,43 +261,72 @@ export function governTinybirdQuery(
 		governed = result.queryText;
 		applied ||= result.applied;
 	}
+	const requiresBannedNeverSubscribedJoin =
+		eligibility.policy === "PRODUCT_ACTIVITY" &&
+		!hasSubscribedPopulation(queryText);
 	return {
 		queryText: governed,
 		applied,
-		eligibility: eligibilityEvidence(eligibility),
+		eligibility: eligibilityEvidence(
+			eligibility,
+			requiresBannedNeverSubscribedJoin
+				? "BANNED_NEVER_SUBSCRIBED_JOIN_REQUIRED"
+				: undefined,
+		),
 	};
 }
 
-function isIneligible(row: EligibilityRow): boolean {
-	return (
-		row.banned ||
-		row.isAnonymous ||
-		row.email.endsWith("@sync.so") ||
-		row.email.endsWith("@sync.labs")
-	);
+function isIneligible(
+	row: EligibilityRow,
+	policy: TinybirdEligibilitySnapshot["policy"],
+	hasSubscribed: boolean,
+): boolean {
+	const internal =
+		row.email.endsWith("@sync.so") || row.email.endsWith("@sync.labs");
+	if (internal) return true;
+	return policy === "PRODUCT_ACTIVITY" && row.banned && !hasSubscribed;
 }
 
 function sortedUnique(values: string[]): string[] {
 	return [...new Set(values.filter(Boolean))].sort();
 }
 
-function userPredicate(values: string[]): string {
-	const known = knownExclusionPredicate('"userId"', values);
-	return `("userId" is null or "userId" = '' or ${known})`;
+function userPredicate(userIds: string[], organizationIds: string[]): string {
+	const knownUser = knownExclusionPredicate('"userId"', userIds);
+	const knownOrganization = knownExclusionPredicate(
+		'"organizationId"',
+		organizationIds,
+	);
+	return `(("userId" is null or "userId" = '' or ${knownUser}) and ${knownOrganization})`;
 }
 
-function eligibilityEvidence(eligibility: TinybirdEligibilitySnapshot) {
+function eligibilityEvidence(
+	eligibility: TinybirdEligibilitySnapshot,
+	limitation?: "BANNED_NEVER_SUBSCRIBED_JOIN_REQUIRED",
+) {
 	return {
 		capturedAt: eligibility.capturedAt.toISOString(),
 		contentHash: eligibility.contentHash,
 		excludedUsers: eligibility.excludedUserIds.length,
 		excludedOrganizations: eligibility.excludedOrganizationIds.length,
 		excludedCustomers: eligibility.excludedCustomerIds.length,
-		complete: eligibility.complete,
+		complete: eligibility.complete && !limitation,
 		sourceRows: eligibility.sourceRows,
 		returnedRows: eligibility.returnedRows,
 		scope: eligibility.scope,
+		policy: eligibility.policy,
+		...(limitation ? { limitation } : {}),
 	};
+}
+
+function hasSubscribedPopulation(queryText: string): boolean {
+	const normalized = queryText.toLowerCase().replaceAll(/\s+/g, " ");
+	return (
+		/organizationplantype[^\n)]*\bin\s*\(\s*'[^']+'/.test(normalized) ||
+		/organizationplantype\s+is\s+not\s+null/.test(normalized) ||
+		/organizationplantype\s*(?:!=|<>)\s*''/.test(normalized) ||
+		/stripesubscriptionid\s+is\s+not\s+null/.test(normalized)
+	);
 }
 
 function knownExclusionPredicate(column: string, values: string[]): string {

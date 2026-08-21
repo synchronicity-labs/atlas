@@ -168,11 +168,12 @@ export class MarketingService {
 				continue;
 			}
 			try {
+				const parsedQuery = this.parse(version.queryText);
+				const appliesCleanUserPolicy =
+					parsedQuery.source === "posthog" &&
+					parsedQuery.personPolicy === "exclude_banned_product_users";
 				const result = await client.execute(
-					this.withProductUserEligibility(
-						this.parse(version.queryText),
-						eligibility.predicate,
-					),
+					this.withProductUserEligibility(parsedQuery, eligibility.predicate),
 				);
 				const payload = { columns: result.columns, rows: result.rows };
 				const contentHash = hash(payload);
@@ -203,16 +204,17 @@ export class MarketingService {
 					syncRunId: run.id,
 					capturedAt,
 					eligibility: {
-						applied: false,
+						applied: appliesCleanUserPolicy,
 						capturedAt: eligibility.capturedAt,
 						contentHash: eligibility.contentHash,
 						excludedUsers: eligibility.excludedExternalIds.length,
 						excludedOrganizations: 0,
 						excludedCustomers: 0,
-						complete: true,
+						complete: eligibility.complete,
 						sourceRows: eligibility.sourceRows,
 						returnedRows: eligibility.returnedRows,
-						scope: "SUBSCRIBED_ORGANIZATIONS",
+						scope: eligibility.scope,
+						policy: eligibility.policy,
 					},
 				});
 				await this.db.question.update({
@@ -280,8 +282,11 @@ export class MarketingService {
 		contentHash: string;
 		sourceRows: number;
 		returnedRows: number;
+		complete: boolean;
+		scope: "ALL_IDENTITIES" | "SUBSCRIBED_ORGANIZATIONS";
+		policy: "PRODUCT_ACTIVITY" | "MONEY";
 	}> {
-		const eligibility = await this.tinybirdEligibility.currentForRevenue();
+		const eligibility = await this.tinybirdEligibility.current();
 		const excludedExternalIds = eligibility.excludedUserIds;
 		return {
 			predicate: productUserEligibilityPredicate(excludedExternalIds),
@@ -290,6 +295,9 @@ export class MarketingService {
 			contentHash: eligibility.contentHash,
 			sourceRows: eligibility.sourceRows,
 			returnedRows: eligibility.returnedRows,
+			complete: eligibility.complete,
+			scope: eligibility.scope,
+			policy: eligibility.policy,
 		};
 	}
 

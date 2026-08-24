@@ -8,22 +8,51 @@ const client = new MetabaseClient(config);
 
 export const customerRetentionQueries = {
 	countryCoverageDebug: `select
-  count() as rows,
-  countIf(JSONExtractString(payload, 'customer_address', 'country') != '') as address_country_rows,
-  countIf(JSONExtractString(payload, 'customer_shipping', 'address', 'country') != '') as shipping_country_rows,
-  countIf(JSONExtractString(payload, 'account_country') != '') as account_country_rows,
-  countIf(JSONExtractString(payload, 'customer_country') != '') as customer_country_rows
-from sync_prod.sync_stripe_invoices
-where "createdAt" >= toStartOfYear(toTimeZone(now(), 'UTC'))`,
-	countryMapDebug: `select
-  customerId as customer_id,
-  upper(argMax(coalesce(
-    nullIf(JSONExtractString(payload, 'customer_address', 'country'), ''),
-    'Unknown'
-  ), "createdAt")) as country_code
-from sync_prod.sync_stripe_invoices
-where "createdAt" >= toStartOfYear(toTimeZone(now(), 'UTC'))
-  and customerId != ''
+  (select countDistinctIf(customerId, lower(status) = 'succeeded') from sync_prod.sync_stripe_payments) as successful_payment_customers,
+  (select countDistinctIf(customerId,
+    lower(status) = 'succeeded'
+    and JSONExtractString(payload, 'billing_details', 'address', 'country') != ''
+  ) from sync_prod.sync_stripe_payments) as payment_billing_country_customers,
+  (select countDistinctIf(customerId, JSONExtractString(payload, 'customer_address', 'country') != '')
+    from sync_prod.sync_stripe_invoices) as invoice_billing_country_customers,
+  (select countDistinctIf(customerId, JSONExtractString(payload, 'customer_shipping', 'address', 'country') != '')
+    from sync_prod.sync_stripe_invoices) as invoice_shipping_country_customers`,
+	countryMapDebug: `with
+country_candidates as (
+  select
+    customerId as customer_id,
+    upper(JSONExtractString(payload, 'billing_details', 'address', 'country')) as country_code,
+    2 as source_priority,
+    "createdAt" as observed_at,
+    'successful Stripe charge billing country' as country_source
+  from sync_prod.sync_stripe_payments
+  where customerId != ''
+    and lower(status) = 'succeeded'
+    and JSONExtractString(payload, 'billing_details', 'address', 'country') != ''
+  union all
+  select
+    customerId as customer_id,
+    upper(coalesce(
+      nullIf(JSONExtractString(payload, 'customer_address', 'country'), ''),
+      nullIf(JSONExtractString(payload, 'customer_shipping', 'address', 'country'), ''),
+      ''
+    )) as country_code,
+    1 as source_priority,
+    "createdAt" as observed_at,
+    'invoice billing or shipping country fallback' as country_source
+  from sync_prod.sync_stripe_invoices
+  where customerId != ''
+    and coalesce(
+      nullIf(JSONExtractString(payload, 'customer_address', 'country'), ''),
+      nullIf(JSONExtractString(payload, 'customer_shipping', 'address', 'country'), ''),
+      ''
+    ) != ''
+)
+select
+  customer_id,
+  argMax(country_code, tuple(source_priority, observed_at)) as country_code,
+  argMax(country_source, tuple(source_priority, observed_at)) as country_source
+from country_candidates
 group by customer_id
 order by customer_id
 limit 20`,
@@ -278,11 +307,17 @@ customer_country as (
     customerId as customer_id,
     upper(argMax(coalesce(
       nullIf(JSONExtractString(payload, 'customer_address', 'country'), ''),
-      'Unknown'
+      nullIf(JSONExtractString(payload, 'customer_shipping', 'address', 'country'), ''),
+      ''
     ), "createdAt")) as country_code
   from sync_prod.sync_stripe_invoices
   where "createdAt" >= toStartOfYear(toTimeZone(now(), 'UTC'))
     and customerId in (select customer_id from customer_months)
+    and coalesce(
+      nullIf(JSONExtractString(payload, 'customer_address', 'country'), ''),
+      nullIf(JSONExtractString(payload, 'customer_shipping', 'address', 'country'), ''),
+      ''
+    ) != ''
   group by customer_id
 ),
 located_months as (
@@ -290,7 +325,7 @@ located_months as (
     customer_months.month_start,
     customer_months.customer_id,
     customer_months.customer_revenue_usd,
-    coalesce(customer_country.country_code, 'UNKNOWN') as country_code
+    coalesce(nullIf(customer_country.country_code, ''), 'UNKNOWN') as country_code
   from customer_months
   left join customer_country on customer_country.customer_id = customer_months.customer_id
 ),

@@ -17,20 +17,16 @@ order by rows desc
 limit 80`,
 	stripePaymentCountryCoverage: `select
   countDistinct(id) as payments,
-  countDistinctIf(id, card_country != '') as payments_with_card_country,
-  countDistinctIf(customerId, card_country != '') as customers_with_card_country,
-  countDistinctIf(card_country, card_country != '') as countries
+  countDistinctIf(id, billing_country != '') as payments_with_billing_country,
+  countDistinctIf(customerId, billing_country != '') as customers_with_billing_country,
+  countDistinctIf(billing_country, billing_country != '') as countries
 from (
   select
     id,
     customerId,
-    upper(coalesce(
-      nullIf(JSONExtractString(payload, 'payment_method_details', 'card', 'country'), ''),
-      nullIf(JSONExtractString(payload, 'payment_method_details', 'card_present', 'country'), ''),
-      nullIf(JSONExtractString(payload, 'billing_details', 'address', 'country'), ''),
-      ''
-    )) as card_country
+    upper(coalesce(nullIf(JSONExtractString(payload, 'billing_details', 'address', 'country'), ''), '')) as billing_country
   from sync_prod.sync_stripe_payments
+  where lower(status) = 'succeeded'
 )`,
 	stripeInvoiceActualCountryCoverage: `select
   countDistinct(id) as invoices,

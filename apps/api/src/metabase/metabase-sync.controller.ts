@@ -34,6 +34,14 @@ export class MetabaseSyncController {
 		return this.runUsers(authorization);
 	}
 
+	@Post("customer-billing-countries")
+	@AllowAnonymous()
+	async customerBillingCountries(
+		@Headers("authorization") authorization?: string,
+	) {
+		return this.runCustomerBillingCountries(authorization);
+	}
+
 	@Get("incremental")
 	@AllowAnonymous()
 	async incrementalViaGet(@Headers("authorization") authorization?: string) {
@@ -44,6 +52,14 @@ export class MetabaseSyncController {
 	@AllowAnonymous()
 	async usersViaGet(@Headers("authorization") authorization?: string) {
 		return this.runUsers(authorization);
+	}
+
+	@Get("customer-billing-countries")
+	@AllowAnonymous()
+	async customerBillingCountriesViaGet(
+		@Headers("authorization") authorization?: string,
+	) {
+		return this.runCustomerBillingCountries(authorization);
 	}
 
 	@Get("backfill")
@@ -60,12 +76,13 @@ export class MetabaseSyncController {
 
 	private async runIncremental(authorization?: string) {
 		this.authorize(authorization);
-		const [users, dashboard] = await Promise.all([
+		const [users, dashboard, customerBillingCountries] = await Promise.all([
 			this.metabase.syncUsers({ maxBatches: 4 }),
 			this.metabase.syncDashboard({ mode: "incremental", maxBatches: 4 }),
+			this.metabase.syncStripeCustomerBillingCountries({ maxBatches: 20 }),
 		]);
 		const revenue = await this.metabase.syncAtlasDashboard(2);
-		return { users, dashboard, revenue };
+		return { users, dashboard, customerBillingCountries, revenue };
 	}
 
 	private async runUsers(authorization?: string) {
@@ -73,9 +90,18 @@ export class MetabaseSyncController {
 		return this.metabase.syncUsers({ maxBatches: 20 });
 	}
 
+	private async runCustomerBillingCountries(authorization?: string) {
+		this.authorize(authorization);
+		return this.metabase.syncStripeCustomerBillingCountries({ maxBatches: 20 });
+	}
+
 	private async runBackfill(authorization?: string) {
 		this.authorize(authorization);
-		return this.metabase.syncDashboard({ mode: "backfill", maxBatches: 4 });
+		const [dashboard, customerBillingCountries] = await Promise.all([
+			this.metabase.syncDashboard({ mode: "backfill", maxBatches: 4 }),
+			this.metabase.syncStripeCustomerBillingCountries({ maxBatches: 20 }),
+		]);
+		return { dashboard, customerBillingCountries };
 	}
 
 	private authorize(authorization?: string): void {

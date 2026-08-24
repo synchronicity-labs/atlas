@@ -130,6 +130,13 @@ export class EnvironmentVariables {
 	METABASE_API_KEY?: string;
 
 	@IsOptional()
+	@IsString()
+	@MinLength(16, {
+		message: "STRIPE_SECRET_KEY must be at least 16 characters.",
+	})
+	STRIPE_SECRET_KEY?: string;
+
+	@IsOptional()
 	@Type(() => Number)
 	@IsInt()
 	@Min(1)

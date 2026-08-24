@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import {
 	DataSourceKind,
 	type Db,
-	type Prisma,
+	Prisma,
 	QueryLanguage,
 	SourceStatus,
 	SyncMode,
@@ -11,6 +11,8 @@ import {
 	VisualizationType,
 } from "@crm/db";
 import { Injectable, Logger, NotFoundException } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
+import type { EnvironmentVariables } from "../config/env.validation";
 import { InjectDatabase } from "../database/database.constants";
 import { assertReadOnlyQuery } from "../questions/read-only-query";
 import { atlasQuestionName } from "./atlas-question-name";
@@ -32,6 +34,23 @@ import {
 	usesSubscribedRevenueEligibility,
 } from "./revenue-door-policy.service";
 import { comparePaidCustomerRevenue } from "./saved-question-equivalence";
+import {
+	StripeBillingCountryClient,
+	type StripeBillingCountryPage,
+	type StripeBillingCountryPageInput,
+} from "./stripe-charge-country.client";
+import {
+	dedupeStripeCustomerBillingCountryRows,
+	parseStripeCustomerBillingCountryResult,
+	STRIPE_CUSTOMER_BILLING_COUNTRY_BATCH_SIZE,
+	STRIPE_CUSTOMER_BILLING_COUNTRY_CHARGE_SCOPE,
+	STRIPE_CUSTOMER_BILLING_COUNTRY_DATASET_KEY,
+	STRIPE_CUSTOMER_BILLING_COUNTRY_INVOICE_SCOPE,
+	STRIPE_CUSTOMER_BILLING_COUNTRY_SCOPE,
+	STRIPE_CUSTOMER_BILLING_COUNTRY_SOURCE_KEY,
+	type StripeCustomerBillingCountryRow,
+	stripeCustomerBillingCountryQuery,
+} from "./stripe-customer-billing-country";
 import { TinybirdEligibilityService } from "./tinybird-eligibility.service";
 
 const SOURCE_KEY = "metabase:sync";
@@ -41,6 +60,7 @@ const FRESHNESS_MS = 8 * 60 * 60 * 1000;
 const ATLAS_DASHBOARD_CONCURRENCY = 4;
 const ATLAS_DASHBOARD_QUESTION_BATCH_SIZE = 12;
 const USER_PERSIST_CHUNK_SIZE = 100;
+const STRIPE_COUNTRY_PERSIST_CHUNK_SIZE = 500;
 
 const USER_COLUMNS = new Set([
 	"id",
@@ -66,6 +86,23 @@ type DashboardSyncInput = {
 
 type UserSyncInput = { maxBatches: number };
 
+type StripeCustomerBillingCountrySyncInput = { maxBatches: number };
+
+type StripeBillingCountryCheckpoint = {
+	windowStart?: string;
+	windowEnd?: string;
+	completed?: boolean;
+	backfillComplete?: boolean;
+};
+
+type StripeBillingCountryResource = {
+	label: "charge" | "invoice";
+	scope: string;
+	page: (
+		input: StripeBillingCountryPageInput,
+	) => Promise<StripeBillingCountryPage>;
+};
+
 type SafeUserRow = Record<string, unknown> & { id: string };
 
 function json(value: unknown): Prisma.InputJsonValue {
@@ -74,6 +111,18 @@ function json(value: unknown): Prisma.InputJsonValue {
 
 function stableHash(value: unknown): string {
 	return createHash("sha256").update(JSON.stringify(value)).digest("hex");
+}
+
+function checkpointObject(value: unknown): Record<string, unknown> {
+	return value && typeof value === "object" && !Array.isArray(value)
+		? (value as Record<string, unknown>)
+		: {};
+}
+
+function checkpointDate(value: unknown): Date | null {
+	if (typeof value !== "string") return null;
+	const parsed = new Date(value);
+	return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
 function currentMonth(): string {
@@ -137,13 +186,18 @@ function visualization(display: string | undefined): VisualizationType {
 @Injectable()
 export class MetabaseService {
 	private readonly logger = new Logger(MetabaseService.name);
+	private readonly stripeSecretKey: string | null;
 
 	constructor(
 		@InjectDatabase() private readonly db: Db,
 		private readonly productMetrics: ProductMetricPublisher,
 		private readonly revenueDoorPolicy: RevenueDoorPolicyService,
 		private readonly tinybirdEligibility: TinybirdEligibilityService,
-	) {}
+		config: ConfigService<EnvironmentVariables, true>,
+	) {
+		this.stripeSecretKey =
+			config.get("STRIPE_SECRET_KEY", { infer: true }) ?? null;
+	}
 
 	async status() {
 		const [source, latestRuns, users, organizations, questions, dashboards] =
@@ -308,6 +362,508 @@ export class MetabaseService {
 			await this.fail(run.id, source.id, error);
 			throw error;
 		}
+	}
+
+	async syncStripeCustomerBillingCountries(
+		input: StripeCustomerBillingCountrySyncInput,
+	) {
+		const source = await this.beginStripeSource();
+		const dataset = await this.ensureStripeCustomerBillingCountryDataset(
+			source.id,
+		);
+
+		if (this.stripeSecretKey) {
+			const client = new StripeBillingCountryClient(this.stripeSecretKey);
+			const charges = await this.syncStripeCustomerBillingCountryResource(
+				source.id,
+				dataset.id,
+				input,
+				{
+					label: "charge",
+					scope: STRIPE_CUSTOMER_BILLING_COUNTRY_CHARGE_SCOPE,
+					page: (pageInput) => client.chargePage(pageInput),
+				},
+			);
+			const invoices = await this.syncStripeCustomerBillingCountryResource(
+				source.id,
+				dataset.id,
+				input,
+				{
+					label: "invoice",
+					scope: STRIPE_CUSTOMER_BILLING_COUNTRY_INVOICE_SCOPE,
+					page: (pageInput) => client.invoicePage(pageInput),
+				},
+			);
+
+			return {
+				invoiceFallback: null,
+				charges: { configured: true, ...charges },
+				invoices: { configured: true, ...invoices },
+			};
+		}
+
+		const config = metabaseConfig();
+		if (!config) {
+			await this.db.dataSource.update({
+				where: { id: source.id },
+				data: {
+					state: SourceStatus.UNCONFIGURED,
+					lastError: "Stripe billing country sync is not configured.",
+				},
+			});
+			return {
+				invoiceFallback: null,
+				charges: { configured: false },
+				invoices: { configured: false },
+			};
+		}
+
+		const invoiceFallback =
+			await this.syncStripeCustomerBillingCountryFallbacks(
+				config,
+				source.id,
+				dataset.id,
+				input,
+			);
+
+		return {
+			invoiceFallback,
+			charges: { configured: false },
+			invoices: { configured: false },
+		};
+	}
+
+	private async syncStripeCustomerBillingCountryFallbacks(
+		config: MetabaseConfig,
+		sourceId: string,
+		datasetId: string,
+		input: StripeCustomerBillingCountrySyncInput,
+	) {
+		const period = currentMonth();
+		const cursor = await this.db.syncCursor.upsert({
+			where: {
+				sourceId_mode_scope: {
+					sourceId,
+					mode: SyncMode.INCREMENTAL,
+					scope: STRIPE_CUSTOMER_BILLING_COUNTRY_SCOPE,
+				},
+			},
+			create: {
+				sourceId,
+				mode: SyncMode.INCREMENTAL,
+				scope: STRIPE_CUSTOMER_BILLING_COUNTRY_SCOPE,
+				period,
+			},
+			update: {},
+		});
+		const run = await this.db.syncRun.create({
+			data: {
+				runKey: `stripe:${STRIPE_CUSTOMER_BILLING_COUNTRY_SCOPE}:${period}:${randomUUID()}`,
+				sourceId,
+				mode: SyncMode.INCREMENTAL,
+				status: SyncRunStatus.RUNNING,
+				scope: STRIPE_CUSTOMER_BILLING_COUNTRY_SCOPE,
+				period,
+			},
+		});
+
+		try {
+			const client = new MetabaseClient(config);
+			let pageCursor = cursor.cursor;
+			let processed = 0;
+			let snapshots = 0;
+			let completed = false;
+			let dataThrough = cursor.dataThrough;
+
+			for (let batch = 0; batch < input.maxBatches; batch += 1) {
+				const result = await client.preview({
+					language: "SQL",
+					queryText: stripeCustomerBillingCountryQuery(
+						pageCursor,
+						STRIPE_CUSTOMER_BILLING_COUNTRY_BATCH_SIZE,
+					),
+					databaseExternalId: "166",
+				});
+				const rows = parseStripeCustomerBillingCountryResult(result);
+
+				if (rows.length === 0) {
+					completed = true;
+					break;
+				}
+
+				const persisted = await this.persistStripeCustomerBillingCountries(
+					sourceId,
+					rows,
+				);
+				processed += rows.length;
+				snapshots += persisted.snapshots;
+				pageCursor = rows.at(-1)?.stripeCustomerId ?? pageCursor;
+				dataThrough = rows.reduce(
+					(latest, row) =>
+						!latest || row.dataThrough > latest ? row.dataThrough : latest,
+					dataThrough,
+				);
+
+				await this.db.$transaction([
+					this.db.syncCursor.update({
+						where: { id: cursor.id },
+						data: {
+							cursor: pageCursor,
+							offset: cursor.offset + processed,
+							period,
+							dataThrough,
+							checkpoint: json({ pageCursor, processed }),
+						},
+					}),
+					this.db.syncRun.update({
+						where: { id: run.id },
+						data: {
+							recordsProcessed: processed,
+							snapshotsCreated: snapshots,
+							dataThrough,
+							checkpoint: json({ pageCursor, processed }),
+						},
+					}),
+				]);
+
+				if (rows.length < STRIPE_CUSTOMER_BILLING_COUNTRY_BATCH_SIZE) {
+					completed = true;
+					break;
+				}
+			}
+
+			const finishedAt = new Date();
+			const effectiveDataThrough = dataThrough ?? finishedAt;
+			const contentHash = stableHash({
+				completed,
+				pageCursor,
+				processed,
+				snapshots,
+			});
+			await this.db.$transaction([
+				this.db.syncCursor.update({
+					where: { id: cursor.id },
+					data: {
+						cursor: completed ? null : pageCursor,
+						offset: completed ? 0 : cursor.offset + processed,
+						period,
+						dataThrough: effectiveDataThrough,
+						lastSuccessAt: finishedAt,
+						checkpoint: json({ completed, pageCursor, processed }),
+					},
+				}),
+				this.db.syncRun.update({
+					where: { id: run.id },
+					data: {
+						status: SyncRunStatus.COMPLETED,
+						finishedAt,
+						recordsProcessed: processed,
+						snapshotsCreated: snapshots,
+						dataThrough: effectiveDataThrough,
+						checkpoint: json({ completed, pageCursor, processed }),
+					},
+				}),
+				this.db.sourceWatermark.create({
+					data: {
+						idempotencyKey: `stripe:customer-billing-country:${run.id}`,
+						datasetId,
+						sourceId,
+						syncRunId: run.id,
+						dataThrough: effectiveDataThrough,
+						complete: completed,
+						rowCount: processed,
+						contentHash,
+						checkpoint: json({ pageCursor, processed }),
+						observedAt: finishedAt,
+					},
+				}),
+				this.db.dataSource.update({
+					where: { id: sourceId },
+					data: {
+						state: completed ? SourceStatus.HEALTHY : SourceStatus.SYNCING,
+						lastSyncAt: completed ? finishedAt : undefined,
+						lastError: null,
+						freshnessDeadlineAt: completed
+							? new Date(finishedAt.getTime() + FRESHNESS_MS)
+							: undefined,
+					},
+				}),
+			]);
+
+			this.logger.log({
+				message: "Stripe customer billing countries synchronized",
+				processed,
+				snapshots,
+				completed,
+			});
+
+			return {
+				runId: run.id,
+				processed,
+				snapshots,
+				completed,
+				cursor: completed ? null : pageCursor,
+				dataThrough: effectiveDataThrough,
+			};
+		} catch (error) {
+			await this.fail(run.id, sourceId, error);
+			throw error;
+		}
+	}
+
+	private async syncStripeCustomerBillingCountryResource(
+		sourceId: string,
+		datasetId: string,
+		input: StripeCustomerBillingCountrySyncInput,
+		resource: StripeBillingCountryResource,
+	) {
+		const period = currentMonth();
+		const [incremental, backfill] = await Promise.all([
+			this.db.syncCursor.upsert({
+				where: {
+					sourceId_mode_scope: {
+						sourceId,
+						mode: SyncMode.INCREMENTAL,
+						scope: resource.scope,
+					},
+				},
+				create: {
+					sourceId,
+					mode: SyncMode.INCREMENTAL,
+					scope: resource.scope,
+					period,
+				},
+				update: { period },
+			}),
+			this.db.syncCursor.upsert({
+				where: {
+					sourceId_mode_scope: {
+						sourceId,
+						mode: SyncMode.BACKFILL,
+						scope: resource.scope,
+					},
+				},
+				create: {
+					sourceId,
+					mode: SyncMode.BACKFILL,
+					scope: resource.scope,
+					period,
+				},
+				update: { period },
+			}),
+		]);
+		const run = await this.db.syncRun.create({
+			data: {
+				runKey: `stripe:${resource.scope}:${period}:${randomUUID()}`,
+				sourceId,
+				mode: SyncMode.INCREMENTAL,
+				status: SyncRunStatus.RUNNING,
+				scope: resource.scope,
+				period,
+			},
+		});
+
+		try {
+			const scanStartedAt = new Date();
+			const recentCheckpoint = checkpointObject(
+				incremental.checkpoint,
+			) as StripeBillingCountryCheckpoint;
+			const resumingRecent = Boolean(
+				incremental.cursor &&
+					recentCheckpoint.windowStart &&
+					recentCheckpoint.windowEnd,
+			);
+			const windowStart = resumingRecent
+				? (checkpointDate(recentCheckpoint.windowStart) ??
+					new Date(scanStartedAt.getTime() - 24 * 60 * 60 * 1000))
+				: new Date(
+						(incremental.dataThrough?.getTime() ??
+							scanStartedAt.getTime() - 23 * 60 * 60 * 1000) -
+							60 * 60 * 1000,
+					);
+			const windowEnd = resumingRecent
+				? (checkpointDate(recentCheckpoint.windowEnd) ?? scanStartedAt)
+				: scanStartedAt;
+			let recentCursor = incremental.cursor;
+			let historicalCursor = backfill.cursor;
+			let remainingPages = input.maxBatches;
+			let processed = 0;
+			let snapshots = 0;
+			let recentProcessed = 0;
+			let historicalProcessed = 0;
+			let recentComplete = false;
+			let backfillComplete =
+				checkpointObject(backfill.checkpoint).backfillComplete === true;
+
+			while (remainingPages > 0 && !recentComplete) {
+				const page = await resource.page({
+					startingAfter: recentCursor,
+					createdGte: windowStart,
+					createdLte: windowEnd,
+					dataThrough: windowEnd,
+				});
+				const persisted = await this.persistStripeCustomerBillingCountries(
+					sourceId,
+					page.rows,
+				);
+				processed += page.processed;
+				recentProcessed += page.processed;
+				snapshots += persisted.snapshots;
+				remainingPages -= 1;
+				recentComplete = !page.hasMore || !page.nextCursor;
+				recentCursor = recentComplete ? null : page.nextCursor;
+				await this.db.syncCursor.update({
+					where: { id: incremental.id },
+					data: {
+						cursor: recentCursor,
+						offset: recentComplete ? 0 : incremental.offset + recentProcessed,
+						dataThrough: recentComplete ? windowEnd : incremental.dataThrough,
+						lastSuccessAt: recentComplete
+							? new Date()
+							: incremental.lastSuccessAt,
+						checkpoint: json({
+							windowStart: windowStart.toISOString(),
+							windowEnd: windowEnd.toISOString(),
+							completed: recentComplete,
+							processed: recentProcessed,
+						}),
+					},
+				});
+			}
+
+			while (remainingPages > 0 && recentComplete && !backfillComplete) {
+				const page = await resource.page({
+					startingAfter: historicalCursor,
+					dataThrough: scanStartedAt,
+				});
+				const persisted = await this.persistStripeCustomerBillingCountries(
+					sourceId,
+					page.rows,
+				);
+				processed += page.processed;
+				historicalProcessed += page.processed;
+				snapshots += persisted.snapshots;
+				remainingPages -= 1;
+				backfillComplete = !page.hasMore || !page.nextCursor;
+				historicalCursor = backfillComplete ? null : page.nextCursor;
+				await this.db.syncCursor.update({
+					where: { id: backfill.id },
+					data: {
+						cursor: historicalCursor,
+						offset: backfillComplete
+							? 0
+							: backfill.offset + historicalProcessed,
+						dataThrough: scanStartedAt,
+						lastSuccessAt: new Date(),
+						checkpoint: json({
+							backfillComplete,
+							processed: historicalProcessed,
+						}),
+					},
+				});
+			}
+
+			const finishedAt = new Date();
+			const dataThrough = recentComplete
+				? windowEnd
+				: (incremental.dataThrough ?? windowStart);
+			const checkpoint = {
+				recentComplete,
+				backfillComplete,
+				recentCursor,
+				historicalCursor,
+				processed,
+			};
+			await this.db.$transaction([
+				this.db.syncRun.update({
+					where: { id: run.id },
+					data: {
+						status: SyncRunStatus.COMPLETED,
+						finishedAt,
+						recordsProcessed: processed,
+						snapshotsCreated: snapshots,
+						dataThrough,
+						checkpoint: json(checkpoint),
+					},
+				}),
+				this.db.sourceWatermark.create({
+					data: {
+						idempotencyKey: `stripe:customer-billing-country:${resource.label}s:${run.id}`,
+						datasetId,
+						sourceId,
+						syncRunId: run.id,
+						dataThrough,
+						complete: recentComplete,
+						rowCount: processed,
+						contentHash: stableHash(checkpoint),
+						checkpoint: json(checkpoint),
+						observedAt: finishedAt,
+					},
+				}),
+				this.db.dataSource.update({
+					where: { id: sourceId },
+					data: {
+						state: recentComplete ? SourceStatus.HEALTHY : SourceStatus.SYNCING,
+						lastSyncAt: recentComplete ? finishedAt : undefined,
+						lastError: null,
+						freshnessDeadlineAt: recentComplete
+							? new Date(finishedAt.getTime() + FRESHNESS_MS)
+							: undefined,
+					},
+				}),
+			]);
+
+			this.logger.log({
+				message: `Stripe ${resource.label} billing countries synchronized`,
+				processed,
+				snapshots,
+				recentComplete,
+				backfillComplete,
+			});
+
+			return {
+				runId: run.id,
+				processed,
+				snapshots,
+				recentComplete,
+				backfillComplete,
+				dataThrough,
+			};
+		} catch (error) {
+			await this.fail(run.id, sourceId, error);
+			throw error;
+		}
+	}
+
+	private ensureStripeCustomerBillingCountryDataset(sourceId: string) {
+		const data = {
+			label: "Stripe customer billing country",
+			description:
+				"Latest billing country from a successful Stripe charge, with invoice billing or shipping country as fallback.",
+			adapter: "stripe-api+metabase-fallback",
+			eventTimeField: "observedAt",
+			watermarkField: "dataThrough",
+			cadenceMinutes: 480,
+			freshnessSlaMinutes: 480,
+			config: json({
+				primaryEvidence: "successful Stripe charge billing country",
+				fallbackEvidence: "invoice billing then shipping country",
+			}),
+		};
+		return this.db.ingestionDataset.upsert({
+			where: {
+				sourceId_key: {
+					sourceId,
+					key: STRIPE_CUSTOMER_BILLING_COUNTRY_DATASET_KEY,
+				},
+			},
+			create: {
+				sourceId,
+				key: STRIPE_CUSTOMER_BILLING_COUNTRY_DATASET_KEY,
+				...data,
+			},
+			update: { ...data, enabled: true },
+		});
 	}
 
 	async syncDashboard(input: DashboardSyncInput) {
@@ -1375,6 +1931,168 @@ export class MetabaseService {
 		return { snapshots };
 	}
 
+	private async persistStripeCustomerBillingCountries(
+		sourceId: string,
+		rows: StripeCustomerBillingCountryRow[],
+	) {
+		let snapshots = 0;
+		const capturedAt = new Date();
+		const canonicalRows = dedupeStripeCustomerBillingCountryRows(rows);
+
+		for (
+			let offset = 0;
+			offset < canonicalRows.length;
+			offset += STRIPE_COUNTRY_PERSIST_CHUNK_SIZE
+		) {
+			const chunk = canonicalRows.slice(
+				offset,
+				offset + STRIPE_COUNTRY_PERSIST_CHUNK_SIZE,
+			);
+			const prepared = chunk.map((row) => {
+				const payload = {
+					stripeCustomerId: row.stripeCustomerId,
+					countryCode: row.countryCode,
+					evidenceKind: row.evidenceKind,
+					sourceExternalId: row.sourceExternalId,
+					observedAt: row.observedAt.toISOString(),
+				};
+				return {
+					id: randomUUID(),
+					row,
+					payload,
+					contentHash: stableHash(payload),
+				};
+			});
+			await this.db.$transaction(
+				async (tx) => {
+					const values = Prisma.join(
+						prepared.map(
+							({ id, row, contentHash }) =>
+								Prisma.sql`(${id}, ${sourceId}, ${row.stripeCustomerId}, ${row.countryCode}, ${row.evidenceKind}, ${row.sourceExternalId}, ${row.observedAt}, ${row.dataThrough}, ${contentHash}, ${capturedAt}, ${capturedAt}, ${capturedAt})`,
+						),
+					);
+					await tx.$executeRaw(Prisma.sql`
+						INSERT INTO "stripeCustomerBillingCountry" (
+							"id", "sourceId", "stripeCustomerId", "countryCode",
+							"evidenceKind", "sourceExternalId", "observedAt", "dataThrough",
+							"contentHash", "syncedAt", "createdAt", "updatedAt"
+						)
+						VALUES ${values}
+						ON CONFLICT ("sourceId", "stripeCustomerId") DO UPDATE SET
+							"countryCode" = CASE WHEN
+								(CASE WHEN EXCLUDED."evidenceKind" = 'SUCCESSFUL_CHARGE_BILLING' THEN 2 ELSE 1 END) >
+								(CASE WHEN "stripeCustomerBillingCountry"."evidenceKind" = 'SUCCESSFUL_CHARGE_BILLING' THEN 2 ELSE 1 END)
+								OR (
+									(CASE WHEN EXCLUDED."evidenceKind" = 'SUCCESSFUL_CHARGE_BILLING' THEN 2 ELSE 1 END) =
+									(CASE WHEN "stripeCustomerBillingCountry"."evidenceKind" = 'SUCCESSFUL_CHARGE_BILLING' THEN 2 ELSE 1 END)
+									AND (EXCLUDED."observedAt", EXCLUDED."sourceExternalId") >=
+										("stripeCustomerBillingCountry"."observedAt", "stripeCustomerBillingCountry"."sourceExternalId")
+								)
+							THEN EXCLUDED."countryCode" ELSE "stripeCustomerBillingCountry"."countryCode" END,
+							"evidenceKind" = CASE WHEN
+								(CASE WHEN EXCLUDED."evidenceKind" = 'SUCCESSFUL_CHARGE_BILLING' THEN 2 ELSE 1 END) >
+								(CASE WHEN "stripeCustomerBillingCountry"."evidenceKind" = 'SUCCESSFUL_CHARGE_BILLING' THEN 2 ELSE 1 END)
+								OR (
+									(CASE WHEN EXCLUDED."evidenceKind" = 'SUCCESSFUL_CHARGE_BILLING' THEN 2 ELSE 1 END) =
+									(CASE WHEN "stripeCustomerBillingCountry"."evidenceKind" = 'SUCCESSFUL_CHARGE_BILLING' THEN 2 ELSE 1 END)
+									AND (EXCLUDED."observedAt", EXCLUDED."sourceExternalId") >=
+										("stripeCustomerBillingCountry"."observedAt", "stripeCustomerBillingCountry"."sourceExternalId")
+								)
+							THEN EXCLUDED."evidenceKind" ELSE "stripeCustomerBillingCountry"."evidenceKind" END,
+							"sourceExternalId" = CASE WHEN
+								(CASE WHEN EXCLUDED."evidenceKind" = 'SUCCESSFUL_CHARGE_BILLING' THEN 2 ELSE 1 END) >
+								(CASE WHEN "stripeCustomerBillingCountry"."evidenceKind" = 'SUCCESSFUL_CHARGE_BILLING' THEN 2 ELSE 1 END)
+								OR (
+									(CASE WHEN EXCLUDED."evidenceKind" = 'SUCCESSFUL_CHARGE_BILLING' THEN 2 ELSE 1 END) =
+									(CASE WHEN "stripeCustomerBillingCountry"."evidenceKind" = 'SUCCESSFUL_CHARGE_BILLING' THEN 2 ELSE 1 END)
+									AND (EXCLUDED."observedAt", EXCLUDED."sourceExternalId") >=
+										("stripeCustomerBillingCountry"."observedAt", "stripeCustomerBillingCountry"."sourceExternalId")
+								)
+							THEN EXCLUDED."sourceExternalId" ELSE "stripeCustomerBillingCountry"."sourceExternalId" END,
+							"observedAt" = CASE WHEN
+								(CASE WHEN EXCLUDED."evidenceKind" = 'SUCCESSFUL_CHARGE_BILLING' THEN 2 ELSE 1 END) >
+								(CASE WHEN "stripeCustomerBillingCountry"."evidenceKind" = 'SUCCESSFUL_CHARGE_BILLING' THEN 2 ELSE 1 END)
+								OR (
+									(CASE WHEN EXCLUDED."evidenceKind" = 'SUCCESSFUL_CHARGE_BILLING' THEN 2 ELSE 1 END) =
+									(CASE WHEN "stripeCustomerBillingCountry"."evidenceKind" = 'SUCCESSFUL_CHARGE_BILLING' THEN 2 ELSE 1 END)
+									AND (EXCLUDED."observedAt", EXCLUDED."sourceExternalId") >=
+										("stripeCustomerBillingCountry"."observedAt", "stripeCustomerBillingCountry"."sourceExternalId")
+								)
+							THEN EXCLUDED."observedAt" ELSE "stripeCustomerBillingCountry"."observedAt" END,
+							"dataThrough" = GREATEST("stripeCustomerBillingCountry"."dataThrough", EXCLUDED."dataThrough"),
+							"contentHash" = CASE WHEN
+								(CASE WHEN EXCLUDED."evidenceKind" = 'SUCCESSFUL_CHARGE_BILLING' THEN 2 ELSE 1 END) >
+								(CASE WHEN "stripeCustomerBillingCountry"."evidenceKind" = 'SUCCESSFUL_CHARGE_BILLING' THEN 2 ELSE 1 END)
+								OR (
+									(CASE WHEN EXCLUDED."evidenceKind" = 'SUCCESSFUL_CHARGE_BILLING' THEN 2 ELSE 1 END) =
+									(CASE WHEN "stripeCustomerBillingCountry"."evidenceKind" = 'SUCCESSFUL_CHARGE_BILLING' THEN 2 ELSE 1 END)
+									AND (EXCLUDED."observedAt", EXCLUDED."sourceExternalId") >=
+										("stripeCustomerBillingCountry"."observedAt", "stripeCustomerBillingCountry"."sourceExternalId")
+								)
+							THEN EXCLUDED."contentHash" ELSE "stripeCustomerBillingCountry"."contentHash" END,
+							"syncedAt" = GREATEST("stripeCustomerBillingCountry"."syncedAt", EXCLUDED."syncedAt"),
+							"updatedAt" = EXCLUDED."updatedAt"
+					`);
+
+					const current = await tx.stripeCustomerBillingCountry.findMany({
+						where: {
+							sourceId,
+							stripeCustomerId: {
+								in: prepared.map(({ row }) => row.stripeCustomerId),
+							},
+						},
+						select: {
+							id: true,
+							stripeCustomerId: true,
+							contentHash: true,
+						},
+					});
+					const currentRecord = new Map(
+						current.map((record) => [record.stripeCustomerId, record]),
+					);
+					const accepted = prepared.filter(({ row, contentHash }) => {
+						return (
+							currentRecord.get(row.stripeCustomerId)?.contentHash ===
+							contentHash
+						);
+					});
+					const created =
+						await tx.stripeCustomerBillingCountrySnapshot.createMany({
+							data: accepted.map(({ row, payload, contentHash }) => {
+								const billingCountryId = currentRecord.get(
+									row.stripeCustomerId,
+								)?.id;
+								if (!billingCountryId) {
+									throw new Error(
+										"Stripe customer billing country upsert did not return a current record.",
+									);
+								}
+								return {
+									idempotencyKey: `stripe:customer-billing-country:${row.stripeCustomerId}:${contentHash}`,
+									sourceId,
+									billingCountryId,
+									stripeCustomerId: row.stripeCustomerId,
+									countryCode: row.countryCode,
+									evidenceKind: row.evidenceKind,
+									sourceExternalId: row.sourceExternalId,
+									observedAt: row.observedAt,
+									dataThrough: row.dataThrough,
+									capturedAt,
+									contentHash,
+									payload: json(payload),
+								};
+							}),
+							skipDuplicates: true,
+						});
+					snapshots += created.count;
+				},
+				{ maxWait: 15_000, timeout: 120_000 },
+			);
+		}
+
+		return { snapshots };
+	}
+
 	private async requireConfig(): Promise<MetabaseConfig> {
 		const config = metabaseConfig();
 
@@ -1394,6 +2112,26 @@ export class MetabaseService {
 	}
 
 	private async beginSource() {
+		return this.beginDataSource(
+			SOURCE_KEY,
+			DataSourceKind.METABASE,
+			"Sync Metabase",
+		);
+	}
+
+	private async beginStripeSource() {
+		return this.beginDataSource(
+			STRIPE_CUSTOMER_BILLING_COUNTRY_SOURCE_KEY,
+			DataSourceKind.STRIPE,
+			"Stripe billing country",
+		);
+	}
+
+	private async beginDataSource(
+		key: string,
+		kind: DataSourceKind,
+		label: string,
+	) {
 		await this.db.syncRun.updateMany({
 			where: {
 				status: SyncRunStatus.RUNNING,
@@ -1407,20 +2145,20 @@ export class MetabaseService {
 		});
 
 		return this.db.dataSource.upsert({
-			where: { key: SOURCE_KEY },
+			where: { key },
 			create: {
-				key: SOURCE_KEY,
-				kind: DataSourceKind.METABASE,
-				label: "Sync Metabase",
+				key,
+				kind,
+				label,
 				state: SourceStatus.SYNCING,
 			},
-			update: { state: SourceStatus.SYNCING, lastError: null },
+			update: { kind, label, state: SourceStatus.SYNCING, lastError: null },
 		});
 	}
 
 	private async fail(runId: string, sourceId: string, error: unknown) {
 		const message =
-			error instanceof Error ? error.message : "Unknown Metabase sync failure.";
+			error instanceof Error ? error.message : "Unknown source sync failure.";
 		await this.db.$transaction([
 			this.db.syncRun.update({
 				where: { id: runId },
@@ -1436,7 +2174,7 @@ export class MetabaseService {
 			}),
 		]);
 		this.logger.error(
-			{ message: "Metabase sync failed" },
+			{ message: "Source sync failed" },
 			error instanceof Error ? error.stack : String(error),
 		);
 	}

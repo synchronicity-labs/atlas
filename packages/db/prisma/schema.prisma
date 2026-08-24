@@ -928,6 +928,8 @@ model DataSource {
   productUsers          ProductUser[]
   productOrganizations  ProductOrganization[]
   productUserSnapshots  ProductUserSnapshot[]
+  stripeCustomerBillingCountries StripeCustomerBillingCountry[]
+  stripeCustomerBillingCountrySnapshots StripeCustomerBillingCountrySnapshot[]
   sourceRecords         SourceRecord[]
   sourceRecordSnapshots SourceRecordSnapshot[]
   ingestionDatasets     IngestionDataset[]
@@ -1613,6 +1615,56 @@ model ProductUserSnapshot {
   @@index([productUserId, capturedAt])
   @@index([sourceId, capturedAt])
   @@map("productUserSnapshot")
+  @@schema("public")
+}
+
+model StripeCustomerBillingCountry {
+  id               String     @id @default(cuid())
+  sourceId         String
+  source           DataSource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  stripeCustomerId String
+  countryCode      String
+  evidenceKind     String
+  sourceExternalId String
+  observedAt       DateTime
+  dataThrough      DateTime
+  contentHash      String
+  syncedAt         DateTime
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+
+  snapshots StripeCustomerBillingCountrySnapshot[]
+
+  @@unique([sourceId, stripeCustomerId])
+  @@index([stripeCustomerId])
+  @@index([countryCode])
+  @@index([sourceId, dataThrough])
+  @@map("stripeCustomerBillingCountry")
+  @@schema("public")
+}
+
+model StripeCustomerBillingCountrySnapshot {
+  id               String                       @id @default(cuid())
+  idempotencyKey   String                       @unique
+  sourceId         String
+  source           DataSource                   @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  billingCountryId String
+  billingCountry   StripeCustomerBillingCountry @relation(fields: [billingCountryId], references: [id], onDelete: Cascade)
+  stripeCustomerId String
+  countryCode      String
+  evidenceKind     String
+  sourceExternalId String
+  observedAt       DateTime
+  dataThrough      DateTime
+  capturedAt       DateTime
+  contentHash      String
+  payload          Json
+  createdAt        DateTime                     @default(now())
+
+  @@index([billingCountryId, capturedAt])
+  @@index([sourceId, capturedAt])
+  @@index([stripeCustomerId, observedAt])
+  @@map("stripeCustomerBillingCountrySnapshot")
   @@schema("public")
 }
 

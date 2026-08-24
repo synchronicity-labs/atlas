@@ -302,22 +302,45 @@ customer_months as (
   where lower(plan) in ('hobbyist', 'creator', 'growth', 'scale')
   group by month_start, customer_id
 ),
-customer_country as (
+country_candidates as (
   select
     customerId as customer_id,
-    upper(argMax(coalesce(
+    upper(JSONExtractString(payload, 'billing_details', 'address', 'country')) as country_code,
+    2 as source_priority,
+    "createdAt" as observed_at,
+    toString(id) as source_external_id
+  from sync_prod.sync_stripe_payments
+  where customerId != ''
+    and lower(status) = 'succeeded'
+    and JSONExtractString(payload, 'billing_details', 'address', 'country') != ''
+    and customerId in (select customer_id from customer_months)
+  union all
+  select
+    customerId as customer_id,
+    upper(coalesce(
       nullIf(JSONExtractString(payload, 'customer_address', 'country'), ''),
       nullIf(JSONExtractString(payload, 'customer_shipping', 'address', 'country'), ''),
       ''
-    ), "createdAt")) as country_code
+    )) as country_code,
+    1 as source_priority,
+    "createdAt" as observed_at,
+    toString(id) as source_external_id
   from sync_prod.sync_stripe_invoices
-  where "createdAt" >= toStartOfYear(toTimeZone(now(), 'UTC'))
-    and customerId in (select customer_id from customer_months)
+  where customerId in (select customer_id from customer_months)
     and coalesce(
       nullIf(JSONExtractString(payload, 'customer_address', 'country'), ''),
       nullIf(JSONExtractString(payload, 'customer_shipping', 'address', 'country'), ''),
       ''
     ) != ''
+),
+customer_country as (
+  select
+    customer_id,
+    argMax(
+      country_code,
+      tuple(source_priority, observed_at, source_external_id)
+    ) as country_code
+  from country_candidates
   group by customer_id
 ),
 located_months as (
@@ -412,7 +435,14 @@ order by if(country = 'OTHER', 2, 1), ytd_revenue_usd desc`,
 
 const selected = process.argv[2];
 const queries = selected
-	? ([[selected, customerRetentionQueries[selected as keyof typeof customerRetentionQueries]]] as const)
+	? ([
+			[
+				selected,
+				customerRetentionQueries[
+					selected as keyof typeof customerRetentionQueries
+				],
+			],
+		] as const)
 	: Object.entries(customerRetentionQueries);
 
 for (const [name, queryText] of queries) {

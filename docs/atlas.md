@@ -99,10 +99,22 @@ source inputs, normalization, verification policy, and approved metric version e
 
 `POST /internal/sync/metabase/users` advances the product-user cursor by at most
 twenty 500-row pages without also refreshing dashboard cards.
+`POST /internal/sync/metabase/customer-billing-countries` refreshes the canonical
+Stripe customer country registry. It uses the latest nonempty billing country from
+a successful charge. When a customer has no successful charge country, it falls
+back to the latest invoice billing country, then the latest invoice shipping
+country. The sync updates the current record and stores an immutable snapshot when
+the selected evidence changes. New customers are added after their first successful
+charge or invoice appears. A newer successful charge can update the current country,
+while the earlier country remains available in the snapshot history.
+When `STRIPE_SECRET_KEY` is configured, Atlas reads both charge and invoice
+evidence directly from Stripe. Metabase is used only as a compatibility fallback
+when direct Stripe access is not configured.
 `POST /internal/sync/metabase/incremental` refreshes source metadata, card results,
-and a smaller product-user batch. `POST /internal/sync/metabase/backfill` starts with
-the most recent available month and advances the persisted cursor toward older
-periods. All endpoints require `Authorization: Bearer $CRON_SECRET`.
+the Stripe customer country registry, and a smaller product-user batch.
+`POST /internal/sync/metabase/backfill` starts with the most recent available month,
+advances the persisted cursor toward older periods, and continues the customer
+country scan. All endpoints require `Authorization: Bearer $CRON_SECRET`.
 
 The generated Vercel configuration schedules the users-only continuation hourly,
 the source Metabase mirror every eight hours, the Atlas scoreboard every 15 minutes,

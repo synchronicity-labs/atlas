@@ -17,10 +17,7 @@ import {
 const socialProviders: NonNullable<BetterAuthOptions["socialProviders"]> = {};
 
 if (env.google) {
-	socialProviders.google = {
-		...env.google,
-		...(primaryWorkspaceDomain() ? { hd: primaryWorkspaceDomain() } : {}),
-	};
+	socialProviders.google = env.google;
 }
 
 export const auth = betterAuth({

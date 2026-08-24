@@ -26,7 +26,7 @@ export type RevenueDoorPolicyEvidence = {
 	status: RevenueDoorPolicyStatus;
 	applied: boolean;
 	complete: boolean;
-	matchMode: "EXCLUDE_NON_TOOLS" | "INCLUDE_PARTNERS";
+	matchMode: "EXCLUDE_NON_TOOLS" | "INCLUDE_PARTNERS" | "INCLUDE_ENTERPRISE";
 	door: RevenueDoor;
 	ruleCount: number;
 	excludedPlans: string[];
@@ -46,7 +46,7 @@ export type RevenueDoorPolicyEvidence = {
 type ResolvedRevenueDoorPolicy = Omit<RevenueDoorPolicyEvidence, "applied">;
 
 export function usesRevenueDoorPolicy(questionNumber: number): boolean {
-	return questionNumber >= 1101 && questionNumber <= 1118;
+	return questionNumber >= 1101 && questionNumber <= 1125;
 }
 
 export function usesSubscribedRevenueEligibility(
@@ -54,6 +54,9 @@ export function usesSubscribedRevenueEligibility(
 	questionName = "",
 	queryText = "",
 ): boolean {
+	if (questionNumber === 1003 || questionNumber === 1004) {
+		return false;
+	}
 	if (
 		(questionNumber >= 1001 && questionNumber <= 1014) ||
 		usesRevenueDoorPolicy(questionNumber)
@@ -79,6 +82,12 @@ export function usesSubscribedRevenueEligibility(
 
 export function usesPartnerRevenueDoorPolicy(questionNumber: number): boolean {
 	return questionNumber >= 1112 && questionNumber <= 1116;
+}
+
+export function usesEnterpriseRevenueDoorPolicy(
+	questionNumber: number,
+): boolean {
+	return questionNumber >= 1119 && questionNumber <= 1122;
 }
 
 export function assertResolvedAtlasQuery(
@@ -119,7 +128,9 @@ export class RevenueDoorPolicyService {
 	}> {
 		const compiled = usesPartnerRevenueDoorPolicy(questionNumber)
 			? this.compilePartners(queryText)
-			: this.compile(queryText);
+			: usesEnterpriseRevenueDoorPolicy(questionNumber)
+				? this.compileEnterprise(queryText)
+				: this.compile(queryText);
 		const result = await compiled;
 		assertResolvedAtlasQuery(questionNumber, result.queryText);
 		return result;
@@ -137,6 +148,18 @@ export class RevenueDoorPolicyService {
 		};
 	}
 
+	async compileEnterprise(queryText: string): Promise<{
+		queryText: string;
+		evidence: RevenueDoorPolicyEvidence;
+	}> {
+		const policy = await this.enterprise();
+		const compiled = applyEnterpriseRevenueDoorPolicy(queryText, policy);
+		return {
+			queryText: compiled.queryText,
+			evidence: { ...policy, applied: compiled.applied },
+		};
+	}
+
 	async current(): Promise<ResolvedRevenueDoorPolicy> {
 		return this.resolve("EXCLUDE_NON_TOOLS");
 	}
@@ -145,8 +168,32 @@ export class RevenueDoorPolicyService {
 		return this.resolve("INCLUDE_PARTNERS");
 	}
 
+	async enterprise(): Promise<ResolvedRevenueDoorPolicy> {
+		const [enterprise, partners] = await Promise.all([
+			this.resolve("INCLUDE_ENTERPRISE"),
+			this.resolve("INCLUDE_PARTNERS"),
+		]);
+		const summary = {
+			...enterprise,
+			complete: enterprise.complete && partners.complete,
+			ruleCount: enterprise.ruleCount + partners.ruleCount,
+			excludedDomains: partners.includedDomains,
+			excludedOrganizationIds: partners.includedOrganizationIds,
+			unresolvedDomains: sortedUnique([
+				...enterprise.unresolvedDomains,
+				...partners.unresolvedDomains,
+			]),
+		};
+		return {
+			...summary,
+			contentHash: createHash("sha256")
+				.update(JSON.stringify({ ...summary, contentHash: undefined }))
+				.digest("hex"),
+		};
+	}
+
 	private async resolve(
-		matchMode: "EXCLUDE_NON_TOOLS" | "INCLUDE_PARTNERS",
+		matchMode: "EXCLUDE_NON_TOOLS" | "INCLUDE_PARTNERS" | "INCLUDE_ENTERPRISE",
 	): Promise<ResolvedRevenueDoorPolicy> {
 		const policy = await this.db.revenueDoorPolicy.findUniqueOrThrow({
 			where: { id: POLICY_ID },
@@ -157,11 +204,15 @@ export class RevenueDoorPolicyService {
 				},
 			},
 		});
-		const rules = policy.rules.filter((rule) =>
-			matchMode === "INCLUDE_PARTNERS"
-				? rule.door === RevenueDoor.PARTNERS
-				: rule.door !== RevenueDoor.TOOLS,
-		);
+		const rules = policy.rules.filter((rule) => {
+			if (matchMode === "INCLUDE_PARTNERS") {
+				return rule.door === RevenueDoor.PARTNERS;
+			}
+			if (matchMode === "INCLUDE_ENTERPRISE") {
+				return rule.door === RevenueDoor.ENTERPRISE;
+			}
+			return rule.door !== RevenueDoor.TOOLS;
+		});
 		const plans = sortedUnique(
 			rules
 				.filter((rule) => rule.matchKind === RevenueDoorMatchKind.PLAN)
@@ -264,23 +315,28 @@ export class RevenueDoorPolicyService {
 				label: labels.get(organizationId) ?? "Other partner",
 			}),
 		);
-		const isPartnerPolicy = matchMode === "INCLUDE_PARTNERS";
+		const isIncludePolicy = matchMode !== "EXCLUDE_NON_TOOLS";
 		const summary = {
 			policyId: policy.id,
 			status: policy.status,
 			matchMode,
-			door: isPartnerPolicy ? RevenueDoor.PARTNERS : RevenueDoor.TOOLS,
+			door:
+				matchMode === "INCLUDE_PARTNERS"
+					? RevenueDoor.PARTNERS
+					: matchMode === "INCLUDE_ENTERPRISE"
+						? RevenueDoor.ENTERPRISE
+						: RevenueDoor.TOOLS,
 			complete:
 				policy.status === RevenueDoorPolicyStatus.COMPLETE &&
 				unresolvedDomains.length === 0,
 			ruleCount: rules.length,
-			excludedPlans: isPartnerPolicy ? [] : plans,
-			excludedDomains: isPartnerPolicy ? [] : domains,
-			excludedOrganizationIds: isPartnerPolicy ? [] : organizationIds,
-			includedPlans: isPartnerPolicy ? plans : [],
-			includedDomains: isPartnerPolicy ? domains : [],
-			includedOrganizationIds: isPartnerPolicy ? organizationIds : [],
-			includedOrganizationLabels: isPartnerPolicy
+			excludedPlans: isIncludePolicy ? [] : plans,
+			excludedDomains: isIncludePolicy ? [] : domains,
+			excludedOrganizationIds: isIncludePolicy ? [] : organizationIds,
+			includedPlans: isIncludePolicy ? plans : [],
+			includedDomains: isIncludePolicy ? domains : [],
+			includedOrganizationIds: isIncludePolicy ? organizationIds : [],
+			includedOrganizationLabels: isIncludePolicy
 				? includedOrganizationLabels
 				: [],
 			unresolvedDomains,
@@ -293,6 +349,55 @@ export class RevenueDoorPolicyService {
 				.digest("hex"),
 		};
 	}
+}
+
+export function applyEnterpriseRevenueDoorPolicy(
+	queryText: string,
+	policy: ResolvedRevenueDoorPolicy,
+): { queryText: string; applied: boolean } {
+	const usage = wrapTable(
+		queryText,
+		USAGE_TABLE,
+		[
+			enterpriseCombinedPredicate(
+				"lower(coalesce(\"organizationPlanType\", ''))",
+				'"organizationId"',
+				policy,
+			),
+			hasSubscriptionHistoryPredicate('"organizationId"'),
+		].join(" and "),
+	);
+	const subscriptions = wrapTable(
+		usage.queryText,
+		SUBSCRIPTION_TABLE,
+		enterpriseCombinedPredicate(
+			"lower(coalesce(plan, ''))",
+			'"organizationId"',
+			policy,
+		),
+	);
+	const rawSubscriptions = wrapTable(
+		subscriptions.queryText,
+		RAW_SUBSCRIPTION_TABLE,
+		enterpriseCombinedPredicate(
+			"lower(coalesce(orgPlan, ''))",
+			'"organizationId"',
+			policy,
+		),
+	);
+	let governed = rawSubscriptions.queryText;
+	let applied =
+		usage.applied || subscriptions.applied || rawSubscriptions.applied;
+	for (const table of ORGANIZATION_TABLES) {
+		const result = wrapTable(
+			governed,
+			table,
+			enterpriseOrganizationPredicate('"organizationId"', policy),
+		);
+		governed = result.queryText;
+		applied ||= result.applied;
+	}
+	return { queryText: governed, applied };
 }
 
 export function applyPartnerRevenueDoorPolicy(
@@ -342,10 +447,15 @@ export function applyPartnerRevenueDoorPolicy(
 		applied ||= result.applied;
 	}
 	return {
-		queryText: governed.replaceAll(
-			"__ATLAS_PARTNER_LABEL__",
-			partnerLabelExpression('"organizationId"', policy),
-		),
+		queryText: governed
+			.replaceAll(
+				"__ATLAS_PARTNER_LABEL__",
+				partnerLabelExpression('"organizationId"', policy),
+			)
+			.replaceAll(
+				"__ATLAS_PARTNER_USAGE_COLUMNS__",
+				partnerUsageColumns(policy),
+			),
 		applied,
 	};
 }
@@ -464,6 +574,46 @@ function partnerOrganizationPredicate(
 		.join(", ")})`;
 }
 
+function enterpriseCombinedPredicate(
+	planColumn: string,
+	organizationColumn: string,
+	policy: ResolvedRevenueDoorPolicy,
+): string {
+	const inclusions = [];
+	if (policy.includedPlans.length > 0) {
+		inclusions.push(
+			`${planColumn} in (${policy.includedPlans.map(sqlString).join(", ")})`,
+		);
+	}
+	if (policy.includedOrganizationIds.length > 0) {
+		inclusions.push(
+			`${organizationColumn} in (${policy.includedOrganizationIds
+				.map(sqlString)
+				.join(", ")})`,
+		);
+	}
+	const inclusion =
+		inclusions.length > 0 ? `(${inclusions.join(" or ")})` : "0 = 1";
+	if (policy.excludedOrganizationIds.length === 0) return inclusion;
+	return `${inclusion} and ${organizationColumn} not in (${policy.excludedOrganizationIds
+		.map(sqlString)
+		.join(", ")})`;
+}
+
+function enterpriseOrganizationPredicate(
+	organizationColumn: string,
+	policy: ResolvedRevenueDoorPolicy,
+): string {
+	if (policy.includedOrganizationIds.length === 0) return "0 = 1";
+	const inclusion = `${organizationColumn} in (${policy.includedOrganizationIds
+		.map(sqlString)
+		.join(", ")})`;
+	if (policy.excludedOrganizationIds.length === 0) return inclusion;
+	return `${inclusion} and ${organizationColumn} not in (${policy.excludedOrganizationIds
+		.map(sqlString)
+		.join(", ")})`;
+}
+
 function partnerLabelExpression(
 	organizationColumn: string,
 	policy: ResolvedRevenueDoorPolicy,
@@ -475,6 +625,22 @@ function partnerLabelExpression(
 	return branches.length > 0
 		? `multiIf(${branches.join(", ")}, 'Other partner')`
 		: "'Other partner'";
+}
+
+function partnerUsageColumns(policy: ResolvedRevenueDoorPolicy): string {
+	const labels = sortedUnique(
+		policy.includedOrganizationLabels
+			.map((entry) => entry.label)
+			.filter((label) => label !== "Other partner"),
+	);
+	const columns = labels.map(
+		(label) =>
+			`sumIf(partner_usage.usage_accrual, partner_usage.partner = ${sqlString(label)}) as ${sqlIdentifier(label)}`,
+	);
+	columns.push(
+		"sumIf(partner_usage.usage_accrual, partner_usage.partner = 'Other partner') as other_partner",
+	);
+	return columns.join(",\n  ");
 }
 
 function wrapTable(queryText: string, table: string, predicate: string) {
@@ -500,6 +666,15 @@ function normalize(value: string): string {
 
 function sqlString(value: string): string {
 	return `'${value.replaceAll("'", "''")}'`;
+}
+
+function sqlIdentifier(value: string): string {
+	const identifier = value
+		.normalize("NFKD")
+		.replace(/[^a-zA-Z0-9]+/g, "_")
+		.replace(/^_+|_+$/g, "")
+		.toLowerCase();
+	return identifier || "partner";
 }
 
 function organizationLabel(organization: {

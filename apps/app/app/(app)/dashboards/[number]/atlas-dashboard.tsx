@@ -404,7 +404,7 @@ function ScalarCard({ card }: { card: DashboardCard }) {
 				? currentValue - previousValue
 				: ((currentValue - previousValue) / previousValue) * 100
 			: null;
-	const runRateComparison = [1102, 1110, 1111, 1117, 1118].includes(
+	const runRateComparison = [1102, 1110, 1111, 1117, 1118, 1119].includes(
 		card.question.number,
 	);
 	let currentPeriodLabel: string | null = null;
@@ -425,6 +425,9 @@ function ScalarCard({ card }: { card: DashboardCard }) {
 				break;
 			case 1102:
 				currentPeriodLabel = `${formattedPeriod} estimated month-end revenue`;
+				break;
+			case 1119:
+				currentPeriodLabel = `${formattedPeriod} estimated month-end usage`;
 				break;
 			default:
 				currentPeriodLabel = formatMonthPeriod(period, { includeMtd: true });
@@ -544,12 +547,31 @@ function chartConfig(series: string[]): ChartConfig {
 	) as ChartConfig;
 }
 
+function orderedSeries(card: DashboardCard, data: Datum[], series: string[]) {
+	if (setting(card, "seriesOrder") !== "total-desc") return series;
+	const position = new Map(series.map((key, index) => [key, index]));
+	const totals = new Map(
+		series.map((key) => [
+			key,
+			data.reduce((sum, point) => {
+				const value = Number(point[key]);
+				return Number.isFinite(value) ? sum + value : sum;
+			}, 0),
+		]),
+	);
+	return [...series].sort((left, right) => {
+		const difference = (totals.get(right) ?? 0) - (totals.get(left) ?? 0);
+		return difference || (position.get(left) ?? 0) - (position.get(right) ?? 0);
+	});
+}
+
 function BarSeriesChart({ card }: { card: DashboardCard }) {
 	const source = chartData(card);
 	if (source.data.length === 0 || source.series.length === 0) {
 		return <CardUnavailable message={setting(card, "unavailableMessage")} />;
 	}
-	const config = chartConfig(source.series);
+	const series = orderedSeries(card, source.data, source.series);
+	const config = chartConfig(series);
 
 	return (
 		<div
@@ -577,16 +599,14 @@ function BarSeriesChart({ card }: { card: DashboardCard }) {
 							maxTicks={7}
 						/>
 						<YAxis
-							tickFormatter={(value) =>
-								formatMetric(value, source.series[0] ?? "")
-							}
+							tickFormatter={(value) => formatMetric(value, series[0] ?? "")}
 						/>
 						<Tooltip
 							labelKey={source.xKey}
 							labelFormatter={(value) => chartPeriod(value)}
 							valueFormatter={(value, name) => formatMetric(value, name)}
 						/>
-						{source.series.map((key, index) => (
+						{series.map((key, index) => (
 							<Bar
 								key={key}
 								dataKey={key}

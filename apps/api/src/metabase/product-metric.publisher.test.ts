@@ -213,6 +213,31 @@ describe("product feedback metric registry", () => {
 		]);
 	});
 
+	test("registers the enterprise usage, invoice, cash, and reconciliation metrics", () => {
+		const enterpriseMetrics = REVENUE_METRIC_SPECS.filter((spec) =>
+			[1119, 1120, 1121, 1122].includes(spec.questionNumber),
+		).map((spec) => spec.name);
+
+		expect(enterpriseMetrics).toEqual([
+			"Enterprise usage run-rate",
+			"Enterprise invoices raised",
+			"Enterprise cash collected",
+			"Enterprise revenue reconciliation",
+		]);
+	});
+
+	test("registers live subscription and invoice collection reconciliation", () => {
+		const metrics = REVENUE_METRIC_SPECS.filter((spec) =>
+			[1123, 1124, 1125].includes(spec.questionNumber),
+		).map((spec) => spec.name);
+
+		expect(metrics).toEqual([
+			"Live subscription value vs paid licensed invoice items",
+			"Invoice collection by revenue type",
+			"Uncollected invoices",
+		]);
+	});
+
 	test("keeps successful empty results in review instead of marking them failed", () => {
 		expect(
 			metricTrustStatus({

@@ -75,7 +75,7 @@ const RULE_LABELS: Record<string, string> = {
 	secondDayReturn: "Returned on another day",
 	activation: "Activated within the window",
 	conversion: "Started a subscription",
-	timeField: "Assigned to a period by",
+	timeField: "Revenue month",
 	periodAssignment: "Assigned to a period by",
 	valueBasis: "Value counted",
 };
@@ -193,13 +193,16 @@ function explainValue(value: unknown, key = ""): string {
 			.join(" · ");
 	}
 	const raw = String(value);
-	if (key === "periodAssignment") {
+	if (key === "periodAssignment" || key === "timeField") {
 		if (/generationCreatedAt|created_at/i.test(raw)) {
-			return "The UTC date when the generation started";
+			return "The UTC month when the generation started and its plan was recorded";
 		}
 		if (/generationEndedAt/i.test(raw)) {
-			return "The UTC date when the generation finished";
+			return "The UTC month when the generation finished and its final billable cost became known";
 		}
+	}
+	if (key === "valueBasis" && /generationCostMillicents/i.test(raw)) {
+		return "The final generation cost converted from millicents to US dollars";
 	}
 	const normalized = normalizeMetricLanguage(
 		VALUE_LABELS[raw] ?? raw.replaceAll("_", " "),

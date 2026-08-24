@@ -1,9 +1,11 @@
 import { describe, expect, it } from "bun:test";
 import { RevenueDoor, RevenueDoorPolicyStatus } from "@crm/db";
 import {
+	applyEnterpriseRevenueDoorPolicy,
 	applyPartnerRevenueDoorPolicy,
 	applyRevenueDoorPolicy,
 	assertResolvedAtlasQuery,
+	usesEnterpriseRevenueDoorPolicy,
 	usesPartnerRevenueDoorPolicy,
 	usesRevenueDoorPolicy,
 	usesSubscribedRevenueEligibility,
@@ -44,6 +46,19 @@ const partnerPolicy = {
 	],
 };
 
+const enterprisePolicy = {
+	...policy,
+	matchMode: "INCLUDE_ENTERPRISE" as const,
+	door: RevenueDoor.ENTERPRISE,
+	excludedPlans: [],
+	excludedDomains: ["fal.ai", "replicate.com"],
+	excludedOrganizationIds: ["org-fal", "org-replicate"],
+	includedPlans: ["enterprise"],
+	includedDomains: [],
+	includedOrganizationIds: ["org-enterprise", "org-fal"],
+	includedOrganizationLabels: [],
+};
+
 describe("applyRevenueDoorPolicy", () => {
 	it("covers every governed revenue question", () => {
 		expect(usesRevenueDoorPolicy(1101)).toBe(true);
@@ -52,8 +67,14 @@ describe("applyRevenueDoorPolicy", () => {
 		expect(usesRevenueDoorPolicy(1116)).toBe(true);
 		expect(usesRevenueDoorPolicy(1117)).toBe(true);
 		expect(usesRevenueDoorPolicy(1118)).toBe(true);
-		expect(usesRevenueDoorPolicy(1119)).toBe(false);
+		expect(usesRevenueDoorPolicy(1119)).toBe(true);
+		expect(usesRevenueDoorPolicy(1122)).toBe(true);
+		expect(usesRevenueDoorPolicy(1123)).toBe(true);
+		expect(usesRevenueDoorPolicy(1125)).toBe(true);
+		expect(usesRevenueDoorPolicy(1126)).toBe(false);
 		expect(usesSubscribedRevenueEligibility(1001)).toBe(true);
+		expect(usesSubscribedRevenueEligibility(1003)).toBe(false);
+		expect(usesSubscribedRevenueEligibility(1004)).toBe(false);
 		expect(usesSubscribedRevenueEligibility(1014)).toBe(true);
 		expect(usesSubscribedRevenueEligibility(1101)).toBe(true);
 		expect(usesSubscribedRevenueEligibility(999)).toBe(false);
@@ -74,6 +95,9 @@ describe("applyRevenueDoorPolicy", () => {
 		expect(usesPartnerRevenueDoorPolicy(1111)).toBe(false);
 		expect(usesPartnerRevenueDoorPolicy(1112)).toBe(true);
 		expect(usesPartnerRevenueDoorPolicy(1116)).toBe(true);
+		expect(usesEnterpriseRevenueDoorPolicy(1118)).toBe(false);
+		expect(usesEnterpriseRevenueDoorPolicy(1119)).toBe(true);
+		expect(usesEnterpriseRevenueDoorPolicy(1122)).toBe(true);
 	});
 
 	it("filters usage and subscription rows before the saved query runs", () => {
@@ -129,6 +153,52 @@ select 'invoice' from sync_prod.sync_stripe_invoices`,
 		);
 		expect(result.queryText).toContain(
 			`multiIf("organizationId" = 'org-fal', 'fal.ai', "organizationId" = 'org-replicate', 'replicate.com', 'Other partner')`,
+		);
+	});
+
+	it("builds partner chart columns from the current registry labels", () => {
+		const currentLabels = {
+			...partnerPolicy,
+			includedOrganizationLabels: [
+				{ organizationId: "org-fal", label: "Fal" },
+				{ organizationId: "org-higgsfield", label: "Higgsfield" },
+				{ organizationId: "org-replicate", label: "Replicate" },
+			],
+		};
+		const result = applyPartnerRevenueDoorPolicy(
+			"select __ATLAS_PARTNER_USAGE_COLUMNS__ from sync_prod.sync_usage3",
+			currentLabels,
+		);
+
+		expect(result.queryText).toContain("partner_usage.partner = 'Fal') as fal");
+		expect(result.queryText).toContain(
+			"partner_usage.partner = 'Higgsfield') as higgsfield",
+		);
+		expect(result.queryText).toContain(
+			"partner_usage.partner = 'Replicate') as replicate",
+		);
+		expect(result.queryText).toContain(
+			"partner_usage.partner = 'Other partner') as other_partner",
+		);
+		expect(result.queryText).not.toContain("__ATLAS_PARTNER_USAGE_COLUMNS__");
+	});
+
+	it("includes enterprise rows while removing governed channel partners", () => {
+		const result = applyEnterpriseRevenueDoorPolicy(
+			`select * from sync_prod.sync_usage3
+union all
+select * from sync_prod.sync_stripe_subscriptions_with_plan
+union all
+select * from sync_prod.sync_stripe_invoices`,
+			enterprisePolicy,
+		);
+
+		expect(result.applied).toBe(true);
+		expect(result.queryText).toContain(
+			`(lower(coalesce("organizationPlanType", '')) in ('enterprise') or "organizationId" in ('org-enterprise', 'org-fal')) and "organizationId" not in ('org-fal', 'org-replicate')`,
+		);
+		expect(result.queryText).toContain(
+			`from sync_prod.sync_stripe_invoices where "organizationId" in ('org-enterprise', 'org-fal') and "organizationId" not in ('org-fal', 'org-replicate')`,
 		);
 	});
 

@@ -34,7 +34,8 @@ describe("question explanation language", () => {
 			},
 			{
 				label: "Assigned to a period by",
-				value: "The UTC date when the generation started",
+				value:
+					"The UTC month when the generation started and its plan was recorded",
 			},
 		]);
 	});
@@ -50,5 +51,25 @@ describe("question explanation language", () => {
 		});
 
 		expect(rows).toEqual([]);
+	});
+
+	test("explains finished-generation revenue without database field names", () => {
+		expect(
+			definitionRows({
+				timeField: "generationEndedAt",
+				valueBasis: "generationCostMillicents divided by 100000",
+			}),
+		).toEqual([
+			{
+				label: "Revenue month",
+				value:
+					"The UTC month when the generation finished and its final billable cost became known",
+			},
+			{
+				label: "Value counted",
+				value:
+					"The final generation cost converted from millicents to US dollars",
+			},
+		]);
 	});
 });

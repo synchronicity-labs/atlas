@@ -605,11 +605,11 @@ export const REVENUE_CLOSE_METRIC_SPECS: ProductMetricSpec[] = [
 	},
 	{
 		questionNumber: 1003,
-		sourceExternalId: "revenue:licensed-subscription-base",
-		key: "company.revenue_close_licensed_subscription_base_proxy",
-		name: "Licensed subscription base proxy",
+		sourceExternalId: "revenue:paid-licensed-invoice-items-1255",
+		key: "company.paid_licensed_invoice_items_by_creation_month",
+		name: "Paid licensed invoice items by creation month",
 		description:
-			"Licensed Stripe invoice-item value after keeping one latest state per invoice-item id. This is an invoice-item proxy, not the live active-subscription base.",
+			"Paid licensed Stripe invoice-item value grouped by the month when each invoice item was created. This reproduces Metabase question 1255. It is invoice-item history, not live subscription run-rate.",
 		grain: FactGrain.MONTH,
 		source: {
 			key: "tinybird:revenue-close",
@@ -618,13 +618,19 @@ export const REVENUE_CLOSE_METRIC_SPECS: ProductMetricSpec[] = [
 		},
 		eventTimeField: "createdAt",
 		businessDefinition: {
-			entity: "latest_stripe_invoice_item_state",
+			entity: "stripe_invoice_item",
 			priceType: "licensed",
-			includedStatuses: ["paid", "open"],
-			classification: "subscription_base_proxy",
+			includedStatus: "paid",
+			parentInvoiceRequirement: "amount paid is greater than zero",
+			excludedCustomers: ["cus_S1GousK6vr6sck", "cus_T412vRZpb4RIVb"],
+			classification: "invoice_item_history",
+			notEquivalentTo: "live subscription run-rate",
 		},
-		computation: { aggregate: "monthly_sum", output: "subs_usd" },
-		requiresCrossSourceEligibility: true,
+		computation: {
+			aggregate: "monthly_sum",
+			output: "paid_licensed_invoice_items",
+		},
+		requiresCrossSourceEligibility: false,
 		ownerTeam: "Company",
 		createdBy: "atlas-revenue-close",
 		cadenceMinutes: 8 * 60,
@@ -1070,13 +1076,13 @@ export const REVENUE_METRIC_SPECS: ProductMetricSpec[] = [
 			},
 			includedStatuses: ["active", "past_due"],
 			priceSource:
-				"recurring licensed Stripe item unit_amount multiplied by quantity from the latest raw subscription payload for the plan",
+				"recurring licensed Stripe item unit_amount multiplied by quantity from the latest raw payload for each subscription",
 			newPlanHandling:
 				"new self-serve plans flow through automatically after the revenue-door policy accepts them",
 			excludedPlans: ["enterprise", "program", "partner"],
 		},
 		computation: {
-			aggregate: "subscription_count_times_current_plan_price",
+			aggregate: "sum_recurring_licensed_item_value",
 			output: "licensed_subscription_base",
 		},
 		requiresCrossSourceEligibility: true,
@@ -1123,7 +1129,7 @@ export const REVENUE_METRIC_SPECS: ProductMetricSpec[] = [
 		key: "company.self_serve_subscription_run_rate",
 		name: "Self-serve subscription run-rate",
 		description:
-			"Active or past-due self-serve subscriptions at the plan price in effect at each UTC cutoff, compared with the previous month-end. Excludes enterprise and program plans, plus channel partners in the governed revenue-door registry.",
+			"Current active or past-due self-serve subscriptions at each recurring licensed Stripe item price multiplied by quantity. Excludes enterprise and program plans, plus channel partners in the governed revenue-door registry. Historical point-in-time values require Atlas snapshots and are not inferred from today's subscription state.",
 		grain: FactGrain.MONTH,
 		source: {
 			key: "tinybird:revenue",
@@ -1142,10 +1148,104 @@ export const REVENUE_METRIC_SPECS: ProductMetricSpec[] = [
 			channelPartnerRegistryStatus: "complete",
 		},
 		computation: {
-			aggregate: "subscription_count_times_plan_price",
+			aggregate: "sum_recurring_licensed_item_value",
 			output: "subscription_run_rate",
 		},
 		requiresCrossSourceEligibility: true,
+		ownerTeam: "Company",
+		createdBy: "atlas-revenue-registry",
+		cadenceMinutes: 8 * 60,
+	},
+	{
+		questionNumber: 1123,
+		sourceExternalId: "weekly-revenue:subscription-reconciliation",
+		key: "company.subscription_value_reconciliation",
+		name: "Live subscription value vs paid licensed invoice items",
+		description:
+			"Compares today's self-serve recurring subscription value with paid licensed invoice items created this month and in the latest complete month. These measures answer different questions and are not expected to match.",
+		grain: FactGrain.MONTH,
+		source: {
+			key: "tinybird:revenue",
+			kind: DataSourceKind.TINYBIRD,
+			label: "TinyBird Stripe mirror",
+		},
+		eventTimeField: "current subscription state and invoice-item createdAt",
+		businessDefinition: {
+			revenueDoor: "sync.tools",
+			liveValue:
+				"active or past-due recurring licensed Stripe item unit amount multiplied by quantity",
+			invoiceHistory:
+				"paid licensed invoice-item amount grouped by invoice-item creation month",
+			warning: "the two measures are reconciliations, not equivalent revenue",
+		},
+		computation: { aggregate: "reconciliation" },
+		requiresCrossSourceEligibility: true,
+		ownerTeam: "Company",
+		createdBy: "atlas-revenue-registry",
+		cadenceMinutes: 8 * 60,
+	},
+	{
+		questionNumber: 1124,
+		sourceExternalId: "weekly-revenue:invoice-collection-by-type",
+		key: "company.invoice_collection_by_revenue_type",
+		name: "Invoice collection by revenue type",
+		description:
+			"Shows how much self-serve subscription and usage invoice value was due, paid, and still open for each invoice-creation month. The current month is still collecting, so an open invoice is not automatically a missed payment.",
+		grain: FactGrain.MONTH,
+		source: {
+			key: "tinybird:revenue",
+			kind: DataSourceKind.TINYBIRD,
+			label: "TinyBird Stripe mirror",
+		},
+		eventTimeField: "invoice createdAt",
+		businessDefinition: {
+			revenueDoor: "sync.tools",
+			invoiceState: "one latest state per Stripe invoice id",
+			lineState: "one latest state per Stripe invoice-item id",
+			allocation:
+				"invoice totals are split across subscription, usage, and other lines in proportion to line value",
+		},
+		computation: { aggregate: "monthly_collection_reconciliation" },
+		requiresCrossSourceEligibility: true,
+		pendingChecks: [
+			{
+				name: "Finance Collection Timing Review",
+				reason:
+					"Confirm that invoice creation month is the intended cohort for collection reporting before this becomes a certified finance metric.",
+			},
+		],
+		ownerTeam: "Company",
+		createdBy: "atlas-revenue-registry",
+		cadenceMinutes: 8 * 60,
+	},
+	{
+		questionNumber: 1125,
+		sourceExternalId: "weekly-revenue:uncollected-invoices",
+		key: "company.uncollected_invoices",
+		name: "Uncollected invoices",
+		description:
+			"Lists self-serve invoices that still had money due when Atlas checked Stripe. Use it to review collection work. A recent open invoice is not automatically bad debt; Finance still needs to confirm the final aging rule.",
+		grain: FactGrain.EVENT,
+		source: {
+			key: "tinybird:revenue",
+			kind: DataSourceKind.TINYBIRD,
+			label: "TinyBird Stripe mirror",
+		},
+		eventTimeField: "invoice createdAt",
+		businessDefinition: {
+			revenueDoor: "sync.tools",
+			population: "latest invoice states with amount remaining greater than zero",
+			includedStatuses: ["open", "past_due", "uncollectible"],
+		},
+		computation: { aggregate: "invoice_detail" },
+		requiresCrossSourceEligibility: true,
+		pendingChecks: [
+			{
+				name: "Finance Collection Timing Review",
+				reason:
+					"Confirm which invoice states and aging rule Finance wants Atlas to use for the final missed-collection report.",
+			},
+		],
 		ownerTeam: "Company",
 		createdBy: "atlas-revenue-registry",
 		cadenceMinutes: 8 * 60,
@@ -1350,6 +1450,127 @@ export const REVENUE_METRIC_SPECS: ProductMetricSpec[] = [
 			warning: "the three measures are reconciliations, not additive revenue",
 		},
 		computation: { aggregate: "monthly_sum_by_partner_and_basis" },
+		requiresCrossSourceEligibility: true,
+		ownerTeam: "Company",
+		createdBy: "atlas-revenue-registry",
+		cadenceMinutes: 8 * 60,
+	},
+	{
+		questionNumber: 1119,
+		sourceExternalId: "weekly-revenue:enterprise-usage-run-rate",
+		key: "company.enterprise_usage_run_rate",
+		name: "Enterprise usage run-rate",
+		description:
+			"Accrued usage from enterprise-plan organizations after removing every organization in the governed channel-partner registry. The current month is estimated from the exact UTC data-through time and compared with the previous complete month. This is usage incurred, not an invoice, contract value, or cash collection.",
+		grain: FactGrain.MONTH,
+		source: {
+			key: "tinybird:revenue",
+			kind: DataSourceKind.TINYBIRD,
+			label: "TinyBird usage and Stripe mirror",
+		},
+		eventTimeField: "generationEndedAt",
+		businessDefinition: {
+			revenueDoor: "sync.enterprise",
+			included: "organizations on the enterprise plan",
+			excluded: "organizations in the governed sync.partners registry",
+			valueBasis: "generationCostMillicents divided by 100000",
+			timeField: "generationEndedAt",
+			currentMonth:
+				"month-to-date accrued usage estimated over the full UTC calendar month using exact elapsed seconds",
+		},
+		computation: {
+			aggregate: "monthly_sum_or_current_month_pace",
+			output: "enterprise_usage_run_rate",
+		},
+		requiresCrossSourceEligibility: true,
+		ownerTeam: "Company",
+		createdBy: "atlas-revenue-registry",
+		cadenceMinutes: 8 * 60,
+	},
+	{
+		questionNumber: 1120,
+		sourceExternalId: "weekly-revenue:enterprise-invoices-raised",
+		key: "company.enterprise_invoices_raised",
+		name: "Enterprise invoices raised",
+		description:
+			"Stripe invoice amount due for enterprise-plan organizations after removing channel partners, counted once when each invoice was raised. The current month is compared with the same elapsed UTC window in the previous month. This is booked revenue in Stripe, not full contract value or cash collected.",
+		grain: FactGrain.MONTH,
+		source: {
+			key: "tinybird:revenue",
+			kind: DataSourceKind.TINYBIRD,
+			label: "TinyBird usage and Stripe mirror",
+		},
+		eventTimeField: "createdAt",
+		businessDefinition: {
+			revenueDoor: "sync.enterprise",
+			entity: "stripe_invoice",
+			included: "organizations on the enterprise plan",
+			excluded: "organizations in the governed sync.partners registry",
+			valueBasis: "amountDue",
+			timeField: "invoice createdAt",
+			deduplication: "one latest-state record per Stripe invoice id",
+			comparison: "current MTD versus the same elapsed UTC window last month",
+		},
+		computation: { aggregate: "sum", output: "enterprise_invoices_raised" },
+		requiresCrossSourceEligibility: true,
+		ownerTeam: "Company",
+		createdBy: "atlas-revenue-registry",
+		cadenceMinutes: 8 * 60,
+	},
+	{
+		questionNumber: 1121,
+		sourceExternalId: "weekly-revenue:enterprise-cash-collected",
+		key: "company.enterprise_cash_collected",
+		name: "Enterprise cash collected",
+		description:
+			"Stripe amount paid for enterprise-plan invoices after removing channel partners, grouped by the actual paid timestamp. The current month is compared with the same elapsed UTC window in the previous month. This is cash collected, not booked or recognized revenue.",
+		grain: FactGrain.MONTH,
+		source: {
+			key: "tinybird:revenue",
+			kind: DataSourceKind.TINYBIRD,
+			label: "TinyBird usage and Stripe mirror",
+		},
+		eventTimeField: "status_transitions.paid_at",
+		businessDefinition: {
+			revenueDoor: "sync.enterprise",
+			entity: "paid_stripe_invoice",
+			included: "organizations on the enterprise plan",
+			excluded: "organizations in the governed sync.partners registry",
+			valueBasis: "amountPaid",
+			timeField: "status_transitions.paid_at",
+			deduplication: "one paid result per Stripe invoice id",
+			comparison: "current MTD versus the same elapsed UTC window last month",
+		},
+		computation: { aggregate: "sum", output: "enterprise_cash_collected" },
+		requiresCrossSourceEligibility: true,
+		ownerTeam: "Company",
+		createdBy: "atlas-revenue-registry",
+		cadenceMinutes: 8 * 60,
+	},
+	{
+		questionNumber: 1122,
+		sourceExternalId: "weekly-revenue:enterprise-reconciliation",
+		key: "company.enterprise_revenue_reconciliation",
+		name: "Enterprise revenue reconciliation",
+		description:
+			"Monthly enterprise usage incurred, Stripe invoices raised, and Stripe cash collected after removing channel partners. These are separate views of the same business activity and must not be added together. Contract value is not shown until Atlas has a governed contract source.",
+		grain: FactGrain.MONTH,
+		source: {
+			key: "tinybird:revenue",
+			kind: DataSourceKind.TINYBIRD,
+			label: "TinyBird usage and Stripe mirror",
+		},
+		eventTimeField: "generationEndedAt and Stripe invoice timestamps",
+		businessDefinition: {
+			revenueDoor: "sync.enterprise",
+			included: "organizations on the enterprise plan",
+			excluded: "organizations in the governed sync.partners registry",
+			measures: ["usage_incurred", "invoices_raised", "cash_collected"],
+			contractValueStatus:
+				"not available until Atlas has a governed contract or MSA source",
+			warning: "the three measures are reconciliations, not additive revenue",
+		},
+		computation: { aggregate: "monthly_sum_by_basis" },
 		requiresCrossSourceEligibility: true,
 		ownerTeam: "Company",
 		createdBy: "atlas-revenue-registry",
@@ -2406,10 +2627,14 @@ function verificationRows(input: {
 						}),
 						evidence: json({
 							reason: input.revenueDoorPolicy?.complete
-								? "The revenue-door registry is complete and was applied before aggregation."
+								? input.revenueDoorPolicy.matchMode === "INCLUDE_ENTERPRISE"
+									? "Enterprise-plan organizations are included and every organization in the governed channel-partner registry is excluded."
+									: "The revenue-door registry is complete and was applied before aggregation."
 								: input.revenueDoorPolicy?.matchMode === "INCLUDE_PARTNERS"
 									? "Known channel partners are included, but the partner registry still needs a complete review."
-									: "Known non-tools revenue is excluded, but the channel-partner registry still needs a complete review.",
+									: input.revenueDoorPolicy?.matchMode === "INCLUDE_ENTERPRISE"
+										? "Enterprise-plan organizations are included, but Atlas cannot yet prove that the channel-partner exclusion list is complete."
+										: "Known non-tools revenue is excluded, but the channel-partner registry still needs a complete review.",
 							matchMode: input.revenueDoorPolicy?.matchMode ?? null,
 							door: input.revenueDoorPolicy?.door ?? null,
 							excludedPlans: input.revenueDoorPolicy?.excludedPlans ?? [],

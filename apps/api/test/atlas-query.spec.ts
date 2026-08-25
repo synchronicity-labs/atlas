@@ -78,14 +78,14 @@ describe("Atlas agent query freshness", () => {
 		});
 	});
 
-	test("uses the earlier source or metric snapshot deadline", () => {
-		const computedAt = new Date("2026-08-25T00:00:00.000Z");
+	test("uses the earlier source or successful metric-check deadline", () => {
+		const checkedAt = new Date("2026-08-25T00:00:00.000Z");
 		const sourceDeadline = new Date("2026-08-25T12:00:00.000Z");
 
 		expect(
 			metricFreshnessDeadline({
 				sourceDeadline,
-				computedAt,
+				checkedAt,
 				maxLagSeconds: [36_000, 28_800],
 			}),
 		).toEqual(new Date("2026-08-25T08:00:00.000Z"));

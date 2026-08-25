@@ -277,6 +277,7 @@ export class AtlasQueryService {
 				sourceDashboardExternalId: true,
 				databaseExternalId: true,
 				status: true,
+				lastCheckedAt: true,
 				updatedAt: true,
 				metricVersion: {
 					select: {
@@ -438,7 +439,7 @@ export class AtlasQueryService {
 					state: question.source?.state,
 					deadline: metricFreshnessDeadline({
 						sourceDeadline: question.source?.freshnessDeadlineAt,
-						computedAt: metricSnapshot?.computedAt,
+						checkedAt: question.lastCheckedAt ?? metricSnapshot?.computedAt,
 						maxLagSeconds: question.metricVersion?.inputs
 							.filter((input) => input.required)
 							.map((input) => input.maxLagSeconds),
@@ -642,15 +643,15 @@ export function resolveMetricFreshness(input: {
 
 export function metricFreshnessDeadline(input: {
 	sourceDeadline?: Date | null;
-	computedAt?: Date;
+	checkedAt?: Date;
 	maxLagSeconds?: number[];
 }): Date | null {
 	const lagSeconds = input.maxLagSeconds?.filter(
 		(value) => Number.isFinite(value) && value > 0,
 	);
 	const snapshotDeadline =
-		input.computedAt && lagSeconds && lagSeconds.length > 0
-			? new Date(input.computedAt.getTime() + Math.min(...lagSeconds) * 1000)
+		input.checkedAt && lagSeconds && lagSeconds.length > 0
+			? new Date(input.checkedAt.getTime() + Math.min(...lagSeconds) * 1000)
 			: null;
 	if (!input.sourceDeadline) return snapshotDeadline;
 	if (!snapshotDeadline) return input.sourceDeadline;

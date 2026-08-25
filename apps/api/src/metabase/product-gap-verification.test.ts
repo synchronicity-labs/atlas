@@ -164,4 +164,32 @@ describe("product gap verification", () => {
 			checks.find((check) => check.name === "breakdown_reconciliation")?.status,
 		).toBe(VerificationStatus.FAILED);
 	});
+
+	test("rejects customer identifiers in the governed result", () => {
+		const checks = productGapVerificationChecks(
+			result(
+				[...columns, "organization_id"],
+				[
+					[
+						"summary",
+						"2026-06-01",
+						"all",
+						80,
+						100,
+						20,
+						80,
+						0,
+						0,
+						"2026-08-01",
+						"org_123",
+					],
+				],
+			),
+			query,
+		);
+
+		expect(
+			checks.find((check) => check.name === "canonical_population")?.status,
+		).toBe(VerificationStatus.FAILED);
+	});
 });

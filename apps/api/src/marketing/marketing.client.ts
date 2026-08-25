@@ -93,6 +93,7 @@ export class MarketingClient {
 	async execute(query: MarketingQuery): Promise<MarketingResult> {
 		if (query.source === "ga4") return this.ga4(query);
 		if (query.source === "search_console") return this.searchConsole(query);
+		if (query.source === "posthog_insight") return this.posthogInsight(query);
 		return this.posthog(query.query);
 	}
 
@@ -391,4 +392,254 @@ export class MarketingClient {
 		}
 		throw new Error("PostHog query failed after retrying.");
 	}
+
+	private async posthogInsight(
+		query: Extract<MarketingQuery, { source: "posthog_insight" }>,
+	): Promise<MarketingResult> {
+		if (query.mode === "retention_week_two") {
+			return this.posthogWeekTwoRetention(query);
+		}
+		const dataThrough = utcDay();
+		const periods = completePeriods(
+			query.grain,
+			query.periods,
+			query.mode === "funnel_conversion" ? 42 : 0,
+			dataThrough,
+		);
+		const results = await Promise.all(
+			periods.map(async (period) => ({
+				period,
+				result: await this.posthogNative(
+					withDateRange(query.query, period.start, period.end),
+				),
+			})),
+		);
+		if (query.mode === "funnel_time_to_convert") {
+			return {
+				columns: [
+					dateColumn("period_start"),
+					decimalColumn("median_seconds"),
+					decimalColumn("average_seconds"),
+					decimalColumn("converted_users"),
+					dateColumn("data_through"),
+				],
+				rows: results.map(({ period, result }) => {
+					const funnel = nativeObject(result);
+					const bins = Array.isArray(funnel.bins) ? funnel.bins : [];
+					const convertedUsers = bins.reduce(
+						(total, bin) =>
+							total +
+							(Array.isArray(bin) && Number.isFinite(Number(bin[1]))
+								? Number(bin[1])
+								: 0),
+						0,
+					);
+					return [
+						period.start.toISOString(),
+						number(funnel.median_conversion_time),
+						number(funnel.average_conversion_time),
+						convertedUsers,
+						dataThrough.toISOString(),
+					];
+				}),
+			};
+		}
+		return {
+			columns: [
+				dateColumn("period_start"),
+				decimalColumn("signups"),
+				decimalColumn("subscriptions"),
+				decimalColumn("conversion_pct"),
+				dateColumn("data_through"),
+			],
+			rows: results.map(({ period, result }) => {
+				const steps = Array.isArray(result) ? result : [];
+				const signups = number(nativeObject(steps[0]).count);
+				const subscriptions = number(nativeObject(steps.at(-1)).count);
+				return [
+					period.start.toISOString(),
+					signups,
+					subscriptions,
+					round(signups > 0 ? (subscriptions / signups) * 100 : 0),
+					dataThrough.toISOString(),
+				];
+			}),
+		};
+	}
+
+	private async posthogWeekTwoRetention(
+		query: Extract<MarketingQuery, { source: "posthog_insight" }>,
+	): Promise<MarketingResult> {
+		const boundary = completePeriod("week", 0).start;
+		const dataThrough = utcDay();
+		const start = new Date(boundary);
+		start.setUTCDate(start.getUTCDate() - (query.periods + 3) * 7);
+		const result = await this.posthogNative(
+			withDateRange(query.query, start, boundary),
+		);
+		const rows = (Array.isArray(result) ? result : [])
+			.flatMap((item) => {
+				const cohort = nativeObject(item);
+				const cohortDate = String(cohort.date ?? "").slice(0, 10);
+				const cohortStart = new Date(`${cohortDate}T00:00:00.000Z`);
+				if (!Number.isFinite(cohortStart.getTime())) return [];
+				const matureAt = new Date(cohortStart);
+				matureAt.setUTCDate(matureAt.getUTCDate() + 21);
+				if (matureAt > dataThrough) return [];
+				const values = Array.isArray(cohort.values) ? cohort.values : [];
+				const weekZero = nativeObject(values[0]);
+				const weekTwo = nativeObject(
+					values.find((value) => nativeObject(value).label === "Week 2"),
+				);
+				const cohortUsers = number(weekZero.count);
+				const retainedUsers = number(weekTwo.count);
+				return [
+					[
+						`${cohortDate}T00:00:00.000Z`,
+						cohortUsers,
+						retainedUsers,
+						round(cohortUsers > 0 ? (retainedUsers / cohortUsers) * 100 : 0),
+						dataThrough.toISOString(),
+					],
+				];
+			})
+			.sort((a, b) => String(a[0]).localeCompare(String(b[0])));
+		return {
+			columns: [
+				dateColumn("cohort_week"),
+				decimalColumn("cohort_users"),
+				decimalColumn("week_two_users"),
+				decimalColumn("week_two_retention_pct"),
+				dateColumn("data_through"),
+			],
+			rows: rows.slice(-query.periods),
+		};
+	}
+
+	private async posthogNative(query: unknown): Promise<unknown> {
+		const config = this.config.posthog;
+		if (!config) throw new Error("PostHog is not configured.");
+		for (let attempt = 1; attempt <= 3; attempt += 1) {
+			const response = await fetch(
+				`${config.host}/api/projects/${config.projectId}/query/`,
+				{
+					method: "POST",
+					headers: {
+						Authorization: `Bearer ${config.apiKey}`,
+						"Content-Type": "application/json",
+					},
+					body: JSON.stringify({ query }),
+				},
+			);
+			const body = (await response.json().catch(() => ({}))) as {
+				results?: unknown;
+				error?: string | null;
+				hasMore?: boolean | null;
+			};
+			if (response.ok && !body.error) {
+				if (body.hasMore) {
+					throw new Error("PostHog insight query result was truncated.");
+				}
+				return body.results;
+			}
+			if (attempt === 3 || !POSTHOG_RETRYABLE_STATUS.has(response.status)) {
+				throw new Error(`PostHog insight query failed (${response.status}).`);
+			}
+			await new Promise((resolve) =>
+				setTimeout(resolve, this.posthogRetryDelayMs * attempt),
+			);
+		}
+		throw new Error("PostHog insight query failed after retrying.");
+	}
+}
+
+function completePeriod(grain: "week" | "month", offset: number) {
+	const now = new Date();
+	const boundary =
+		grain === "week"
+			? new Date(
+					Date.UTC(
+						now.getUTCFullYear(),
+						now.getUTCMonth(),
+						now.getUTCDate() - ((now.getUTCDay() + 6) % 7),
+					),
+				)
+			: new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+	const end = new Date(boundary);
+	const start = new Date(boundary);
+	if (grain === "week") {
+		end.setUTCDate(end.getUTCDate() - Math.max(0, offset - 1) * 7);
+		start.setUTCDate(start.getUTCDate() - offset * 7);
+	} else {
+		end.setUTCMonth(end.getUTCMonth() - Math.max(0, offset - 1));
+		start.setUTCMonth(start.getUTCMonth() - offset);
+	}
+	return { start, end };
+}
+
+function completePeriods(
+	grain: "week" | "month",
+	count: number,
+	maturityDays: number,
+	dataThrough: Date,
+) {
+	const periods: Array<{ start: Date; end: Date }> = [];
+	for (let offset = 1; periods.length < count && offset < 100; offset += 1) {
+		const period = completePeriod(grain, offset);
+		const matureAt = new Date(period.end);
+		matureAt.setUTCDate(matureAt.getUTCDate() + maturityDays);
+		if (matureAt <= dataThrough) periods.push(period);
+	}
+	if (periods.length !== count) {
+		throw new Error(`Could not determine ${count} mature ${grain} periods.`);
+	}
+	return periods.reverse();
+}
+
+function utcDay() {
+	const now = new Date();
+	return new Date(
+		Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
+	);
+}
+
+function withDateRange(
+	query: Record<string, unknown> & { source: Record<string, unknown> },
+	start: Date,
+	end: Date,
+) {
+	return {
+		...query,
+		source: {
+			...query.source,
+			dateRange: {
+				date_from: start.toISOString(),
+				date_to: new Date(end.getTime() - 1).toISOString(),
+				explicitDate: true,
+			},
+		},
+	};
+}
+
+function nativeObject(value: unknown): Record<string, unknown> {
+	return value && typeof value === "object" && !Array.isArray(value)
+		? (value as Record<string, unknown>)
+		: {};
+}
+
+function number(value: unknown): number {
+	const parsed = Number(value);
+	return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function round(value: number): number {
+	return Math.round(value * 100) / 100;
+}
+
+function dateColumn(name: string) {
+	return { name, displayName: displayName(name), baseType: "type/DateTime" };
+}
+
+function decimalColumn(name: string) {
+	return { name, displayName: displayName(name), baseType: "type/Decimal" };
 }

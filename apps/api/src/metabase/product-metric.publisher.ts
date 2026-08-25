@@ -105,6 +105,229 @@ const sharedNormalizationPolicy = {
 	retroactiveEligibility: "current_known_state",
 };
 
+const STUDIO_INSIGHT_CHECKS = [
+	{
+		name: "native_insight_definition",
+		reason:
+			"The native PostHog query must match the approved Studio funnel or retention definition and filter test accounts.",
+	},
+	{
+		name: "period_population",
+		reason:
+			"Every published period or cohort must contain a valid denominator and non-negative output values.",
+	},
+	{
+		name: "metric_reconciliation",
+		reason:
+			"Published rates must reconcile to their counts, and time-to-magic outputs must remain positive.",
+	},
+	{
+		name: "cohort_maturity",
+		reason:
+			"Every result must use a complete source period and retention requires a full week-two observation window.",
+	},
+	{
+		name: "sensitive_detail_boundary",
+		reason:
+			"The result must exclude person, customer, user, organization, and email identifiers.",
+	},
+	{
+		name: "complete_period_watermark",
+		reason: "Every row must use one complete-period data-through boundary.",
+	},
+];
+
+const STUDIO_NATIVE_INSIGHT_SPECS: ProductMetricSpec[] = [
+	{
+		questionNumber: 7042,
+		sourceExternalId: "cron:studio:insight-weekly-time-to-magic",
+		key: "product.studio_weekly_time_to_magic",
+		name: "Weekly Studio time to magic",
+		description:
+			"Median and average signup-to-successful-generation time for complete UTC weeks under the approved native PostHog funnel.",
+		grain: FactGrain.WEEK,
+		eventTimeField: "period_start",
+		businessDefinition: {
+			entity: "studio_signup_funnel_week",
+			periodAssignment: "explicit complete UTC week",
+			steps: [
+				"pageview",
+				"user_signed_up",
+				"playground_started_generation",
+				"playground_completed_generation",
+			],
+			measurement:
+				"median and average seconds from signup step to completion step",
+			window: "ordered funnel completed within 30 minutes",
+			generationExclusions: ["plugin_premiere", "agent"],
+			population:
+				"PostHog test-account filter; native insight output does not expose identity rows",
+		},
+		computation: {
+			aggregate: "native_funnel_time_to_convert",
+			outputs: ["median_seconds", "average_seconds", "converted_users"],
+		},
+		requiresCrossSourceEligibility: false,
+		pendingChecks: STUDIO_INSIGHT_CHECKS,
+		ownerTeam: "Productions",
+		createdBy: "atlas-studio-insight-registry",
+		cadenceMinutes: 8 * 60,
+		source: {
+			key: "posthog:product-events",
+			kind: DataSourceKind.POSTHOG,
+			label: "PostHog native Studio funnel",
+		},
+	},
+	{
+		questionNumber: 7043,
+		sourceExternalId: "cron:studio:insight-monthly-time-to-magic",
+		key: "product.studio_monthly_time_to_magic",
+		name: "Monthly Studio time to magic",
+		description:
+			"Median and average signup-to-successful-generation time for complete UTC months under the approved native PostHog funnel.",
+		grain: FactGrain.MONTH,
+		eventTimeField: "period_start",
+		businessDefinition: {
+			entity: "studio_signup_funnel_month",
+			periodAssignment: "explicit complete UTC calendar month",
+			steps: [
+				"pageview",
+				"user_signed_up",
+				"playground_started_generation",
+				"playground_completed_generation",
+			],
+			measurement:
+				"median and average seconds from signup step to completion step",
+			window: "ordered funnel completed within 30 minutes",
+			generationExclusions: ["plugin_premiere", "agent"],
+			population:
+				"PostHog test-account filter; native insight output does not expose identity rows",
+		},
+		computation: {
+			aggregate: "native_funnel_time_to_convert",
+			outputs: ["median_seconds", "average_seconds", "converted_users"],
+		},
+		requiresCrossSourceEligibility: false,
+		pendingChecks: STUDIO_INSIGHT_CHECKS,
+		ownerTeam: "Productions",
+		createdBy: "atlas-studio-insight-registry",
+		cadenceMinutes: 8 * 60,
+		source: {
+			key: "posthog:product-events",
+			kind: DataSourceKind.POSTHOG,
+			label: "PostHog native Studio funnel",
+		},
+	},
+	{
+		questionNumber: 7044,
+		sourceExternalId: "cron:studio:insight-weekly-signup-conversion",
+		key: "product.studio_weekly_signup_subscription_conversion",
+		name: "Weekly Studio signup to subscription conversion",
+		description:
+			"Mature UTC-week signup populations and subscription conversion under the approved ordered six-week native PostHog funnel.",
+		grain: FactGrain.WEEK,
+		eventTimeField: "period_start",
+		businessDefinition: {
+			entity: "studio_signup_week",
+			periodAssignment: "explicit complete UTC week",
+			denominator: "native PostHog user_signed_up funnel count",
+			numerator:
+				"the denominator population reaching subscription_created within six weeks",
+			ordering: "ordered",
+			maturity:
+				"publish only after the complete signup period plus its six-week conversion window",
+			population:
+				"PostHog test-account filter; native insight output does not expose identity rows",
+		},
+		computation: {
+			aggregate: "native_ordered_funnel_conversion",
+			outputs: ["signups", "subscriptions", "conversion_pct"],
+		},
+		requiresCrossSourceEligibility: false,
+		pendingChecks: STUDIO_INSIGHT_CHECKS,
+		ownerTeam: "Productions",
+		createdBy: "atlas-studio-insight-registry",
+		cadenceMinutes: 8 * 60,
+		source: {
+			key: "posthog:product-events",
+			kind: DataSourceKind.POSTHOG,
+			label: "PostHog native Studio funnel",
+		},
+	},
+	{
+		questionNumber: 7045,
+		sourceExternalId: "cron:studio:insight-monthly-signup-conversion",
+		key: "product.studio_monthly_signup_subscription_conversion",
+		name: "Monthly Studio signup to subscription conversion",
+		description:
+			"Mature UTC-month signup populations and subscription conversion under the approved ordered six-week native PostHog funnel.",
+		grain: FactGrain.MONTH,
+		eventTimeField: "period_start",
+		businessDefinition: {
+			entity: "studio_signup_month",
+			periodAssignment: "explicit complete UTC calendar month",
+			denominator: "native PostHog user_signed_up funnel count",
+			numerator:
+				"the denominator population reaching subscription_created within six weeks",
+			ordering: "ordered",
+			maturity:
+				"publish only after the complete signup period plus its six-week conversion window",
+			population:
+				"PostHog test-account filter; native insight output does not expose identity rows",
+		},
+		computation: {
+			aggregate: "native_ordered_funnel_conversion",
+			outputs: ["signups", "subscriptions", "conversion_pct"],
+		},
+		requiresCrossSourceEligibility: false,
+		pendingChecks: STUDIO_INSIGHT_CHECKS,
+		ownerTeam: "Productions",
+		createdBy: "atlas-studio-insight-registry",
+		cadenceMinutes: 8 * 60,
+		source: {
+			key: "posthog:product-events",
+			kind: DataSourceKind.POSTHOG,
+			label: "PostHog native Studio funnel",
+		},
+	},
+	{
+		questionNumber: 7046,
+		sourceExternalId: "cron:studio:insight-week-two-retention",
+		key: "product.studio_week_two_generation_retention",
+		name: "Studio week-two generation retention",
+		description:
+			"Mature weekly generation cohorts and recurring week-two generation retention under the approved native PostHog retention query.",
+		grain: FactGrain.WEEK,
+		eventTimeField: "cohort_week",
+		businessDefinition: {
+			entity: "studio_generation_cohort_week",
+			periodAssignment:
+				"PostHog weekly cohort label normalized to its Monday date inside an explicit UTC read window",
+			denominator:
+				"users with playground_completed_generation in the cohort week, excluding plugin_premiere",
+			numerator:
+				"the denominator population with recurring playground_completed_generation in week two",
+			maturity: "publish only after a complete three-week observation window",
+			population:
+				"PostHog test-account filter; native insight output does not expose identity rows",
+		},
+		computation: {
+			aggregate: "native_recurring_week_two_retention",
+			outputs: ["cohort_users", "week_two_users", "week_two_retention_pct"],
+		},
+		requiresCrossSourceEligibility: false,
+		pendingChecks: STUDIO_INSIGHT_CHECKS,
+		ownerTeam: "Productions",
+		createdBy: "atlas-studio-insight-registry",
+		cadenceMinutes: 8 * 60,
+		source: {
+			key: "posthog:product-events",
+			kind: DataSourceKind.POSTHOG,
+			label: "PostHog native Studio retention",
+		},
+	},
+];
+
 export const PRODUCT_METRIC_SPECS: ProductMetricSpec[] = [
 	{
 		questionNumber: 15,
@@ -775,6 +998,7 @@ export const PRODUCT_METRIC_SPECS: ProductMetricSpec[] = [
 		createdBy: "atlas-studio-product-registry",
 		cadenceMinutes: 8 * 60,
 	},
+	...STUDIO_NATIVE_INSIGHT_SPECS,
 	{
 		questionNumber: 7041,
 		sourceExternalId: "cron:studio:monthly-period-kpis",

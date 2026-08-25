@@ -54,10 +54,34 @@ export const posthogQuery = z.object({
 	query: z.string().trim().min(1).max(100_000),
 });
 
+const posthogNativeQuery = z
+	.object({
+		kind: z.literal("InsightVizNode"),
+		source: z
+			.object({
+				kind: z.enum(["FunnelsQuery", "RetentionQuery"]),
+			})
+			.passthrough(),
+	})
+	.passthrough();
+
+export const posthogInsightQuery = z.object({
+	source: z.literal("posthog_insight"),
+	mode: z.enum([
+		"funnel_time_to_convert",
+		"funnel_conversion",
+		"retention_week_two",
+	]),
+	grain: z.enum(["week", "month"]),
+	periods: z.number().int().min(2).max(12),
+	query: posthogNativeQuery,
+});
+
 export const marketingQuery = z.discriminatedUnion("source", [
 	ga4Query,
 	searchConsoleQuery,
 	posthogQuery,
+	posthogInsightQuery,
 ]);
 
 export type MarketingQuery = z.infer<typeof marketingQuery>;

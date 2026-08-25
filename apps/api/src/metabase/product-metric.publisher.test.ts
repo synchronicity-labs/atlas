@@ -168,6 +168,44 @@ describe("product feedback metric registry", () => {
 		).toBe(7041);
 	});
 
+	test("registers the native Studio funnel and retention contracts", () => {
+		const studioInsights = PRODUCT_METRIC_SPECS.filter((spec) =>
+			[7042, 7043, 7044, 7045, 7046].includes(spec.questionNumber),
+		);
+
+		expect(studioInsights.map((spec) => spec.sourceExternalId)).toEqual([
+			"cron:studio:insight-weekly-time-to-magic",
+			"cron:studio:insight-monthly-time-to-magic",
+			"cron:studio:insight-weekly-signup-conversion",
+			"cron:studio:insight-monthly-signup-conversion",
+			"cron:studio:insight-week-two-retention",
+		]);
+		expect(
+			studioInsights.every(
+				(spec) => spec.requiresCrossSourceEligibility === false,
+			),
+		).toBe(true);
+		expect(
+			studioInsights.map((spec) =>
+				spec.pendingChecks?.map((check) => check.name),
+			),
+		).toEqual(
+			Array(5).fill([
+				"native_insight_definition",
+				"period_population",
+				"metric_reconciliation",
+				"cohort_maturity",
+				"sensitive_detail_boundary",
+				"complete_period_watermark",
+			]),
+		);
+		for (const spec of studioInsights) {
+			expect(preferredAtlasQuestionNumber(spec.sourceExternalId)).toBe(
+				spec.questionNumber,
+			);
+		}
+	});
+
 	test("registers separate governed abuse signal and enforcement contracts", () => {
 		const abuseSpecs = PRODUCT_METRIC_SPECS.filter((spec) =>
 			[7013, 7040].includes(spec.questionNumber),

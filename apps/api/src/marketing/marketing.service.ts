@@ -13,6 +13,7 @@ import { abuseRingVerificationChecks } from "../metabase/abuse-detail-verificati
 import { ProductMetricPublisher } from "../metabase/product-metric.publisher";
 import { TinybirdEligibilityService } from "../metabase/tinybird-eligibility.service";
 import { exitSurveyVerificationChecks } from "./exit-survey-verification";
+import { lipsyncFunnelVerificationChecks } from "./lipsync-funnel-verification";
 import { MarketingClient, type MarketingResult } from "./marketing.client";
 import { marketingConfig } from "./marketing.config";
 import { marketingQuery } from "./marketing.contracts";
@@ -181,10 +182,13 @@ export class MarketingService {
 					question.sourceExternalId === "cron:exit-survey:weekly-summary" &&
 					parsedQuery.source === "posthog"
 						? exitSurveyVerificationChecks(result, parsedQuery.query)
-						: question.sourceExternalId === "cron:abuse:operational-detail" &&
+						: question.sourceExternalId === "cron:lipsync:product-funnel" &&
 								parsedQuery.source === "posthog"
-							? abuseRingVerificationChecks(result, parsedQuery.query)
-							: undefined;
+							? lipsyncFunnelVerificationChecks(result, parsedQuery.query)
+							: question.sourceExternalId === "cron:abuse:operational-detail" &&
+									parsedQuery.source === "posthog"
+								? abuseRingVerificationChecks(result, parsedQuery.query)
+								: undefined;
 				const payload = { columns: result.columns, rows: result.rows };
 				const contentHash = hash(payload);
 				const externalId =

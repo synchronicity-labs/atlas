@@ -126,4 +126,44 @@ describe("Atlas dashboard refresh", () => {
 		expect(metabaseSync).not.toHaveBeenCalled();
 		expect(result.completed).toBe(true);
 	});
+
+	test("routes the Lipsync dashboard through the governed marketing reader", async () => {
+		const findUnique = mock().mockResolvedValue({
+			cards: [
+				{
+					question: {
+						id: "lipsync-funnel",
+						number: 236,
+						connector: DataSourceKind.ATLAS,
+						sourceId: "lipsync-source",
+						source: { key: "atlas:lipsync" },
+					},
+				},
+			],
+		});
+		const marketingSync = mock().mockResolvedValue({
+			cardsProcessed: 1,
+			snapshotsCreated: 1,
+			errors: [],
+		});
+		const service = new AtlasDashboardsService(
+			{ dashboard: { findUnique } } as unknown as Db,
+			{ syncDashboard: mock() } as never,
+			{ syncAtlasDashboard: mock() } as never,
+			{ syncDashboard: mock() } as never,
+			{ syncDashboard: marketingSync } as never,
+			{ syncDashboard: mock() } as never,
+			{ syncDashboard: mock() } as never,
+		);
+
+		const result = await service.refresh(10, "native");
+
+		expect(marketingSync).toHaveBeenCalledWith(10);
+		expect(result).toMatchObject({
+			cardsProcessed: 1,
+			snapshotsCreated: 1,
+			completed: true,
+			errors: [],
+		});
+	});
 });

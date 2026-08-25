@@ -117,6 +117,29 @@ describe("product feedback metric registry", () => {
 		).toBe(7007);
 	});
 
+	test("registers the governed Lipsync-attributed product funnel", () => {
+		const lipsync = PRODUCT_METRIC_SPECS.find(
+			(spec) => spec.questionNumber === 7004,
+		);
+
+		expect(lipsync?.sourceExternalId).toBe("cron:lipsync:product-funnel");
+		expect(lipsync?.businessDefinition).toMatchObject({
+			entity: "lipsync_attributed_signup_cohort",
+			periodAssignment: "signup timestamp in UTC Monday weeks",
+		});
+		expect(lipsync?.pendingChecks?.map((check) => check.name)).toEqual([
+			"lipsync_signup_cohort_population",
+			"funnel_ordering",
+			"referral_definition",
+			"seven_day_cohort_maturity",
+			"sensitive_detail_boundary",
+			"oldest_complete_watermark",
+		]);
+		expect(preferredAtlasQuestionNumber("cron:lipsync:product-funnel")).toBe(
+			7004,
+		);
+	});
+
 	test("registers separate governed abuse signal and enforcement contracts", () => {
 		const abuseSpecs = PRODUCT_METRIC_SPECS.filter((spec) =>
 			[7013, 7040].includes(spec.questionNumber),

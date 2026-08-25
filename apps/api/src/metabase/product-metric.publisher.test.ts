@@ -117,6 +117,35 @@ describe("product feedback metric registry", () => {
 		).toBe(7007);
 	});
 
+	test("registers separate governed abuse signal and enforcement contracts", () => {
+		const abuseSpecs = PRODUCT_METRIC_SPECS.filter((spec) =>
+			[7013, 7040].includes(spec.questionNumber),
+		);
+
+		expect(abuseSpecs.map((spec) => spec.sourceExternalId)).toEqual([
+			"cron:abuse:operational-detail",
+			"cron:abuse:enforcement-detail",
+		]);
+		expect(
+			abuseSpecs.map(
+				(spec) => spec.pendingChecks?.map((check) => check.name) ?? [],
+			),
+		).toEqual([
+			[
+				"headline_reconciliation",
+				"ring_definition_review",
+				"sensitive_detail_boundary",
+				"rolling_window_watermark",
+			],
+			[
+				"ban_action_parity",
+				"fresh_ring_definition",
+				"sensitive_detail_boundary",
+				"rolling_window_watermark",
+			],
+		]);
+	});
+
 	test("records the confirmed Product KPI contract", () => {
 		const professional = PRODUCT_METRIC_SPECS.find(
 			(spec) => spec.questionNumber === 15,

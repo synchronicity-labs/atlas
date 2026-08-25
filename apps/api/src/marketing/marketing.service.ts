@@ -9,8 +9,10 @@ import {
 } from "@crm/db";
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { InjectDatabase } from "../database/database.constants";
+import { abuseRingVerificationChecks } from "../metabase/abuse-detail-verification";
 import { ProductMetricPublisher } from "../metabase/product-metric.publisher";
 import { TinybirdEligibilityService } from "../metabase/tinybird-eligibility.service";
+import { exitSurveyVerificationChecks } from "./exit-survey-verification";
 import { MarketingClient, type MarketingResult } from "./marketing.client";
 import { marketingConfig } from "./marketing.config";
 import { marketingQuery } from "./marketing.contracts";
@@ -18,7 +20,6 @@ import {
 	applyPosthogPersonPolicy,
 	productUserEligibilityPredicate,
 } from "./marketing.eligibility";
-import { exitSurveyVerificationChecks } from "./exit-survey-verification";
 
 const FRESHNESS_MS = 8 * 60 * 60 * 1000;
 
@@ -180,7 +181,10 @@ export class MarketingService {
 					question.sourceExternalId === "cron:exit-survey:weekly-summary" &&
 					parsedQuery.source === "posthog"
 						? exitSurveyVerificationChecks(result, parsedQuery.query)
-						: undefined;
+						: question.sourceExternalId === "cron:abuse:operational-detail" &&
+								parsedQuery.source === "posthog"
+							? abuseRingVerificationChecks(result, parsedQuery.query)
+							: undefined;
 				const payload = { columns: result.columns, rows: result.rows };
 				const contentHash = hash(payload);
 				const externalId =

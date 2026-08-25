@@ -15,6 +15,7 @@ import { ConfigService } from "@nestjs/config";
 import type { EnvironmentVariables } from "../config/env.validation";
 import { InjectDatabase } from "../database/database.constants";
 import { assertReadOnlyQuery } from "../questions/read-only-query";
+import { abuseEnforcementVerificationChecks } from "./abuse-detail-verification";
 import { atlasQuestionName } from "./atlas-question-name";
 import {
 	type MetabaseCardResponse,
@@ -1210,6 +1211,16 @@ export class MetabaseService {
 								databaseExternalId: question.databaseExternalId,
 							});
 							const verificationChecks: PublishVerificationCheck[] = [];
+							if (
+								question.sourceExternalId === "cron:abuse:enforcement-detail"
+							) {
+								verificationChecks.push(
+									...abuseEnforcementVerificationChecks(
+										result,
+										executedQueryText,
+									),
+								);
+							}
 							if (question.number === 1004 && version.sourceCardExternalId) {
 								const sourceQuestionNumber = Number(
 									version.sourceCardExternalId,

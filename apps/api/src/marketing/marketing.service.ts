@@ -18,6 +18,7 @@ import {
 	applyPosthogPersonPolicy,
 	productUserEligibilityPredicate,
 } from "./marketing.eligibility";
+import { exitSurveyVerificationChecks } from "./exit-survey-verification";
 
 const FRESHNESS_MS = 8 * 60 * 60 * 1000;
 
@@ -175,6 +176,11 @@ export class MarketingService {
 				const result = await client.execute(
 					this.withProductUserEligibility(parsedQuery, eligibility.predicate),
 				);
+				const verificationChecks =
+					question.sourceExternalId === "cron:exit-survey:weekly-summary" &&
+					parsedQuery.source === "posthog"
+						? exitSurveyVerificationChecks(result, parsedQuery.query)
+						: undefined;
 				const payload = { columns: result.columns, rows: result.rows };
 				const contentHash = hash(payload);
 				const externalId =
@@ -216,6 +222,7 @@ export class MarketingService {
 						scope: eligibility.scope,
 						policy: eligibility.policy,
 					},
+					verificationChecks,
 				});
 				await this.db.question.update({
 					where: { id: question.id },

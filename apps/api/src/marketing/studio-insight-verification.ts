@@ -29,7 +29,11 @@ export function studioInsightVerificationChecks(
 		.map((column) => column.name.toLowerCase())
 		.filter((name) => FORBIDDEN_COLUMNS.has(name));
 	const watermarks = rows.map((row) => String(row.data_through));
-	const oneWatermark = watermarks.length > 0 && new Set(watermarks).size === 1;
+	const windowEnds = rows.map((row) => String(row.window_end));
+	const oneWatermark =
+		watermarks.length > 0 &&
+		new Set(watermarks).size === 1 &&
+		windowEnds.every((value, index) => value === watermarks[index]);
 
 	return [
 		check(
@@ -65,8 +69,11 @@ export function studioInsightVerificationChecks(
 		check(
 			"complete_period_watermark",
 			oneWatermark,
-			"All rows must use one complete-period data-through boundary.",
-			{ dataThrough: [...new Set(watermarks)] },
+			"All rows must use one complete observation window and matching data-through boundary.",
+			{
+				dataThrough: [...new Set(watermarks)],
+				windowEnd: [...new Set(windowEnds)],
+			},
 		),
 	];
 }

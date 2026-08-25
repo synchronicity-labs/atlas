@@ -15,6 +15,7 @@ const FORBIDDEN_OUTPUTS = new Set([
 export function productGapVerificationChecks(
 	result: MetabaseResult,
 	queryText: string,
+	referenceNow = new Date(),
 ): PublishVerificationCheck[] {
 	const rows = records(result);
 	const summaries = rows.filter((row) => row.section === "summary");
@@ -63,10 +64,16 @@ export function productGapVerificationChecks(
 	const expectedMonths = dataThrough
 		? [shiftMonth(dataThrough, -2), shiftMonth(dataThrough, -1)]
 		: [];
+	const currentCutoff = new Date(
+		Date.UTC(referenceNow.getUTCFullYear(), referenceNow.getUTCMonth(), 1),
+	)
+		.toISOString()
+		.slice(0, 10);
 	const completeMonthBoundary =
 		summaries.length === 2 &&
 		watermarks.size === 1 &&
 		dataThrough !== null &&
+		dataThrough === currentCutoff &&
 		new Set(summaryMonths).size === 2 &&
 		summaryMonths.join(",") === expectedMonths.join(",") &&
 		rows.every((row) =>

@@ -35,6 +35,8 @@ const columns = [
 	"data_through",
 ];
 
+const referenceNow = new Date("2026-08-25T12:00:00.000Z");
+
 describe("product gap verification", () => {
 	test("verifies two complete reconciled months", () => {
 		const checks = productGapVerificationChecks(
@@ -94,6 +96,7 @@ describe("product gap verification", () => {
 				],
 			]),
 			query,
+			referenceNow,
 		);
 
 		expect(checks.map((check) => check.status)).toEqual(
@@ -158,6 +161,7 @@ describe("product gap verification", () => {
 				],
 			]),
 			query,
+			referenceNow,
 		);
 
 		expect(
@@ -186,6 +190,7 @@ describe("product gap verification", () => {
 				],
 			),
 			query,
+			referenceNow,
 		);
 
 		expect(
@@ -204,6 +209,23 @@ describe("product gap verification", () => {
 		const checks = productGapVerificationChecks(
 			result(columns, staleRows),
 			query,
+			referenceNow,
+		);
+
+		expect(
+			checks.find((check) => check.name === "complete_month_boundary")?.status,
+		).toBe(VerificationStatus.FAILED);
+	});
+
+	test("rejects a future self-reported watermark", () => {
+		const futureRows = [
+			["summary", "2026-07-01", "all", 80, 100, 20, 80, 0, 0, "2026-09-01"],
+			["summary", "2026-08-01", "all", 90, 120, 30, 90, 0, 0, "2026-09-01"],
+		];
+		const checks = productGapVerificationChecks(
+			result(columns, futureRows),
+			query,
+			referenceNow,
 		);
 
 		expect(

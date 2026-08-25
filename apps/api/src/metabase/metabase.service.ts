@@ -59,6 +59,7 @@ const USERS_SCOPE = "product-users";
 const FRESHNESS_MS = 8 * 60 * 60 * 1000;
 const ATLAS_DASHBOARD_CONCURRENCY = 4;
 const ATLAS_DASHBOARD_QUESTION_BATCH_SIZE = 2;
+const ATLAS_REPORT_DASHBOARD_QUESTION_BATCH_SIZE = 4;
 const USER_PERSIST_CHUNK_SIZE = 100;
 const STRIPE_COUNTRY_PERSIST_CHUNK_SIZE = 500;
 
@@ -1086,9 +1087,13 @@ export class MetabaseService {
 			update: {},
 		});
 		const batchOffset = cursor.period === period ? cursor.offset : 0;
+		const questionBatchSize =
+			number === 1
+				? ATLAS_DASHBOARD_QUESTION_BATCH_SIZE
+				: ATLAS_REPORT_DASHBOARD_QUESTION_BATCH_SIZE;
 		const questionsToProcess = questions.slice(
 			batchOffset,
-			batchOffset + ATLAS_DASHBOARD_QUESTION_BATCH_SIZE,
+			batchOffset + questionBatchSize,
 		);
 		const supersededAt = new Date();
 		await this.db.syncRun.updateMany({

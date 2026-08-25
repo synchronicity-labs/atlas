@@ -16,6 +16,8 @@ import { questionExplanation } from "../questions/question-explanation";
 import { SalesService } from "../sales/sales.service";
 import type { dashboardLayoutInput } from "./atlas-dashboards.contracts";
 
+export type AtlasRefreshMode = "all" | "native" | "metabase";
+
 @Injectable()
 export class AtlasDashboardsService {
 	constructor(
@@ -28,7 +30,7 @@ export class AtlasDashboardsService {
 		private readonly economics: EconomicsService,
 	) {}
 
-	async refresh(number: number) {
+	async refresh(number: number, mode: AtlasRefreshMode = "all") {
 		const dashboard = await this.db.dashboard.findUnique({
 			where: { number },
 			select: {
@@ -76,23 +78,25 @@ export class AtlasDashboardsService {
 			errors?: Array<{ number: number; message: string }>;
 		}> = [];
 		const sourceSyncs: Array<Promise<(typeof results)[number]>> = [];
-		if (sourceKeys.has("hubspot:crm")) {
-			sourceSyncs.push(this.sales.syncDashboard(number));
+		if (mode !== "metabase") {
+			if (sourceKeys.has("hubspot:crm")) {
+				sourceSyncs.push(this.sales.syncDashboard(number));
+			}
+			if (sourceKeys.has("atlas:economics")) {
+				sourceSyncs.push(this.economics.syncDashboard(number));
+			}
+			if (sourceKeys.has("atlas:billing-experiment")) {
+				sourceSyncs.push(this.billingExperiment.syncDashboard(number));
+			}
+			if (sourceKeys.has("atlas:marketing") || sourceKeys.has("atlas:abuse")) {
+				sourceSyncs.push(this.marketing.syncDashboard(number));
+			}
+			if (sourceKeys.has("atlas:product-eligibility")) {
+				sourceSyncs.push(this.productEligibility.syncDashboard(number));
+			}
+			results.push(...(await Promise.all(sourceSyncs)));
 		}
-		if (sourceKeys.has("atlas:economics")) {
-			sourceSyncs.push(this.economics.syncDashboard(number));
-		}
-		if (sourceKeys.has("atlas:billing-experiment")) {
-			sourceSyncs.push(this.billingExperiment.syncDashboard(number));
-		}
-		if (sourceKeys.has("atlas:marketing") || sourceKeys.has("atlas:abuse")) {
-			sourceSyncs.push(this.marketing.syncDashboard(number));
-		}
-		if (sourceKeys.has("atlas:product-eligibility")) {
-			sourceSyncs.push(this.productEligibility.syncDashboard(number));
-		}
-		results.push(...(await Promise.all(sourceSyncs)));
-		if (connectors.has(DataSourceKind.METABASE)) {
+		if (mode !== "native" && connectors.has(DataSourceKind.METABASE)) {
 			for (const sourceId of metabaseSourceIds) {
 				const metabase = await this.metabase.syncAtlasDashboard(
 					number,

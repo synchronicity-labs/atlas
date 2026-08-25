@@ -80,4 +80,50 @@ describe("Atlas dashboard refresh", () => {
 			errors: [],
 		});
 	});
+
+	test("can refresh native sources without starting Metabase", async () => {
+		const findUnique = mock().mockResolvedValue({
+			cards: [
+				{
+					question: {
+						id: "metabase",
+						number: 1,
+						connector: DataSourceKind.METABASE,
+						sourceId: "metabase-source",
+						source: { key: "metabase:sync" },
+					},
+				},
+				{
+					question: {
+						id: "billing",
+						number: 2,
+						connector: DataSourceKind.ATLAS,
+						sourceId: "billing-source",
+						source: { key: "atlas:billing-experiment" },
+					},
+				},
+			],
+		});
+		const metabaseSync = mock();
+		const billingSync = mock().mockResolvedValue({
+			cardsProcessed: 1,
+			snapshotsCreated: 1,
+			errors: [],
+		});
+		const service = new AtlasDashboardsService(
+			{ dashboard: { findUnique } } as unknown as Db,
+			{ syncDashboard: billingSync } as never,
+			{ syncAtlasDashboard: metabaseSync } as never,
+			{ syncDashboard: mock() } as never,
+			{ syncDashboard: mock() } as never,
+			{ syncDashboard: mock() } as never,
+			{ syncDashboard: mock() } as never,
+		);
+
+		const result = await service.refresh(1, "native");
+
+		expect(billingSync).toHaveBeenCalledWith(1);
+		expect(metabaseSync).not.toHaveBeenCalled();
+		expect(result.completed).toBe(true);
+	});
 });

@@ -7,11 +7,15 @@ import {
 	ParseIntPipe,
 	Post,
 	ServiceUnavailableException,
+	UnprocessableEntityException,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { AllowAnonymous } from "@thallesp/nestjs-better-auth";
 import type { EnvironmentVariables } from "../config/env.validation";
-import { AtlasDashboardsService } from "./atlas-dashboards.service";
+import {
+	AtlasDashboardsService,
+	type AtlasRefreshMode,
+} from "./atlas-dashboards.service";
 
 @Controller("internal/sync/atlas")
 export class AtlasDashboardSyncController {
@@ -42,15 +46,44 @@ export class AtlasDashboardSyncController {
 		return this.run(number, authorization);
 	}
 
-	private run(number: number, authorization?: string) {
+	@Get(":number/:mode")
+	@AllowAnonymous()
+	viaModeGet(
+		@Param("number", ParseIntPipe) number: number,
+		@Param("mode") mode: string,
+		@Headers("authorization") authorization?: string,
+	) {
+		return this.run(number, authorization, refreshMode(mode));
+	}
+
+	@Post(":number/:mode")
+	@AllowAnonymous()
+	viaModePost(
+		@Param("number", ParseIntPipe) number: number,
+		@Param("mode") mode: string,
+		@Headers("authorization") authorization?: string,
+	) {
+		return this.run(number, authorization, refreshMode(mode));
+	}
+
+	private run(
+		number: number,
+		authorization?: string,
+		mode: AtlasRefreshMode = "all",
+	) {
 		if (!this.secret) {
 			throw new ServiceUnavailableException("Sync is not configured.");
 		}
 		if (!timingSafeEquals(authorization ?? "", `Bearer ${this.secret}`)) {
 			throw new ForbiddenException();
 		}
-		return this.dashboards.refresh(number);
+		return this.dashboards.refresh(number, mode);
 	}
+}
+
+function refreshMode(value: string): AtlasRefreshMode {
+	if (value === "native" || value === "metabase") return value;
+	throw new UnprocessableEntityException("Unknown Atlas refresh mode.");
 }
 
 function timingSafeEquals(a: string, b: string): boolean {

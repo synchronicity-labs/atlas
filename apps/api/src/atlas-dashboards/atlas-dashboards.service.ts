@@ -91,7 +91,8 @@ export class AtlasDashboardsService {
 			if (
 				sourceKeys.has("atlas:marketing") ||
 				sourceKeys.has("atlas:abuse") ||
-				sourceKeys.has("atlas:lipsync")
+				sourceKeys.has("atlas:lipsync") ||
+				sourceKeys.has("atlas:studio-product")
 			) {
 				sourceSyncs.push(this.marketing.syncDashboard(number));
 			}

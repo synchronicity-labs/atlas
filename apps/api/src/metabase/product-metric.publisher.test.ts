@@ -140,6 +140,34 @@ describe("product feedback metric registry", () => {
 		);
 	});
 
+	test("registers separate weekly and monthly Studio delivery contracts", () => {
+		const studio = PRODUCT_METRIC_SPECS.filter((spec) =>
+			[7002, 7041].includes(spec.questionNumber),
+		);
+
+		expect(studio.map((spec) => spec.sourceExternalId)).toEqual([
+			"cron:studio:period-kpis",
+			"cron:studio:monthly-period-kpis",
+		]);
+		expect(studio.map((spec) => spec.grain)).toEqual(["WEEK", "MONTH"]);
+		expect(
+			studio.map((spec) => spec.pendingChecks?.map((check) => check.name)),
+		).toEqual(
+			Array(2).fill([
+				"period_population",
+				"logo_movement_reconciliation",
+				"organization_deduplication",
+				"premiere_exclusion",
+				"sensitive_detail_boundary",
+				"complete_period_watermark",
+			]),
+		);
+		expect(preferredAtlasQuestionNumber("cron:studio:period-kpis")).toBe(7002);
+		expect(
+			preferredAtlasQuestionNumber("cron:studio:monthly-period-kpis"),
+		).toBe(7041);
+	});
+
 	test("registers separate governed abuse signal and enforcement contracts", () => {
 		const abuseSpecs = PRODUCT_METRIC_SPECS.filter((spec) =>
 			[7013, 7040].includes(spec.questionNumber),

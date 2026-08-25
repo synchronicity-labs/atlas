@@ -166,4 +166,44 @@ describe("Atlas dashboard refresh", () => {
 			errors: [],
 		});
 	});
+
+	test("routes the Studio dashboard through the governed marketing reader", async () => {
+		const findUnique = mock().mockResolvedValue({
+			cards: [
+				{
+					question: {
+						id: "studio-weekly",
+						number: 234,
+						connector: DataSourceKind.ATLAS,
+						sourceId: "studio-source",
+						source: { key: "atlas:studio-product" },
+					},
+				},
+			],
+		});
+		const marketingSync = mock().mockResolvedValue({
+			cardsProcessed: 2,
+			snapshotsCreated: 2,
+			errors: [],
+		});
+		const service = new AtlasDashboardsService(
+			{ dashboard: { findUnique } } as unknown as Db,
+			{ syncDashboard: mock() } as never,
+			{ syncAtlasDashboard: mock() } as never,
+			{ syncDashboard: mock() } as never,
+			{ syncDashboard: marketingSync } as never,
+			{ syncDashboard: mock() } as never,
+			{ syncDashboard: mock() } as never,
+		);
+
+		const result = await service.refresh(11, "native");
+
+		expect(marketingSync).toHaveBeenCalledWith(11);
+		expect(result).toMatchObject({
+			cardsProcessed: 2,
+			snapshotsCreated: 2,
+			completed: true,
+			errors: [],
+		});
+	});
 });

@@ -699,6 +699,160 @@ export const PRODUCT_METRIC_SPECS: ProductMetricSpec[] = [
 		cadenceMinutes: 8 * 60,
 	},
 	{
+		questionNumber: 7002,
+		sourceExternalId: "cron:studio:period-kpis",
+		key: "product.studio_weekly_delivery_logo_movement",
+		name: "Weekly Studio delivery and logo movement",
+		description:
+			"Complete UTC weeks of Studio generated hours, subscription-created events, and organization-deduplicated new, expanded, churned, and net logo movement.",
+		grain: FactGrain.WEEK,
+		source: {
+			key: "posthog:product-events",
+			kind: DataSourceKind.POSTHOG,
+			label: "PostHog Studio product and subscription events",
+		},
+		eventTimeField: "period_start",
+		businessDefinition: {
+			entity: "studio_product_week",
+			population: "clean product users under the shared Atlas policy",
+			periodAssignment: "event timestamp in complete Monday-Sunday UTC weeks",
+			generatedHours:
+				"successful generation output_duration_secs divided by 3600, excluding source=plugin_premiere",
+			newSubscriptions:
+				"unique subscription_created source-event UUIDs; this is not a logo count",
+			logoIdentity:
+				"non-empty properties.organization_id, counted at most once per movement type and period",
+			expansionRule:
+				"subscription_updated moves from old_plan to a higher plan in hobbyist, creator, growth, scale order",
+			netLogoGrowth: "new_logos + expanded_logos - churned_logos",
+			separateQuestions:
+				"activation speed, signup conversion, retention, and booked delivery commitments are not inferred by this question",
+		},
+		computation: {
+			aggregate: "weekly_delivery_and_organization_movement",
+			outputs: [
+				"generated_hours",
+				"new_subscriptions",
+				"new_logos",
+				"expanded_logos",
+				"churned_logos",
+				"net_logo_growth",
+			],
+		},
+		requiresCrossSourceEligibility: true,
+		pendingChecks: [
+			{
+				name: "period_population",
+				reason:
+					"Every published period must contain non-negative Studio delivery and subscription movement values.",
+			},
+			{
+				name: "logo_movement_reconciliation",
+				reason:
+					"Net logo growth must reconcile to new, expanded, and churned organizations.",
+			},
+			{
+				name: "organization_deduplication",
+				reason:
+					"Each organization must count once per movement type and the expansion rule must use old_plan.",
+			},
+			{
+				name: "premiere_exclusion",
+				reason: "Generated hours must exclude Premiere-plugin activity.",
+			},
+			{
+				name: "sensitive_detail_boundary",
+				reason:
+					"The result must exclude person, customer, user, organization, and email identifiers.",
+			},
+			{
+				name: "complete_period_watermark",
+				reason:
+					"Every row must use one explicit UTC boundary and exclude the current partial period.",
+			},
+		],
+		ownerTeam: "Productions",
+		createdBy: "atlas-studio-product-registry",
+		cadenceMinutes: 8 * 60,
+	},
+	{
+		questionNumber: 7041,
+		sourceExternalId: "cron:studio:monthly-period-kpis",
+		key: "product.studio_monthly_delivery_logo_movement",
+		name: "Monthly Studio delivery and logo movement",
+		description:
+			"Complete UTC months of Studio generated hours, subscription-created events, and organization-deduplicated new, expanded, churned, and net logo movement.",
+		grain: FactGrain.MONTH,
+		source: {
+			key: "posthog:product-events",
+			kind: DataSourceKind.POSTHOG,
+			label: "PostHog Studio product and subscription events",
+		},
+		eventTimeField: "period_start",
+		businessDefinition: {
+			entity: "studio_product_month",
+			population: "clean product users under the shared Atlas policy",
+			periodAssignment: "event timestamp in complete UTC calendar months",
+			generatedHours:
+				"successful generation output_duration_secs divided by 3600, excluding source=plugin_premiere",
+			newSubscriptions:
+				"unique subscription_created source-event UUIDs; this is not a logo count",
+			logoIdentity:
+				"non-empty properties.organization_id, counted at most once per movement type and period",
+			expansionRule:
+				"subscription_updated moves from old_plan to a higher plan in hobbyist, creator, growth, scale order",
+			netLogoGrowth: "new_logos + expanded_logos - churned_logos",
+			separateQuestions:
+				"activation speed, signup conversion, retention, and booked delivery commitments are not inferred by this question",
+		},
+		computation: {
+			aggregate: "monthly_delivery_and_organization_movement",
+			outputs: [
+				"generated_hours",
+				"new_subscriptions",
+				"new_logos",
+				"expanded_logos",
+				"churned_logos",
+				"net_logo_growth",
+			],
+		},
+		requiresCrossSourceEligibility: true,
+		pendingChecks: [
+			{
+				name: "period_population",
+				reason:
+					"Every published period must contain non-negative Studio delivery and subscription movement values.",
+			},
+			{
+				name: "logo_movement_reconciliation",
+				reason:
+					"Net logo growth must reconcile to new, expanded, and churned organizations.",
+			},
+			{
+				name: "organization_deduplication",
+				reason:
+					"Each organization must count once per movement type and the expansion rule must use old_plan.",
+			},
+			{
+				name: "premiere_exclusion",
+				reason: "Generated hours must exclude Premiere-plugin activity.",
+			},
+			{
+				name: "sensitive_detail_boundary",
+				reason:
+					"The result must exclude person, customer, user, organization, and email identifiers.",
+			},
+			{
+				name: "complete_period_watermark",
+				reason:
+					"Every row must use one explicit UTC boundary and exclude the current partial period.",
+			},
+		],
+		ownerTeam: "Productions",
+		createdBy: "atlas-studio-product-registry",
+		cadenceMinutes: 8 * 60,
+	},
+	{
 		questionNumber: 7007,
 		sourceExternalId: "cron:exit-survey:weekly-summary",
 		key: "customer_success.exit_survey_cancellation_coverage",

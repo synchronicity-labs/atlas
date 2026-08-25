@@ -348,6 +348,48 @@ const ACTIVE_PILOT_CHECKS = [
 	},
 ];
 
+const STUDIO_BOOKING_CHECKS = [
+	{
+		name: "deal_stage_mapping",
+		reason: "The question must use only the Sync Studios pipeline.",
+	},
+	{
+		name: "crm_booking_parity",
+		reason:
+			"Every Studio booking row must retain its CRM account, stage, owner, and non-negative closed-won amount.",
+	},
+	{
+		name: "operational_boundary",
+		reason:
+			"The CRM metric must not invent contract execution or delivery state.",
+	},
+	{
+		name: "oldest_complete_watermark",
+		reason: "Every row must expose one current HubSpot source watermark.",
+	},
+];
+
+const ENTERPRISE_BOOKING_CHECKS = [
+	{
+		name: "deal_stage_mapping",
+		reason: "The question must use only the Sync Enterprise pipeline.",
+	},
+	{
+		name: "crm_booking_parity",
+		reason:
+			"Every period must expose non-negative CRM pipeline, booked value, and unmapped-deal counts.",
+	},
+	{
+		name: "contract_classification_boundary",
+		reason:
+			"The CRM metric must not classify signed contracts, net-new logos, or renewals without verified contract evidence.",
+	},
+	{
+		name: "oldest_complete_watermark",
+		reason: "Every row must expose one current HubSpot source watermark.",
+	},
+];
+
 const HUBSPOT_REPORT_SPECS: ProductMetricSpec[] = [
 	{
 		questionNumber: 7006,
@@ -387,6 +429,75 @@ const HUBSPOT_REPORT_SPECS: ProductMetricSpec[] = [
 		},
 		requiresCrossSourceEligibility: false,
 		pendingChecks: ACTIVE_PILOT_CHECKS,
+		ownerTeam: "Sales",
+		createdBy: "atlas-sales-registry",
+		cadenceMinutes: 6 * 60,
+	},
+	{
+		questionNumber: 7015,
+		sourceExternalId: "cron:studio:bookings-pipeline",
+		key: "sales.studio_crm_bookings",
+		name: "Studio CRM booked revenue",
+		description:
+			"Studio closed-won value by CRM close month, account, stage, and owner. Contract execution and delivery state remain unavailable until governed sources exist.",
+		grain: FactGrain.MONTH,
+		source: {
+			key: "hubspot:crm",
+			kind: DataSourceKind.HUBSPOT,
+			label: "HubSpot CRM",
+		},
+		eventTimeField: "period_start",
+		businessDefinition: {
+			entity: "studio_closed_won_deal",
+			periodAssignment: "HubSpot close date in UTC calendar month",
+			bookedValue: "HubSpot amount on a closed-won Sync Studios deal",
+			contractStatus: "unavailable",
+			deliveryStatus: "unavailable",
+			separation:
+				"CRM booked value is not product revenue, cash, signed-contract value, or delivery value",
+		},
+		computation: {
+			aggregate: "crm_closed_won_detail",
+			outputs: ["account", "stage", "closed_won_value", "owner"],
+		},
+		requiresCrossSourceEligibility: false,
+		pendingChecks: STUDIO_BOOKING_CHECKS,
+		ownerTeam: "Productions",
+		createdBy: "atlas-sales-registry",
+		cadenceMinutes: 6 * 60,
+	},
+	{
+		questionNumber: 7016,
+		sourceExternalId: "cron:enterprise:bookings-pipeline",
+		key: "sales.enterprise_crm_pipeline_and_bookings",
+		name: "Enterprise CRM pipeline and bookings",
+		description:
+			"Enterprise pipeline created and closed-won booked value by UTC month. Signed-contract, net-new-logo, and renewal classifications remain unavailable until verified contract evidence exists.",
+		grain: FactGrain.MONTH,
+		source: {
+			key: "hubspot:crm",
+			kind: DataSourceKind.HUBSPOT,
+			label: "HubSpot CRM",
+		},
+		eventTimeField: "period_start",
+		businessDefinition: {
+			entity: "enterprise_deal_month",
+			periodAssignment:
+				"pipeline by HubSpot create date and bookings by HubSpot close date in UTC calendar month",
+			pipelineCreated: "sum of deal amounts created in the month",
+			bookedValue: "sum of closed-won deal amounts closed in the month",
+			signedContracts: "unavailable",
+			netNewLogos: "unavailable",
+			renewals: "unavailable",
+			separation:
+				"CRM booked value is not product usage revenue, invoices, cash, or signed-contract value",
+		},
+		computation: {
+			aggregate: "crm_monthly_pipeline_and_bookings",
+			outputs: ["pipeline_created", "booked_value", "unmapped_deals"],
+		},
+		requiresCrossSourceEligibility: false,
+		pendingChecks: ENTERPRISE_BOOKING_CHECKS,
 		ownerTeam: "Sales",
 		createdBy: "atlas-sales-registry",
 		cadenceMinutes: 6 * 60,

@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { buildActivePilotSummary } from "@crm/db/hubspot-sales";
+import {
+	buildActivePilotSummary,
+	buildEnterpriseBookings,
+	buildStudioBookings,
+} from "@crm/db/hubspot-sales";
 
 describe("HubSpot active pilot summary", () => {
 	test("reconciles the current registry and weekly entries and exits", () => {
@@ -93,6 +97,88 @@ describe("HubSpot active pilot summary", () => {
 				1,
 				"Alpha; Beta",
 				"Ada; Grace",
+				"2026-08-26T11:45:00.000Z",
+			],
+		]);
+	});
+});
+
+describe("HubSpot bookings reports", () => {
+	const pipeline = {
+		id: "pipeline",
+		label: "Pipeline",
+		order: 0,
+		stages: new Map([
+			["won", { label: "Closed won", order: 0, probability: 1 }],
+			["open", { label: "Evaluation", order: 1, probability: 0.5 }],
+		]),
+	};
+	const common = {
+		now: new Date("2026-08-26T12:00:00.000Z"),
+		dataThrough: new Date("2026-08-26T11:45:00.000Z"),
+		months: 1,
+		pipelines: new Map([["pipeline", pipeline]]),
+		owners: new Map([["owner", "Ada"]]),
+		companies: new Map([["company", "Acme"]]),
+	};
+	const deals = [
+		{
+			id: "won",
+			name: "Acme order",
+			companyIds: ["company"],
+			pipelineId: "pipeline",
+			stageId: "won",
+			ownerId: "owner",
+			amount: 1_000,
+			isWon: true,
+			createdAt: new Date("2026-08-03T00:00:00.000Z"),
+			closeAt: new Date("2026-08-05T00:00:00.000Z"),
+		},
+		{
+			id: "open",
+			name: "Unmapped evaluation",
+			companyIds: [],
+			pipelineId: "pipeline",
+			stageId: "open",
+			ownerId: "owner",
+			amount: 500,
+			isWon: false,
+			createdAt: new Date("2026-08-10T00:00:00.000Z"),
+			closeAt: null,
+		},
+	];
+
+	test("keeps Studio booked value separate from unavailable delivery state", () => {
+		const result = buildStudioBookings({ ...common, deals });
+
+		expect(result.rows).toEqual([
+			[
+				"2026-08-01T00:00:00.000Z",
+				"Acme",
+				"Closed won",
+				1_000,
+				null,
+				"Ada",
+				"unavailable",
+				"unavailable",
+				"2026-08-26T11:45:00.000Z",
+			],
+		]);
+	});
+
+	test("reports enterprise pipeline and bookings without inventing contract classifications", () => {
+		const result = buildEnterpriseBookings({ ...common, deals });
+
+		expect(result.rows).toEqual([
+			[
+				"2026-08-01T00:00:00.000Z",
+				"all enterprise stages",
+				1_500,
+				1_000,
+				null,
+				null,
+				null,
+				1,
 				"2026-08-26T11:45:00.000Z",
 			],
 		]);

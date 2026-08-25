@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { MetricTrustStatus, SourceStatus } from "@crm/db";
 import {
+	metricFreshnessDeadline,
 	resolveFreshness,
 	resolveMetricFreshness,
 } from "../src/atlas-query/atlas-query.service";
@@ -75,5 +76,18 @@ describe("Atlas agent query freshness", () => {
 			status: "error",
 			reason: "The source sync is failing.",
 		});
+	});
+
+	test("uses the earlier source or metric snapshot deadline", () => {
+		const computedAt = new Date("2026-08-25T00:00:00.000Z");
+		const sourceDeadline = new Date("2026-08-25T12:00:00.000Z");
+
+		expect(
+			metricFreshnessDeadline({
+				sourceDeadline,
+				computedAt,
+				maxLagSeconds: [36_000, 28_800],
+			}),
+		).toEqual(new Date("2026-08-25T08:00:00.000Z"));
 	});
 });

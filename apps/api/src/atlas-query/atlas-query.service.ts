@@ -436,7 +436,13 @@ export class AtlasQueryService {
 					historical,
 					trustStatus: metricSnapshot?.trustStatus,
 					state: question.source?.state,
-					deadline: question.source?.freshnessDeadlineAt,
+					deadline: metricFreshnessDeadline({
+						sourceDeadline: question.source?.freshnessDeadlineAt,
+						computedAt: metricSnapshot?.computedAt,
+						maxLagSeconds: question.metricVersion?.inputs
+							.filter((input) => input.required)
+							.map((input) => input.maxLagSeconds),
+					}),
 				})
 			: resolveFreshness({
 					hasResult: snapshot != null,
@@ -632,4 +638,23 @@ export function resolveMetricFreshness(input: {
 		};
 	}
 	return { status: "fresh" as const, reason: null };
+}
+
+export function metricFreshnessDeadline(input: {
+	sourceDeadline?: Date | null;
+	computedAt?: Date;
+	maxLagSeconds?: number[];
+}): Date | null {
+	const lagSeconds = input.maxLagSeconds?.filter(
+		(value) => Number.isFinite(value) && value > 0,
+	);
+	const snapshotDeadline =
+		input.computedAt && lagSeconds && lagSeconds.length > 0
+			? new Date(input.computedAt.getTime() + Math.min(...lagSeconds) * 1000)
+			: null;
+	if (!input.sourceDeadline) return snapshotDeadline;
+	if (!snapshotDeadline) return input.sourceDeadline;
+	return input.sourceDeadline < snapshotDeadline
+		? input.sourceDeadline
+		: snapshotDeadline;
 }

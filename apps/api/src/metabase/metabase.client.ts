@@ -70,6 +70,8 @@ export type MetabasePreviewInput = {
 	databaseExternalId: string | null;
 };
 
+const PREVIEW_TIMEOUT_MS = 75_000;
+
 function freshFieldReference(value: unknown): unknown {
 	const field = structuredClone(value) as [
 		unknown,
@@ -191,6 +193,7 @@ export class MetabaseClient {
 		const raw = await this.request<DatasetResponse>("/api/dataset", {
 			method: "POST",
 			body: JSON.stringify({ ...datasetQuery, parameters: [] }),
+			signal: AbortSignal.timeout(PREVIEW_TIMEOUT_MS),
 		});
 		const result = this.result(raw);
 

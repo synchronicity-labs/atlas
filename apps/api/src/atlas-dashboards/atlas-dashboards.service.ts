@@ -75,15 +75,6 @@ export class AtlasDashboardsService {
 			remainingQuestions?: number;
 			errors?: Array<{ number: number; message: string }>;
 		}> = [];
-		if (connectors.has(DataSourceKind.METABASE)) {
-			for (const sourceId of metabaseSourceIds) {
-				const metabase = await this.metabase.syncAtlasDashboard(
-					number,
-					sourceId,
-				);
-				results.push(metabase);
-			}
-		}
 		if (sourceKeys.has("hubspot:crm")) {
 			results.push(await this.sales.syncDashboard(number));
 		}
@@ -98,6 +89,15 @@ export class AtlasDashboardsService {
 		}
 		if (sourceKeys.has("atlas:product-eligibility")) {
 			results.push(await this.productEligibility.syncDashboard(number));
+		}
+		if (connectors.has(DataSourceKind.METABASE)) {
+			for (const sourceId of metabaseSourceIds) {
+				const metabase = await this.metabase.syncAtlasDashboard(
+					number,
+					sourceId,
+				);
+				results.push(metabase);
+			}
 		}
 		if (results.length === 0) {
 			return {

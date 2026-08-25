@@ -69,6 +69,9 @@ describe("Atlas dashboard refresh", () => {
 		expect(metabaseSync).toHaveBeenNthCalledWith(1, 1, "source-one");
 		expect(metabaseSync).toHaveBeenNthCalledWith(2, 1, "source-two");
 		expect(billingSync).toHaveBeenCalledWith(1);
+		expect(billingSync.mock.invocationCallOrder[0]).toBeLessThan(
+			metabaseSync.mock.invocationCallOrder[0] ?? Number.MAX_SAFE_INTEGER,
+		);
 		expect(result).toMatchObject({
 			cardsProcessed: 14,
 			snapshotsCreated: 14,

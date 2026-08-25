@@ -58,7 +58,7 @@ const DASHBOARD_SCOPE = "product-scoreboard";
 const USERS_SCOPE = "product-users";
 const FRESHNESS_MS = 8 * 60 * 60 * 1000;
 const ATLAS_DASHBOARD_CONCURRENCY = 4;
-const ATLAS_DASHBOARD_QUESTION_BATCH_SIZE = 12;
+const ATLAS_DASHBOARD_QUESTION_BATCH_SIZE = 6;
 const USER_PERSIST_CHUNK_SIZE = 100;
 const STRIPE_COUNTRY_PERSIST_CHUNK_SIZE = 500;
 
@@ -1107,6 +1107,7 @@ export class MetabaseService {
 
 		let cardsProcessed = 0;
 		let snapshotsCreated = 0;
+		const errors: Array<{ number: number; message: string }> = [];
 		try {
 			const client = new MetabaseClient(config);
 			const generalEligibility = questions.some(
@@ -1144,116 +1145,126 @@ export class MetabaseService {
 				);
 				const createdCounts = await Promise.all(
 					batch.map(async (question) => {
-						const version = question.versions[0];
-						if (!version) {
-							throw new Error(
-								`Question ${question.number} has no saved version.`,
-							);
-						}
-						const language =
-							version.queryLanguage === QueryLanguage.SQL ? "SQL" : "MBQL";
-						assertReadOnlyQuery(language, version.queryText);
-						const revenueDoor =
-							language === "SQL" && usesRevenueDoorPolicy(question.number)
-								? await this.revenueDoorPolicy.compileForQuestion(
-										question.number,
-										version.queryText,
+						try {
+							const version = question.versions[0];
+							if (!version) {
+								throw new Error(
+									`Question ${question.number} has no saved version.`,
+								);
+							}
+							const language =
+								version.queryLanguage === QueryLanguage.SQL ? "SQL" : "MBQL";
+							assertReadOnlyQuery(language, version.queryText);
+							const revenueDoor =
+								language === "SQL" && usesRevenueDoorPolicy(question.number)
+									? await this.revenueDoorPolicy.compileForQuestion(
+											question.number,
+											version.queryText,
+										)
+									: null;
+							const classifiedQueryText =
+								revenueDoor?.queryText ?? version.queryText;
+							assertReadOnlyQuery(language, classifiedQueryText);
+							const eligibility = usesSubscribedRevenueEligibility(
+								question.number,
+								question.name,
+								classifiedQueryText,
+							)
+								? revenueEligibility
+								: generalEligibility;
+							const governed = eligibility
+								? this.tinybirdEligibility.govern(
+										classifiedQueryText,
+										question.databaseExternalId,
+										eligibility,
 									)
 								: null;
-						const classifiedQueryText =
-							revenueDoor?.queryText ?? version.queryText;
-						assertReadOnlyQuery(language, classifiedQueryText);
-						const eligibility = usesSubscribedRevenueEligibility(
-							question.number,
-							question.name,
-							classifiedQueryText,
-						)
-							? revenueEligibility
-							: generalEligibility;
-						const governed = eligibility
-							? this.tinybirdEligibility.govern(
-									classifiedQueryText,
-									question.databaseExternalId,
-									eligibility,
-								)
-							: null;
-						const executedQueryText =
-							language === "SQL" && governed
-								? governed.queryText
-								: classifiedQueryText;
-						const result = await client.preview({
-							language,
-							queryText: executedQueryText,
-							databaseExternalId: question.databaseExternalId,
-						});
-						const verificationChecks: PublishVerificationCheck[] = [];
-						if (question.number === 1004 && version.sourceCardExternalId) {
-							const sourceQuestionNumber = Number(version.sourceCardExternalId);
-							try {
-								const [savedQuestion, rawReplacement] = await Promise.all([
-									client.cardResult(sourceQuestionNumber),
-									client.preview({
-										language,
-										queryText: version.queryText,
-										databaseExternalId: question.databaseExternalId,
-									}),
-								]);
-								verificationChecks.push(
-									comparePaidCustomerRevenue(
-										savedQuestion,
-										rawReplacement,
-										sourceQuestionNumber,
-									),
+							const executedQueryText =
+								language === "SQL" && governed
+									? governed.queryText
+									: classifiedQueryText;
+							const result = await client.preview({
+								language,
+								queryText: executedQueryText,
+								databaseExternalId: question.databaseExternalId,
+							});
+							const verificationChecks: PublishVerificationCheck[] = [];
+							if (question.number === 1004 && version.sourceCardExternalId) {
+								const sourceQuestionNumber = Number(
+									version.sourceCardExternalId,
 								);
-							} catch (error) {
-								verificationChecks.push({
-									name: "saved_question_equivalence",
-									status: VerificationStatus.PENDING,
-									reason: `Atlas could not compare Metabase question ${sourceQuestionNumber}: ${error instanceof Error ? error.message : String(error)}`,
-									referenceValue: { sourceQuestionNumber },
-								});
+								try {
+									const [savedQuestion, rawReplacement] = await Promise.all([
+										client.cardResult(sourceQuestionNumber),
+										client.preview({
+											language,
+											queryText: version.queryText,
+											databaseExternalId: question.databaseExternalId,
+										}),
+									]);
+									verificationChecks.push(
+										comparePaidCustomerRevenue(
+											savedQuestion,
+											rawReplacement,
+											sourceQuestionNumber,
+										),
+									);
+								} catch (error) {
+									verificationChecks.push({
+										name: "saved_question_equivalence",
+										status: VerificationStatus.PENDING,
+										reason: `Atlas could not compare Metabase question ${sourceQuestionNumber}: ${error instanceof Error ? error.message : String(error)}`,
+										referenceValue: { sourceQuestionNumber },
+									});
+								}
 							}
+							const publishEligibility = governed
+								? { applied: governed.applied, ...governed.eligibility }
+								: undefined;
+							const payload = { columns: result.columns, rows: result.rows };
+							const contentHash = stableHash(payload);
+							const externalId =
+								question.sourceExternalId ?? `question:${question.number}`;
+							const capturedAt = new Date();
+							const created = await this.db.resultSnapshot.createMany({
+								data: [
+									{
+										idempotencyKey: `atlas:dashboard:${number}:${externalId}:v${version.version}:${period}:${contentHash}`,
+										sourceId,
+										dashboardExternalId: `atlas:${number}`,
+										questionExternalId: externalId,
+										reportingPeriod: period,
+										capturedAt,
+										contentHash,
+										columns: json(result.columns),
+										rows: json(result.rows),
+										rowCount: result.rows.length,
+									},
+								],
+								skipDuplicates: true,
+							});
+							await this.productMetrics.publish({
+								question,
+								version: { ...version, queryText: executedQueryText },
+								result,
+								syncRunId: run.id,
+								capturedAt,
+								eligibility: publishEligibility,
+								revenueDoorPolicy: revenueDoor?.evidence,
+								verificationChecks,
+							});
+							await this.db.question.update({
+								where: { id: question.id },
+								data: { lastCheckedAt: capturedAt },
+							});
+							return created.count;
+						} catch (error) {
+							errors.push({
+								number: question.number,
+								message: error instanceof Error ? error.message : String(error),
+							});
+							return 0;
 						}
-						const publishEligibility = governed
-							? { applied: governed.applied, ...governed.eligibility }
-							: undefined;
-						const payload = { columns: result.columns, rows: result.rows };
-						const contentHash = stableHash(payload);
-						const externalId =
-							question.sourceExternalId ?? `question:${question.number}`;
-						const capturedAt = new Date();
-						const created = await this.db.resultSnapshot.createMany({
-							data: [
-								{
-									idempotencyKey: `atlas:dashboard:${number}:${externalId}:v${version.version}:${period}:${contentHash}`,
-									sourceId,
-									dashboardExternalId: `atlas:${number}`,
-									questionExternalId: externalId,
-									reportingPeriod: period,
-									capturedAt,
-									contentHash,
-									columns: json(result.columns),
-									rows: json(result.rows),
-									rowCount: result.rows.length,
-								},
-							],
-							skipDuplicates: true,
-						});
-						await this.productMetrics.publish({
-							question,
-							version: { ...version, queryText: executedQueryText },
-							result,
-							syncRunId: run.id,
-							capturedAt,
-							eligibility: publishEligibility,
-							revenueDoorPolicy: revenueDoor?.evidence,
-							verificationChecks,
-						});
-						await this.db.question.update({
-							where: { id: question.id },
-							data: { lastCheckedAt: capturedAt },
-						});
-						return created.count;
 					}),
 				);
 				cardsProcessed += batch.length;
@@ -1285,6 +1296,7 @@ export class MetabaseService {
 							nextOffset,
 							questionCount: questions.length,
 							remainingQuestions,
+							errors,
 						}),
 					},
 				}),
@@ -1301,6 +1313,7 @@ export class MetabaseService {
 							nextOffset,
 							questionCount: questions.length,
 							remainingQuestions,
+							errors,
 							eligibilityCapturedAt:
 								generalEligibility?.capturedAt.toISOString() ?? null,
 							eligibilityHash: generalEligibility?.contentHash ?? null,
@@ -1313,9 +1326,17 @@ export class MetabaseService {
 				this.db.dataSource.update({
 					where: { id: sourceId },
 					data: {
-						state: completed ? SourceStatus.HEALTHY : SourceStatus.SYNCING,
+						state:
+							errors.length === questionsToProcess.length && errors.length > 0
+								? SourceStatus.ERROR
+								: completed
+									? SourceStatus.HEALTHY
+									: SourceStatus.SYNCING,
 						lastSyncAt: completed ? finishedAt : undefined,
-						lastError: null,
+						lastError:
+							errors.length > 0
+								? `${errors.length} question(s) failed in the latest batch.`
+								: null,
 						freshnessDeadlineAt: completed
 							? new Date(Date.now() + FRESHNESS_MS)
 							: undefined,
@@ -1331,6 +1352,7 @@ export class MetabaseService {
 				completed,
 				nextOffset,
 				remainingQuestions,
+				errors,
 			};
 		} catch (error) {
 			await this.fail(run.id, sourceId, error);

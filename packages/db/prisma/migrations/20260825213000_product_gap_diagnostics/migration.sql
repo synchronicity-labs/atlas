@@ -181,10 +181,7 @@ INSERT INTO "dashboardTab" (
   6,
   'atlas:product:scoreboard'
 )
-ON CONFLICT ("dashboardId", "number") DO UPDATE SET
-  "name" = EXCLUDED."name",
-  "position" = EXCLUDED."position",
-  "sourceExternalId" = EXCLUDED."sourceExternalId";
+ON CONFLICT ("dashboardId", "number") DO NOTHING;
 
 INSERT INTO "dashboardCard" (
   "id", "dashboardId", "tabId", "questionId", "position",
@@ -193,7 +190,12 @@ INSERT INTO "dashboardCard" (
 ) VALUES (
   'atlas-product-card-activated-not-professional',
   (SELECT "id" FROM "dashboard" WHERE "number" = 1),
-  'atlas-product-tab-diagnostics',
+  (
+    SELECT "id"
+    FROM "dashboardTab"
+    WHERE "dashboardId" = (SELECT "id" FROM "dashboard" WHERE "number" = 1)
+      AND "number" = 8
+  ),
   'atlas-cron-question-activated-not-professional',
   0,
   0,

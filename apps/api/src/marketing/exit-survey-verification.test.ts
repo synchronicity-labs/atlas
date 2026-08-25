@@ -1,5 +1,5 @@
-import { VerificationStatus } from "@crm/db";
 import { describe, expect, test } from "bun:test";
+import { VerificationStatus } from "@crm/db";
 import type { MetabaseResult } from "../metabase/metabase.client";
 import { exitSurveyVerificationChecks } from "./exit-survey-verification";
 
@@ -107,7 +107,9 @@ describe("exit survey verification", () => {
 
 	test("fails when response groups do not reconcile", () => {
 		const rows = structuredClone(validRows);
-		rows[0]![8] = 2;
+		const firstRow = rows[0];
+		if (!firstRow) throw new Error("Expected a fixture row.");
+		firstRow[8] = 2;
 
 		const checks = exitSurveyVerificationChecks(
 			result(rows),
@@ -155,6 +157,21 @@ describe("exit survey verification", () => {
 		).text();
 
 		expect(migration).toContain("totals.week_start");
+	});
+
+	test("scans PostHog events once for the weekly result", async () => {
+		const migration = await Bun.file(
+			new URL(
+				"../../../../packages/db/prisma/migrations/20260825220000_optimize_exit_survey_posthog_query/migration.sql",
+				import.meta.url,
+			),
+		).text();
+
+		expect(migration.match(/from events\b/g)).toHaveLength(1);
+		expect(migration).toContain(
+			"sum(cancellation_requests) over (partition by week_start)",
+		);
+		expect(migration).toContain("where reason != '__dismissal__'");
 	});
 
 	test("fails when the query requests customer detail", () => {

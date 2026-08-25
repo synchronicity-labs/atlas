@@ -119,7 +119,7 @@ describe("product feedback metric registry", () => {
 
 	test("registers separate governed abuse signal and enforcement contracts", () => {
 		const abuseSpecs = PRODUCT_METRIC_SPECS.filter((spec) =>
-			[7013, 7017].includes(spec.questionNumber),
+			[7013, 7040].includes(spec.questionNumber),
 		);
 
 		expect(abuseSpecs.map((spec) => spec.sourceExternalId)).toEqual([

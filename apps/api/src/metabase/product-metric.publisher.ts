@@ -673,7 +673,7 @@ export const PRODUCT_METRIC_SPECS: ProductMetricSpec[] = [
 		cadenceMinutes: 8 * 60,
 	},
 	{
-		questionNumber: 7017,
+		questionNumber: 7040,
 		sourceExternalId: "cron:abuse:enforcement-detail",
 		key: "security.signup_abuse_enforcement_detail",
 		name: "Signup abuse enforcement and fresh-ring diagnostics",

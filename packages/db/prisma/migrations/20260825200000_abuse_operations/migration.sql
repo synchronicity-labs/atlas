@@ -128,7 +128,7 @@ INSERT INTO "question" (
   "status", "purpose", "createdAt", "updatedAt"
 ) VALUES (
   'atlas-abuse-question-enforcement-detail',
-  7017,
+  7040,
   270,
   'Signup abuse enforcement and fresh-ring diagnostics',
   'Rolling 24-hour learned blocks and bans, seven-day auto-bans, fresh IP-ring candidates and verdicts, and generation distribution for newly banned users. Operational domain, IP, and user-agent values may appear. Email, customer, user, and organization identifiers are not published.',

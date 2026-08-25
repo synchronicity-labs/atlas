@@ -55,12 +55,23 @@ export function productGapVerificationChecks(
 		);
 	});
 	const watermarks = new Set(rows.map((row) => String(row.data_through)));
-	const summaryMonths = summaries.map((row) => String(row.month)).sort();
+	const dataThrough = utcMonthStart([...watermarks][0]);
+	const summaryMonths = summaries
+		.map((row) => utcMonthStart(row.month))
+		.filter((month): month is string => Boolean(month))
+		.sort();
+	const expectedMonths = dataThrough
+		? [shiftMonth(dataThrough, -2), shiftMonth(dataThrough, -1)]
+		: [];
 	const completeMonthBoundary =
 		summaries.length === 2 &&
 		watermarks.size === 1 &&
-		Number.isFinite(Date.parse([...watermarks][0] ?? "")) &&
-		summaryMonths.every((month) => Number.isFinite(Date.parse(month))) &&
+		dataThrough !== null &&
+		new Set(summaryMonths).size === 2 &&
+		summaryMonths.join(",") === expectedMonths.join(",") &&
+		rows.every((row) =>
+			expectedMonths.includes(utcMonthStart(row.month) ?? ""),
+		) &&
 		normalizedQuery.includes("generationcreatedat >= addmonths(cutoff, -2)") &&
 		normalizedQuery.includes("generationcreatedat < cutoff");
 
@@ -112,6 +123,30 @@ function records(result: MetabaseResult): Row[] {
 function number(value: unknown): number {
 	const parsed = Number(value);
 	return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function utcMonthStart(value: unknown): string | null {
+	const parsed = new Date(String(value ?? ""));
+	if (!Number.isFinite(parsed.getTime())) return null;
+	if (
+		parsed.getUTCDate() !== 1 ||
+		parsed.getUTCHours() !== 0 ||
+		parsed.getUTCMinutes() !== 0 ||
+		parsed.getUTCSeconds() !== 0 ||
+		parsed.getUTCMilliseconds() !== 0
+	) {
+		return null;
+	}
+	return parsed.toISOString().slice(0, 10);
+}
+
+function shiftMonth(month: string, offset: number): string {
+	const parsed = new Date(`${month}T00:00:00.000Z`);
+	return new Date(
+		Date.UTC(parsed.getUTCFullYear(), parsed.getUTCMonth() + offset, 1),
+	)
+		.toISOString()
+		.slice(0, 10);
 }
 
 function check(

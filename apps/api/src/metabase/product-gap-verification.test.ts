@@ -192,4 +192,22 @@ describe("product gap verification", () => {
 			checks.find((check) => check.name === "canonical_population")?.status,
 		).toBe(VerificationStatus.FAILED);
 	});
+
+	test("rejects duplicate or stale reporting months", () => {
+		const monthRows = (month: string) => [
+			["summary", month, "all", 80, 100, 20, 80, 0, 0, "2026-08-01"],
+			["plan", month, "creator", 80, 0, 0, 0, 0, 0, "2026-08-01"],
+			["generation_bucket", month, "3-4", 80, 0, 0, 0, 300, 0, "2026-08-01"],
+			["output_hour_bucket", month, "<0.25h", 80, 0, 0, 0, 0, 5, "2026-08-01"],
+		];
+		const staleRows = [...monthRows("2026-05-01"), ...monthRows("2026-06-01")];
+		const checks = productGapVerificationChecks(
+			result(columns, staleRows),
+			query,
+		);
+
+		expect(
+			checks.find((check) => check.name === "complete_month_boundary")?.status,
+		).toBe(VerificationStatus.FAILED);
+	});
 });

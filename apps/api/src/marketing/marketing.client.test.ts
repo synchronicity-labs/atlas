@@ -64,15 +64,17 @@ describe("MarketingClient PostHog retries", () => {
 	});
 
 	test("rejects a truncated PostHog result", async () => {
-		const fetchMock = mock().mockResolvedValue(
-			new Response(
-				JSON.stringify({
-					columns: ["day"],
-					types: [["day", "DateTime"]],
-					results: Array.from({ length: 100 }, (_, index) => [index]),
-					hasMore: true,
-				}),
-				{ status: 200 },
+		const fetchMock = mock().mockImplementation(() =>
+			Promise.resolve(
+				new Response(
+					JSON.stringify({
+						columns: ["day"],
+						types: [["day", "DateTime"]],
+						results: Array.from({ length: 100 }, (_, index) => [index]),
+						hasMore: true,
+					}),
+					{ status: 200 },
+				),
 			),
 		);
 		globalThis.fetch = fetchMock as unknown as typeof fetch;
@@ -87,5 +89,130 @@ describe("MarketingClient PostHog retries", () => {
 			"PostHog query result was truncated. Add an explicit LIMIT to the saved query.",
 		);
 		expect(fetchMock).toHaveBeenCalledTimes(1);
+	});
+
+	test("normalizes native time-to-convert periods", async () => {
+		const fetchMock = mock()
+			.mockResolvedValueOnce(
+				new Response(
+					JSON.stringify({
+						results: {
+							average_conversion_time: 600,
+							median_conversion_time: 480,
+							bins: [
+								[100, 8],
+								[200, 2],
+							],
+						},
+					}),
+				),
+			)
+			.mockResolvedValueOnce(
+				new Response(
+					JSON.stringify({
+						results: {
+							average_conversion_time: 540,
+							median_conversion_time: 420,
+							bins: [[100, 12]],
+						},
+					}),
+				),
+			);
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+		const result = await new MarketingClient(config, 0).execute({
+			source: "posthog_insight",
+			mode: "funnel_time_to_convert",
+			grain: "week",
+			periods: 2,
+			query: {
+				kind: "InsightVizNode",
+				source: { kind: "FunnelsQuery", filterTestAccounts: true },
+			},
+		});
+
+		expect(result.rows.map((row) => row.slice(1, 4))).toEqual([
+			[480, 600, 10],
+			[420, 540, 12],
+		]);
+		expect(fetchMock).toHaveBeenCalledTimes(2);
+		const firstBody = JSON.parse(
+			String((fetchMock.mock.calls[0]?.[1] as RequestInit | undefined)?.body),
+		);
+		expect(firstBody.query.source.dateRange.explicitDate).toBe(true);
+	});
+
+	test("normalizes native signup conversion counts and rate", async () => {
+		const fetchMock = mock().mockImplementation(() =>
+			Promise.resolve(
+				new Response(
+					JSON.stringify({
+						results: [
+							{ name: "user_signed_up", count: 200 },
+							{ name: "subscription_created", count: 25 },
+						],
+					}),
+				),
+			),
+		);
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+		const result = await new MarketingClient(config, 0).execute({
+			source: "posthog_insight",
+			mode: "funnel_conversion",
+			grain: "month",
+			periods: 2,
+			query: {
+				kind: "InsightVizNode",
+				source: { kind: "FunnelsQuery", filterTestAccounts: true },
+			},
+		});
+
+		expect(result.rows.map((row) => row.slice(1, 4))).toEqual([
+			[200, 25, 12.5],
+			[200, 25, 12.5],
+		]);
+	});
+
+	test("publishes only mature native week-two retention cohorts", async () => {
+		const fetchMock = mock().mockResolvedValue(
+			new Response(
+				JSON.stringify({
+					results: [
+						{
+							date: "2020-07-27T00:00:00-04:00",
+							values: [
+								{ label: "Week 0", count: 800 },
+								{ label: "Week 1", count: 120 },
+								{ label: "Week 2", count: 80 },
+							],
+						},
+						{
+							date: "2999-08-17T00:00:00-04:00",
+							values: [
+								{ label: "Week 0", count: 700 },
+								{ label: "Week 1", count: 100 },
+								{ label: "Week 2", count: 0 },
+							],
+						},
+					],
+				}),
+			),
+		);
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+		const result = await new MarketingClient(config, 0).execute({
+			source: "posthog_insight",
+			mode: "retention_week_two",
+			grain: "week",
+			periods: 6,
+			query: {
+				kind: "InsightVizNode",
+				source: { kind: "RetentionQuery", filterTestAccounts: true },
+			},
+		});
+
+		expect(result.rows).toHaveLength(1);
+		expect(result.rows[0]?.slice(1, 4)).toEqual([800, 80, 10]);
 	});
 });

@@ -20,7 +20,9 @@ export type HubspotSalesQuery = {
 		| "closed-deal-vs-goal"
 		| "lead-pipeline-status"
 		| "lead-stage-view"
-		| "active-pilot-summary";
+		| "active-pilot-summary"
+		| "studio-bookings"
+		| "enterprise-bookings";
 	months: number;
 	pipelines: string[];
 };
@@ -99,7 +101,10 @@ function monthIso(key: string): string {
 }
 
 function monthKeys(count: number): string[] {
-	const now = new Date();
+	return monthKeysAt(new Date(), count);
+}
+
+function monthKeysAt(now: Date, count: number): string[] {
 	return Array.from({ length: count }, (_, index) => {
 		const value = new Date(
 			Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - count + index + 1, 1),
@@ -149,6 +154,8 @@ export function parseHubspotSalesQuery(value: unknown): HubspotSalesQuery {
 		"lead-pipeline-status",
 		"lead-stage-view",
 		"active-pilot-summary",
+		"studio-bookings",
+		"enterprise-bookings",
 	]);
 	if (!supported.has(report))
 		throw new Error("Unsupported HubSpot sales report.");
@@ -335,6 +342,112 @@ function pilotStage(
 	return ["pilot", "pilot/poc"].includes(label?.trim().toLowerCase() ?? "");
 }
 
+type BookingDeal = Pick<
+	DealRecord,
+	| "id"
+	| "name"
+	| "companyIds"
+	| "pipelineId"
+	| "stageId"
+	| "ownerId"
+	| "amount"
+	| "isWon"
+	| "createdAt"
+	| "closeAt"
+>;
+
+type BookingInput = {
+	now: Date;
+	dataThrough: Date;
+	months: number;
+	deals: BookingDeal[];
+	pipelines: Map<string, PipelineRecord>;
+	owners: Map<string, string>;
+	companies: Map<string, string>;
+};
+
+export function buildStudioBookings(input: BookingInput): HubspotSalesResult {
+	const periods = monthKeysAt(input.now, input.months);
+	const rows = input.deals
+		.filter(
+			(deal) =>
+				deal.isWon && deal.closeAt && periods.includes(monthKey(deal.closeAt)),
+		)
+		.sort(
+			(left, right) =>
+				(left.closeAt?.getTime() ?? 0) - (right.closeAt?.getTime() ?? 0) ||
+				right.amount - left.amount,
+		)
+		.map((deal) => [
+			monthIso(monthKey(deal.closeAt as Date)),
+			input.companies.get(deal.companyIds[0] ?? "") ?? deal.name,
+			input.pipelines.get(deal.pipelineId)?.stages.get(deal.stageId)?.label ??
+				deal.stageId,
+			deal.amount,
+			null,
+			input.owners.get(deal.ownerId) ?? "Unassigned",
+			"unavailable",
+			"unavailable",
+			input.dataThrough.toISOString(),
+		]);
+	return {
+		columns: [
+			column("period_start", "Period start", "type/DateTime"),
+			column("account", "Account", "type/Text"),
+			column("stage", "Stage", "type/Text"),
+			column("closed_won_value", "Closed won value", "type/Decimal"),
+			column("in_delivery_value", "In delivery value", "type/Decimal"),
+			column("owner", "Owner", "type/Text"),
+			column("contract_status", "Contract status", "type/Text"),
+			column("delivery_status", "Delivery status", "type/Text"),
+			column("data_through", "Data through", "type/DateTime"),
+		],
+		rows,
+	};
+}
+
+export function buildEnterpriseBookings(
+	input: BookingInput,
+): HubspotSalesResult {
+	const periods = monthKeysAt(input.now, input.months);
+	return {
+		columns: [
+			column("period_start", "Period start", "type/DateTime"),
+			column("stage", "Stage", "type/Text"),
+			column("pipeline_created", "Pipeline created", "type/Decimal"),
+			column("booked_value", "Booked value", "type/Decimal"),
+			column("signed_contracts", "Signed contracts", "type/Integer"),
+			column("net_new_logos", "Net new logos", "type/Integer"),
+			column("renewals", "Renewals", "type/Integer"),
+			column("unmapped_deals", "Unmapped deals", "type/Integer"),
+			column("data_through", "Data through", "type/DateTime"),
+		],
+		rows: periods.map((period) => {
+			const created = input.deals.filter(
+				(deal) => deal.createdAt && monthKey(deal.createdAt) === period,
+			);
+			const won = input.deals.filter(
+				(deal) =>
+					deal.isWon && deal.closeAt && monthKey(deal.closeAt) === period,
+			);
+			return [
+				monthIso(period),
+				"all enterprise stages",
+				created.reduce((sum, deal) => sum + deal.amount, 0),
+				won.reduce((sum, deal) => sum + deal.amount, 0),
+				null,
+				null,
+				null,
+				created.filter(
+					(deal) =>
+						!deal.companyIds[0] || !input.companies.has(deal.companyIds[0]),
+				).length,
+				input.dataThrough.toISOString(),
+			];
+		}),
+	};
+}
+
 function metricRows(payload: unknown): Array<{
 	key: string;
 	label: string;
@@ -470,6 +583,28 @@ export async function executeHubspotSalesQuery(
 		return buildActivePilotSummary({
 			now: new Date(),
 			dataThrough: source.lastSyncAt ?? new Date(0),
+			deals,
+			pipelines,
+			owners,
+			companies,
+		});
+	}
+	if (query.report === "studio-bookings") {
+		return buildStudioBookings({
+			now: new Date(),
+			dataThrough: source.lastSyncAt ?? new Date(0),
+			months: query.months,
+			deals,
+			pipelines,
+			owners,
+			companies,
+		});
+	}
+	if (query.report === "enterprise-bookings") {
+		return buildEnterpriseBookings({
+			now: new Date(),
+			dataThrough: source.lastSyncAt ?? new Date(0),
+			months: query.months,
 			deals,
 			pipelines,
 			owners,

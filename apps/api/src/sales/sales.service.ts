@@ -7,6 +7,10 @@ import {
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { InjectDatabase } from "../database/database.constants";
 import { ProductMetricPublisher } from "../metabase/product-metric.publisher";
+import {
+	enterpriseBookingsVerificationChecks,
+	studioBookingsVerificationChecks,
+} from "./bookings-verification";
 import { pilotSummaryVerificationChecks } from "./pilot-verification";
 
 const SOURCE_KEY = "hubspot:crm";
@@ -134,16 +138,21 @@ export class SalesService {
 					],
 					skipDuplicates: true,
 				});
+				const verificationChecks =
+					parsedQuery.report === "active-pilot-summary"
+						? pilotSummaryVerificationChecks(result, parsedQuery)
+						: parsedQuery.report === "studio-bookings"
+							? studioBookingsVerificationChecks(result, parsedQuery)
+							: parsedQuery.report === "enterprise-bookings"
+								? enterpriseBookingsVerificationChecks(result, parsedQuery)
+								: [];
 				await this.metricPublisher.publish({
 					question,
 					version,
 					result,
 					syncRunId: run.id,
 					capturedAt,
-					verificationChecks:
-						parsedQuery.report === "active-pilot-summary"
-							? pilotSummaryVerificationChecks(result, parsedQuery)
-							: [],
+					verificationChecks,
 				});
 				await this.db.question.update({
 					where: { id: question.id },

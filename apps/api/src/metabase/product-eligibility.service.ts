@@ -686,7 +686,8 @@ where k.id::text in (${ids.map(sqlString).join(", ")})`,
   min(timestamp) as deleted_at
 from events
 where event = 'user_account_deleted'
-group by distinct_id`,
+group by distinct_id
+limit 10000`,
 		});
 		for (const values of result.rows) {
 			const ownerUserId = text(values[0]);

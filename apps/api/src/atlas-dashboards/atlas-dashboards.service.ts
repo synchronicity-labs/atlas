@@ -75,21 +75,23 @@ export class AtlasDashboardsService {
 			remainingQuestions?: number;
 			errors?: Array<{ number: number; message: string }>;
 		}> = [];
+		const sourceSyncs: Array<Promise<(typeof results)[number]>> = [];
 		if (sourceKeys.has("hubspot:crm")) {
-			results.push(await this.sales.syncDashboard(number));
+			sourceSyncs.push(this.sales.syncDashboard(number));
 		}
 		if (sourceKeys.has("atlas:economics")) {
-			results.push(await this.economics.syncDashboard(number));
+			sourceSyncs.push(this.economics.syncDashboard(number));
 		}
 		if (sourceKeys.has("atlas:billing-experiment")) {
-			results.push(await this.billingExperiment.syncDashboard(number));
+			sourceSyncs.push(this.billingExperiment.syncDashboard(number));
 		}
 		if (sourceKeys.has("atlas:marketing") || sourceKeys.has("atlas:abuse")) {
-			results.push(await this.marketing.syncDashboard(number));
+			sourceSyncs.push(this.marketing.syncDashboard(number));
 		}
 		if (sourceKeys.has("atlas:product-eligibility")) {
-			results.push(await this.productEligibility.syncDashboard(number));
+			sourceSyncs.push(this.productEligibility.syncDashboard(number));
 		}
+		results.push(...(await Promise.all(sourceSyncs)));
 		if (connectors.has(DataSourceKind.METABASE)) {
 			for (const sourceId of metabaseSourceIds) {
 				const metabase = await this.metabase.syncAtlasDashboard(

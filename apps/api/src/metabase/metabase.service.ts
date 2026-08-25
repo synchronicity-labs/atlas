@@ -58,7 +58,7 @@ const DASHBOARD_SCOPE = "product-scoreboard";
 const USERS_SCOPE = "product-users";
 const FRESHNESS_MS = 8 * 60 * 60 * 1000;
 const ATLAS_DASHBOARD_CONCURRENCY = 4;
-const ATLAS_DASHBOARD_QUESTION_BATCH_SIZE = 6;
+const ATLAS_DASHBOARD_QUESTION_BATCH_SIZE = 3;
 const USER_PERSIST_CHUNK_SIZE = 100;
 const STRIPE_COUNTRY_PERSIST_CHUNK_SIZE = 500;
 
@@ -1110,7 +1110,7 @@ export class MetabaseService {
 		const errors: Array<{ number: number; message: string }> = [];
 		try {
 			const client = new MetabaseClient(config);
-			const generalEligibility = questions.some(
+			const needsGeneralEligibility = questions.some(
 				(question) =>
 					["34", "166"].includes(question.databaseExternalId ?? "") &&
 					question.versions[0]?.queryLanguage === QueryLanguage.SQL &&
@@ -1119,10 +1119,8 @@ export class MetabaseService {
 						question.name,
 						question.versions[0]?.queryText,
 					),
-			)
-				? await this.tinybirdEligibility.current()
-				: null;
-			const revenueEligibility = questions.some(
+			);
+			const needsRevenueEligibility = questions.some(
 				(question) =>
 					["34", "166"].includes(question.databaseExternalId ?? "") &&
 					question.versions[0]?.queryLanguage === QueryLanguage.SQL &&
@@ -1131,9 +1129,13 @@ export class MetabaseService {
 						question.name,
 						question.versions[0]?.queryText,
 					),
-			)
-				? await this.tinybirdEligibility.currentForRevenue()
-				: null;
+			);
+			const [generalEligibility, revenueEligibility] = await Promise.all([
+				needsGeneralEligibility ? this.tinybirdEligibility.current() : null,
+				needsRevenueEligibility
+					? this.tinybirdEligibility.currentForRevenue()
+					: null,
+			]);
 			for (
 				let offset = 0;
 				offset < questionsToProcess.length;

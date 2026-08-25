@@ -21,6 +21,7 @@ import {
 	applyPosthogPersonPolicy,
 	productUserEligibilityPredicate,
 } from "./marketing.eligibility";
+import { studioPeriodVerificationChecks } from "./studio-period-verification";
 
 const FRESHNESS_MS = 8 * 60 * 60 * 1000;
 
@@ -185,10 +186,16 @@ export class MarketingService {
 						: question.sourceExternalId === "cron:lipsync:product-funnel" &&
 								parsedQuery.source === "posthog"
 							? lipsyncFunnelVerificationChecks(result, parsedQuery.query)
-							: question.sourceExternalId === "cron:abuse:operational-detail" &&
+							: (question.sourceExternalId === "cron:studio:period-kpis" ||
+										question.sourceExternalId ===
+											"cron:studio:monthly-period-kpis") &&
 									parsedQuery.source === "posthog"
-								? abuseRingVerificationChecks(result, parsedQuery.query)
-								: undefined;
+								? studioPeriodVerificationChecks(result, parsedQuery.query)
+								: question.sourceExternalId ===
+											"cron:abuse:operational-detail" &&
+										parsedQuery.source === "posthog"
+									? abuseRingVerificationChecks(result, parsedQuery.query)
+									: undefined;
 				const payload = { columns: result.columns, rows: result.rows };
 				const contentHash = hash(payload);
 				const externalId =

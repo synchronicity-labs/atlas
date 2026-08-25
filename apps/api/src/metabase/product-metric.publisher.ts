@@ -362,6 +362,76 @@ export const PRODUCT_METRIC_SPECS: ProductMetricSpec[] = [
 		requiresCrossSourceEligibility: true,
 	},
 	{
+		questionNumber: 242,
+		sourceExternalId: "cron:product:activated-not-professional",
+		key: "product.activated_not_professional_diagnostics",
+		name: "Activated organizations not yet professional",
+		description:
+			"Latest and previous complete-month V2 self-serve organizations that meet the activation rule but remain below the professional accrued-value threshold, with governed plan, generation, output-hour, and model breakdowns.",
+		grain: FactGrain.MONTH,
+		source: {
+			key: "tinybird:usage",
+			kind: DataSourceKind.TINYBIRD,
+			label: "TinyBird product usage",
+		},
+		eventTimeField: "generationCreatedAt",
+		businessDefinition: {
+			entity: "organization_month",
+			population: "v2_self_serve",
+			periodAssignment: "generationCreatedAt in UTC",
+			activated:
+				"3+ completed generations created on a non-free plan across 2+ distinct UTC days",
+			professional:
+				"the activated definition plus $100+ accrued value in the same UTC month",
+			gap: "activated organizations that do not meet the professional definition",
+			planAttribution: "latest generation plan snapshot in the UTC month",
+			modelAttribution:
+				"distinct gap organizations per model; model rows are multi-select and do not sum to the gap total",
+			outputHours:
+				"sum of generationRecord.outputMediaLength seconds divided by 3600",
+		},
+		computation: {
+			aggregate: "organization_month_diagnostic",
+			outputs: [
+				"activated_organizations",
+				"professional_organizations",
+				"gap_organizations",
+				"plan",
+				"generation_bucket",
+				"output_hour_bucket",
+				"model",
+			],
+		},
+		requiresCrossSourceEligibility: true,
+		pendingChecks: [
+			{
+				name: "canonical_population",
+				reason:
+					"Confirm the V2 self-serve plan population and identifier-free output boundary.",
+			},
+			{
+				name: "activation_definition",
+				reason:
+					"Confirm the three-generation and two-active-day activation rule and summary reconciliation.",
+			},
+			{
+				name: "professional_definition",
+				reason:
+					"Confirm the activation rule plus $100 accrued-value professional threshold.",
+			},
+			{
+				name: "breakdown_reconciliation",
+				reason:
+					"Confirm that plan, generation, and output-hour buckets reconcile independently to the gap population.",
+			},
+			{
+				name: "complete_month_boundary",
+				reason:
+					"Confirm exactly two complete UTC months under one half-open watermark.",
+			},
+		],
+	},
+	{
 		questionNumber: 18,
 		sourceExternalId: "8167",
 		key: "product.m3_accrued_ndr",

@@ -27,6 +27,7 @@ import {
 	type MetabaseResult,
 } from "./metabase.client";
 import { type MetabaseConfig, metabaseConfig } from "./metabase.config";
+import { productGapVerificationChecks } from "./product-gap-verification";
 import {
 	ProductMetricPublisher,
 	type PublishVerificationCheck,
@@ -1227,6 +1228,14 @@ export class MetabaseService {
 										result,
 										executedQueryText,
 									),
+								);
+							}
+							if (
+								question.sourceExternalId ===
+								"cron:product:activated-not-professional"
+							) {
+								verificationChecks.push(
+									...productGapVerificationChecks(result, executedQueryText),
 								);
 							}
 							if (question.number === 1004 && version.sourceCardExternalId) {

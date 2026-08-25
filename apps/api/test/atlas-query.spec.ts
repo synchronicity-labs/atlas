@@ -40,10 +40,13 @@ describe("Atlas agent query freshness", () => {
 				hasResult: true,
 				historical: false,
 				trustStatus: MetricTrustStatus.PENDING,
+				state: SourceStatus.HEALTHY,
+				deadline: new Date(Date.now() + 60_000),
 			}),
 		).toEqual({
 			status: "pending",
-			reason: "The result exists, but one or more required checks are still open.",
+			reason:
+				"The result exists, but one or more required checks are still open.",
 		});
 	});
 
@@ -53,7 +56,24 @@ describe("Atlas agent query freshness", () => {
 				hasResult: true,
 				historical: false,
 				trustStatus: MetricTrustStatus.VERIFIED,
+				state: SourceStatus.HEALTHY,
+				deadline: new Date(Date.now() + 60_000),
 			}),
 		).toEqual({ status: "fresh", reason: null });
+	});
+
+	test("does not call a verified metric fresh when its source is failing", () => {
+		expect(
+			resolveMetricFreshness({
+				hasResult: true,
+				historical: false,
+				trustStatus: MetricTrustStatus.VERIFIED,
+				state: SourceStatus.ERROR,
+				deadline: new Date(Date.now() + 60_000),
+			}),
+		).toEqual({
+			status: "error",
+			reason: "The source sync is failing.",
+		});
 	});
 });

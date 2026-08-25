@@ -435,6 +435,8 @@ export class AtlasQueryService {
 					hasResult: metricSnapshot != null,
 					historical,
 					trustStatus: metricSnapshot?.trustStatus,
+					state: question.source?.state,
+					deadline: question.source?.freshnessDeadlineAt,
 				})
 			: resolveFreshness({
 					hasResult: snapshot != null,
@@ -585,6 +587,8 @@ export function resolveMetricFreshness(input: {
 	hasResult: boolean;
 	historical: boolean;
 	trustStatus?: MetricTrustStatus;
+	state?: SourceStatus;
+	deadline?: Date | null;
 }) {
 	if (!input.hasResult) {
 		return {
@@ -594,6 +598,19 @@ export function resolveMetricFreshness(input: {
 	}
 	if (input.historical) {
 		return { status: "historical" as const, reason: null };
+	}
+	if (input.state === SourceStatus.ERROR) {
+		return { status: "error" as const, reason: "The source sync is failing." };
+	}
+	if (
+		input.state === SourceStatus.STALE ||
+		!input.deadline ||
+		input.deadline.getTime() <= Date.now()
+	) {
+		return {
+			status: "stale" as const,
+			reason: "The freshness deadline passed.",
+		};
 	}
 	if (input.trustStatus === MetricTrustStatus.FAILED) {
 		return {

@@ -35,6 +35,7 @@ type PosthogReport = {
 	types?: Array<[string, string]>;
 	results?: unknown[][];
 	error?: string | null;
+	hasMore?: boolean | null;
 };
 
 const PERCENT_METRICS = new Set(["engagementRate", "bounceRate"]);
@@ -362,6 +363,11 @@ export class MarketingClient {
 			);
 			const body = (await response.json().catch(() => ({}))) as PosthogReport;
 			if (response.ok && !body.error) {
+				if (body.hasMore) {
+					throw new Error(
+						"PostHog query result was truncated. Add an explicit LIMIT to the saved query.",
+					);
+				}
 				const types = new Map(body.types ?? []);
 				return {
 					columns: (body.columns ?? []).map((name) => ({

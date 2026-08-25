@@ -82,21 +82,6 @@ export class AtlasDashboardsService {
 					sourceId,
 				);
 				results.push(metabase);
-				if (metabase.completed) continue;
-				return {
-					cardsProcessed: results.reduce(
-						(total, result) => total + result.cardsProcessed,
-						0,
-					),
-					snapshotsCreated: results.reduce(
-						(total, result) =>
-							total + (result.snapshotsCreated ?? result.snapshots ?? 0),
-						0,
-					),
-					completed: false,
-					remainingQuestions: metabase.remainingQuestions,
-					errors: [],
-				};
 			}
 		}
 		if (sourceKeys.has("hubspot:crm")) {
@@ -137,8 +122,11 @@ export class AtlasDashboardsService {
 				0,
 			),
 			errors: results.flatMap((result) => result.errors ?? []),
-			completed: true,
-			remainingQuestions: 0,
+			completed: results.every((result) => result.completed !== false),
+			remainingQuestions: results.reduce(
+				(total, result) => total + (result.remainingQuestions ?? 0),
+				0,
+			),
 		};
 	}
 

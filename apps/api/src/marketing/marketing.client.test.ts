@@ -62,4 +62,30 @@ describe("MarketingClient PostHog retries", () => {
 		).rejects.toThrow("PostHog query failed (400).");
 		expect(fetchMock).toHaveBeenCalledTimes(1);
 	});
+
+	test("rejects a truncated PostHog result", async () => {
+		const fetchMock = mock().mockResolvedValue(
+			new Response(
+				JSON.stringify({
+					columns: ["day"],
+					types: [["day", "DateTime"]],
+					results: Array.from({ length: 100 }, (_, index) => [index]),
+					hasMore: true,
+				}),
+				{ status: 200 },
+			),
+		);
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+		await expect(
+			new MarketingClient(config, 0).execute({
+				source: "posthog",
+				personPolicy: "all_events",
+				query: "select day from events order by day",
+			}),
+		).rejects.toThrow(
+			"PostHog query result was truncated. Add an explicit LIMIT to the saved query.",
+		);
+		expect(fetchMock).toHaveBeenCalledTimes(1);
+	});
 });

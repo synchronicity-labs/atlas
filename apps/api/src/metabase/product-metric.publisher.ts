@@ -1091,6 +1091,81 @@ export const PRODUCT_METRIC_SPECS: ProductMetricSpec[] = [
 		cadenceMinutes: 8 * 60,
 	},
 	{
+		questionNumber: 7017,
+		sourceExternalId: "cron:geo:weekly-conversion",
+		key: "marketing.geo_attributed_product_conversion",
+		name: "GEO-attributed product conversion",
+		description:
+			"Two mature weekly signup cohorts attributed through the approved AI-provider registry, with seven-day successful-generation and paid-subscription conversion.",
+		grain: FactGrain.WEEK,
+		source: {
+			key: "posthog:product-events",
+			kind: DataSourceKind.POSTHOG,
+			label: "PostHog product events",
+		},
+		eventTimeField: "cohort_week",
+		businessDefinition: {
+			entity: "geo_attributed_signup_cohort",
+			population:
+				"clean-user signups whose first recorded referring domain matches the approved ChatGPT, Gemini, Claude, Perplexity, Copilot, Meta AI, Kagi, or Qwen registry",
+			periodAssignment: "signup timestamp in UTC Monday weeks",
+			periodCompleteness:
+				"the current and immediately prior signup weeks are excluded so every published cohort has a complete seven-day observation window",
+			successfulGenerationConversion:
+				"the person's first successful generation occurs on or after signup and before seven days after signup",
+			paidConversion:
+				"the person's first paid subscription starts on or after signup and before seven days after signup",
+			trafficBoundary:
+				"Q25 remains the governed GA4 traffic source because GA4 and PostHog do not share a stable person identifier",
+		},
+		computation: {
+			aggregate: "unique_person_weekly_cohort_funnel_by_ai_provider",
+			outputs: [
+				"signups",
+				"first_successful_generations",
+				"paid_subscriptions",
+				"signup_to_generation_pct",
+				"signup_to_paid_pct",
+			],
+		},
+		requiresCrossSourceEligibility: true,
+		pendingChecks: [
+			{
+				name: "cohort_population",
+				reason:
+					"The result must contain two complete UTC signup cohorts with at least one attributed signup in every published provider row.",
+			},
+			{
+				name: "cohort_reconciliation",
+				reason:
+					"Generation and paid stages must remain subsets of signups, and every rate must reconcile to its counts.",
+			},
+			{
+				name: "ai_referrer_registry",
+				reason:
+					"Attribution must use the person's first recorded referring domain and the approved AI-provider registry.",
+			},
+			{
+				name: "seven_day_cohort_maturity",
+				reason:
+					"Every signup cohort must have a complete seven-day product-conversion window.",
+			},
+			{
+				name: "sensitive_detail_boundary",
+				reason:
+					"The published result must exclude person, user, organization, and email identifiers.",
+			},
+			{
+				name: "oldest_complete_watermark",
+				reason:
+					"All rows must use one UTC data-through boundary for the oldest complete cohort window.",
+			},
+		],
+		ownerTeam: "Marketing",
+		createdBy: "atlas-geo-conversion-registry",
+		cadenceMinutes: 8 * 60,
+	},
+	{
 		questionNumber: 7002,
 		sourceExternalId: "cron:studio:period-kpis",
 		key: "product.studio_weekly_delivery_logo_movement",

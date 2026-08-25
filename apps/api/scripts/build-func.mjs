@@ -174,7 +174,7 @@ writeFileSync(
 			},
 			{
 				path: "/internal/sync/atlas/1/metabase",
-				schedule: "7,22,37,52 * * * *",
+				schedule: "2-59/5 * * * *",
 			},
 			{
 				path: "/internal/sync/atlas/2",

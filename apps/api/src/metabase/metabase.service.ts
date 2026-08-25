@@ -58,7 +58,7 @@ const DASHBOARD_SCOPE = "product-scoreboard";
 const USERS_SCOPE = "product-users";
 const FRESHNESS_MS = 8 * 60 * 60 * 1000;
 const ATLAS_DASHBOARD_CONCURRENCY = 4;
-const ATLAS_DASHBOARD_QUESTION_BATCH_SIZE = 3;
+const ATLAS_DASHBOARD_QUESTION_BATCH_SIZE = 2;
 const USER_PERSIST_CHUNK_SIZE = 100;
 const STRIPE_COUNTRY_PERSIST_CHUNK_SIZE = 500;
 
@@ -1110,7 +1110,7 @@ export class MetabaseService {
 		const errors: Array<{ number: number; message: string }> = [];
 		try {
 			const client = new MetabaseClient(config);
-			const needsGeneralEligibility = questions.some(
+			const needsGeneralEligibility = questionsToProcess.some(
 				(question) =>
 					["34", "166"].includes(question.databaseExternalId ?? "") &&
 					question.versions[0]?.queryLanguage === QueryLanguage.SQL &&
@@ -1120,7 +1120,7 @@ export class MetabaseService {
 						question.versions[0]?.queryText,
 					),
 			);
-			const needsRevenueEligibility = questions.some(
+			const needsRevenueEligibility = questionsToProcess.some(
 				(question) =>
 					["34", "166"].includes(question.databaseExternalId ?? "") &&
 					question.versions[0]?.queryLanguage === QueryLanguage.SQL &&

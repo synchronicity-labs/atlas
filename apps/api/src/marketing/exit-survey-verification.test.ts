@@ -146,6 +146,17 @@ describe("exit survey verification", () => {
 		);
 	});
 
+	test("joins dismissals to the retained weekly total", async () => {
+		const migration = await Bun.file(
+			new URL(
+				"../../../../packages/db/prisma/migrations/20260825171000_fix_exit_survey_dismissal_join/migration.sql",
+				import.meta.url,
+			),
+		).text();
+
+		expect(migration).toContain("totals.week_start");
+	});
+
 	test("fails when the query requests customer detail", () => {
 		const checks = exitSurveyVerificationChecks(
 			result(validRows),

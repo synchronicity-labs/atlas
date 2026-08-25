@@ -1090,6 +1090,20 @@ export class MetabaseService {
 			batchOffset,
 			batchOffset + ATLAS_DASHBOARD_QUESTION_BATCH_SIZE,
 		);
+		const supersededAt = new Date();
+		await this.db.syncRun.updateMany({
+			where: {
+				sourceId,
+				scope: runScope,
+				status: SyncRunStatus.RUNNING,
+				startedAt: { lt: new Date(Date.now() - 6 * 60_000) },
+			},
+			data: {
+				status: SyncRunStatus.FAILED,
+				finishedAt: supersededAt,
+				error: "The previous serverless refresh exceeded its execution window.",
+			},
+		});
 		const run = await this.db.syncRun.create({
 			data: {
 				runKey: `atlas:dashboard:${number}:${period}:${randomUUID()}`,

@@ -36,6 +36,12 @@ const FORBIDDEN_OUTPUTS = new Set([
 
 type Row = Record<string, unknown>;
 
+export function abuseUsesAllIdentities(
+	sourceExternalId: string | null,
+): boolean {
+	return sourceExternalId === "cron:abuse:enforcement-detail";
+}
+
 export function abuseRingVerificationChecks(
 	result: MetabaseResult,
 	queryText: string,

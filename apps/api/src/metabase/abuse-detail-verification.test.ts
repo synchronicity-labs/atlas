@@ -3,6 +3,7 @@ import { VerificationStatus } from "@crm/db";
 import {
 	abuseEnforcementVerificationChecks,
 	abuseRingVerificationChecks,
+	abuseUsesAllIdentities,
 } from "./abuse-detail-verification";
 import type { MetabaseResult } from "./metabase.client";
 
@@ -18,6 +19,11 @@ function result(columns: string[], rows: unknown[][]): MetabaseResult {
 }
 
 describe("abuse detail verification", () => {
+	test("keeps enforcement populations intact", () => {
+		expect(abuseUsesAllIdentities("cron:abuse:enforcement-detail")).toBeTrue();
+		expect(abuseUsesAllIdentities("abuse:users:currently-banned")).toBeFalse();
+	});
+
 	test("verifies reconciled 24-hour PostHog ring detail", () => {
 		const checks = abuseRingVerificationChecks(
 			result(

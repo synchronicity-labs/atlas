@@ -15,7 +15,10 @@ import { ConfigService } from "@nestjs/config";
 import type { EnvironmentVariables } from "../config/env.validation";
 import { InjectDatabase } from "../database/database.constants";
 import { assertReadOnlyQuery } from "../questions/read-only-query";
-import { abuseEnforcementVerificationChecks } from "./abuse-detail-verification";
+import {
+	abuseEnforcementVerificationChecks,
+	abuseUsesAllIdentities,
+} from "./abuse-detail-verification";
 import { atlasQuestionName } from "./atlas-question-name";
 import {
 	type MetabaseCardResponse,
@@ -1134,6 +1137,7 @@ export class MetabaseService {
 				(question) =>
 					["34", "166"].includes(question.databaseExternalId ?? "") &&
 					question.versions[0]?.queryLanguage === QueryLanguage.SQL &&
+					!abuseUsesAllIdentities(question.sourceExternalId) &&
 					!usesSubscribedRevenueEligibility(
 						question.number,
 						question.name,
@@ -1187,13 +1191,17 @@ export class MetabaseService {
 							const classifiedQueryText =
 								revenueDoor?.queryText ?? version.queryText;
 							assertReadOnlyQuery(language, classifiedQueryText);
-							const eligibility = usesSubscribedRevenueEligibility(
-								question.number,
-								question.name,
-								classifiedQueryText,
+							const eligibility = abuseUsesAllIdentities(
+								question.sourceExternalId,
 							)
-								? revenueEligibility
-								: generalEligibility;
+								? null
+								: usesSubscribedRevenueEligibility(
+											question.number,
+											question.name,
+											classifiedQueryText,
+										)
+									? revenueEligibility
+									: generalEligibility;
 							const governed = eligibility
 								? this.tinybirdEligibility.govern(
 										classifiedQueryText,

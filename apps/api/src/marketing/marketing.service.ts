@@ -13,6 +13,7 @@ import { abuseRingVerificationChecks } from "../metabase/abuse-detail-verificati
 import { ProductMetricPublisher } from "../metabase/product-metric.publisher";
 import { TinybirdEligibilityService } from "../metabase/tinybird-eligibility.service";
 import { exitSurveyVerificationChecks } from "./exit-survey-verification";
+import { geoConversionVerificationChecks } from "./geo-conversion-verification";
 import { lipsyncFunnelVerificationChecks } from "./lipsync-funnel-verification";
 import { MarketingClient, type MarketingResult } from "./marketing.client";
 import { marketingConfig } from "./marketing.config";
@@ -200,22 +201,26 @@ export class MarketingService {
 					question.sourceExternalId === "cron:exit-survey:weekly-summary" &&
 					parsedQuery.source === "posthog"
 						? exitSurveyVerificationChecks(result, parsedQuery.query)
-						: question.sourceExternalId === "cron:lipsync:product-funnel" &&
+						: question.sourceExternalId === "cron:geo:weekly-conversion" &&
 								parsedQuery.source === "posthog"
-							? lipsyncFunnelVerificationChecks(result, parsedQuery.query)
-							: question.sourceExternalId?.startsWith("cron:studio:insight-") &&
-									parsedQuery.source === "posthog_insight"
-								? studioInsightVerificationChecks(result, parsedQuery)
-								: (question.sourceExternalId === "cron:studio:period-kpis" ||
-											question.sourceExternalId ===
-												"cron:studio:monthly-period-kpis") &&
-										parsedQuery.source === "posthog"
-									? studioPeriodVerificationChecks(result, parsedQuery.query)
-									: question.sourceExternalId ===
-												"cron:abuse:operational-detail" &&
+							? geoConversionVerificationChecks(result, parsedQuery.query)
+							: question.sourceExternalId === "cron:lipsync:product-funnel" &&
+									parsedQuery.source === "posthog"
+								? lipsyncFunnelVerificationChecks(result, parsedQuery.query)
+								: question.sourceExternalId?.startsWith(
+											"cron:studio:insight-",
+										) && parsedQuery.source === "posthog_insight"
+									? studioInsightVerificationChecks(result, parsedQuery)
+									: (question.sourceExternalId === "cron:studio:period-kpis" ||
+												question.sourceExternalId ===
+													"cron:studio:monthly-period-kpis") &&
 											parsedQuery.source === "posthog"
-										? abuseRingVerificationChecks(result, parsedQuery.query)
-										: undefined;
+										? studioPeriodVerificationChecks(result, parsedQuery.query)
+										: question.sourceExternalId ===
+													"cron:abuse:operational-detail" &&
+												parsedQuery.source === "posthog"
+											? abuseRingVerificationChecks(result, parsedQuery.query)
+											: undefined;
 				const payload = { columns: result.columns, rows: result.rows };
 				const contentHash = hash(payload);
 				const externalId =

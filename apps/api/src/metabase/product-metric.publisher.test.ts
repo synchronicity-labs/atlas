@@ -140,6 +140,29 @@ describe("product feedback metric registry", () => {
 		);
 	});
 
+	test("registers the governed GEO-attributed product funnel", () => {
+		const geo = PRODUCT_METRIC_SPECS.find(
+			(spec) => spec.questionNumber === 7017,
+		);
+
+		expect(geo?.sourceExternalId).toBe("cron:geo:weekly-conversion");
+		expect(geo?.businessDefinition).toMatchObject({
+			entity: "geo_attributed_signup_cohort",
+			periodAssignment: "signup timestamp in UTC Monday weeks",
+		});
+		expect(geo?.pendingChecks?.map((check) => check.name)).toEqual([
+			"cohort_population",
+			"cohort_reconciliation",
+			"ai_referrer_registry",
+			"seven_day_cohort_maturity",
+			"sensitive_detail_boundary",
+			"oldest_complete_watermark",
+		]);
+		expect(preferredAtlasQuestionNumber("cron:geo:weekly-conversion")).toBe(
+			7017,
+		);
+	});
+
 	test("registers separate weekly and monthly Studio delivery contracts", () => {
 		const studio = PRODUCT_METRIC_SPECS.filter((spec) =>
 			[7002, 7041].includes(spec.questionNumber),

@@ -93,6 +93,30 @@ describe("product feedback metric registry", () => {
 		]);
 	});
 
+	test("registers the governed exit-survey cancellation contract", () => {
+		const exitSurvey = PRODUCT_METRIC_SPECS.find(
+			(spec) => spec.questionNumber === 7007,
+		);
+
+		expect(exitSurvey?.sourceExternalId).toBe(
+			"cron:exit-survey:weekly-summary",
+		);
+		expect(exitSurvey?.businessDefinition).toMatchObject({
+			entity: "cancellation_request_week",
+			periodCompleteness: "current partial UTC week excluded",
+		});
+		expect(exitSurvey?.pendingChecks?.map((check) => check.name)).toEqual([
+			"cancellation_denominator_parity",
+			"response_deduplication",
+			"reason_taxonomy_review",
+			"comment_privacy_boundary",
+			"oldest_complete_watermark",
+		]);
+		expect(
+			preferredAtlasQuestionNumber("cron:exit-survey:weekly-summary"),
+		).toBe(7007);
+	});
+
 	test("records the confirmed Product KPI contract", () => {
 		const professional = PRODUCT_METRIC_SPECS.find(
 			(spec) => spec.questionNumber === 15,

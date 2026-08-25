@@ -549,6 +549,75 @@ export const PRODUCT_METRIC_SPECS: ProductMetricSpec[] = [
 			},
 		],
 	},
+	{
+		questionNumber: 7007,
+		sourceExternalId: "cron:exit-survey:weekly-summary",
+		key: "customer_success.exit_survey_cancellation_coverage",
+		name: "Exit survey cancellation-request coverage",
+		description:
+			"Completed UTC-week cancellation requests, joined exit-survey response coverage, structured reason and plan distributions, and separate survey dismissals. Raw customer text is excluded.",
+		grain: FactGrain.WEEK,
+		source: {
+			key: "posthog:product-events",
+			kind: DataSourceKind.POSTHOG,
+			label: "PostHog server billing and exit-survey events",
+		},
+		eventTimeField: "week_start",
+		businessDefinition: {
+			entity: "cancellation_request_week",
+			periodAssignment: "server event timestamp in UTC",
+			periodCompleteness: "current partial UTC week excluded",
+			denominator:
+				"unique subscription_cancel_pending event UUIDs emitted after Stripe accepts a scheduled cancellation request",
+			numerator:
+				"unique denominator events with survey_completed=true after the server joins the latest organization exit-survey row",
+			dismissals:
+				"unique exit_survey_dismissed frontend event UUIDs, reported separately and never added to cancellation requests",
+			rawTextPolicy:
+				"free-text comments, customer identifiers, and competitor names are not queried or published",
+		},
+		computation: {
+			aggregate: "unique_event_uuid_weekly_distribution",
+			outputs: [
+				"cancellation_requests",
+				"responses",
+				"response_rate_pct",
+				"reason_count",
+				"plan_count",
+				"dismissed_feedback_forms",
+			],
+		},
+		requiresCrossSourceEligibility: true,
+		pendingChecks: [
+			{
+				name: "cancellation_denominator_parity",
+				reason:
+					"The cancellation denominator must equal unique server-emitted cancellation-request event UUIDs for each completed UTC week.",
+			},
+			{
+				name: "response_deduplication",
+				reason:
+					"Each cancellation request can contribute at most one completed survey response.",
+			},
+			{
+				name: "reason_taxonomy_review",
+				reason:
+					"Every published response reason must use the approved structured exit-survey taxonomy.",
+			},
+			{
+				name: "comment_privacy_boundary",
+				reason:
+					"The governed query and result must exclude raw comments and customer identifiers.",
+			},
+			{
+				name: "oldest_complete_watermark",
+				reason:
+					"The result must exclude the current partial week and publish one completed-week watermark.",
+			},
+		],
+		ownerTeam: "Product",
+		createdBy: "atlas-exit-survey-registry",
+	},
 ];
 
 export const REVENUE_CLOSE_METRIC_SPECS: ProductMetricSpec[] = [

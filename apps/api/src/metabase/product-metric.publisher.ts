@@ -618,6 +618,125 @@ export const PRODUCT_METRIC_SPECS: ProductMetricSpec[] = [
 		ownerTeam: "Product",
 		createdBy: "atlas-exit-survey-registry",
 	},
+	{
+		questionNumber: 7013,
+		sourceExternalId: "cron:abuse:operational-detail",
+		key: "security.signup_abuse_ring_detail",
+		name: "Signup abuse rings and blocked-attempt detail",
+		description:
+			"Rolling 24-hour blocked signup attempts by reason, thresholded domain ring, thresholded IP ring, and bot user agent. Customer and user identifiers are excluded.",
+		grain: FactGrain.DAY,
+		source: {
+			key: "posthog:signup-protection",
+			kind: DataSourceKind.POSTHOG,
+			label: "PostHog signup protection events",
+		},
+		eventTimeField: "data_through",
+		businessDefinition: {
+			entity: "blocked_signup_attempt",
+			window: "rolling 24 hours ending at data_through",
+			ringThreshold: 5,
+			domainPolicy:
+				"exclude common mailbox providers before applying the domain-ring threshold",
+			privacyPolicy:
+				"publish thresholded domain, IP, and user-agent signals without customer, user, organization, or email identifiers",
+		},
+		computation: {
+			aggregate: "blocked_attempt_detail_by_signal",
+			outputs: ["blocked_attempts", "related_count", "headline_total"],
+		},
+		requiresCrossSourceEligibility: false,
+		pendingChecks: [
+			{
+				name: "headline_reconciliation",
+				reason:
+					"Reason rows must sum to the same 24-hour blocked-attempt total as the summary row.",
+			},
+			{
+				name: "ring_definition_review",
+				reason:
+					"Each published ring must meet the five-attempt threshold and the domain view must exclude common mailbox providers.",
+			},
+			{
+				name: "sensitive_detail_boundary",
+				reason:
+					"The result must exclude customer, user, organization, and email identifiers.",
+			},
+			{
+				name: "rolling_window_watermark",
+				reason:
+					"Every row must share one data-through timestamp for the same half-open rolling 24-hour window.",
+			},
+		],
+		ownerTeam: "Security Operations",
+		createdBy: "atlas-abuse-registry",
+		cadenceMinutes: 8 * 60,
+	},
+	{
+		questionNumber: 7017,
+		sourceExternalId: "cron:abuse:enforcement-detail",
+		key: "security.signup_abuse_enforcement_detail",
+		name: "Signup abuse enforcement and fresh-ring diagnostics",
+		description:
+			"Rolling 24-hour learned blocks and bans, seven-day auto-bans, fresh IP-ring candidates and verdicts, and generation distribution for newly banned users. Email and customer identifiers are excluded.",
+		grain: FactGrain.DAY,
+		source: {
+			key: "product:abuse-operations",
+			kind: DataSourceKind.METABASE,
+			label: "Product abuse enforcement tables",
+		},
+		eventTimeField: "data_through",
+		businessDefinition: {
+			entity: "abuse_enforcement_action",
+			primaryWindow: "rolling 24 hours ending at data_through",
+			contextWindow: "rolling 7 days ending at data_through",
+			freshRingThresholds: {
+				minimumSignups: 20,
+				minimumDomains: 10,
+				maximumBannedRatio: 0.8,
+				minimumEarlyApiUsers: 10,
+			},
+			privacyPolicy:
+				"publish operational domain, IP, and user-agent values without email, user, organization, or customer identifiers",
+		},
+		computation: {
+			aggregate: "enforcement_and_fresh_ring_diagnostics",
+			outputs: [
+				"banned_users_24h",
+				"autobans_7d",
+				"new_domain_blocks",
+				"new_ip_blocks",
+				"fresh_ring_candidates",
+				"fresh_ring_active",
+			],
+		},
+		requiresCrossSourceEligibility: false,
+		pendingChecks: [
+			{
+				name: "ban_action_parity",
+				reason:
+					"Ban-reason and learned-block detail must reconcile to the 24-hour enforcement summary.",
+			},
+			{
+				name: "fresh_ring_definition",
+				reason:
+					"Fresh IP-ring rows must meet the approved account, domain, ban-ratio, and early-API-activity thresholds.",
+			},
+			{
+				name: "sensitive_detail_boundary",
+				reason:
+					"The result must exclude email addresses and customer, user, and organization identifiers.",
+			},
+			{
+				name: "rolling_window_watermark",
+				reason:
+					"Every row must share one data-through timestamp for the governed 24-hour and 7-day windows.",
+			},
+		],
+		ownerTeam: "Security Operations",
+		createdBy: "atlas-abuse-registry",
+		cadenceMinutes: 8 * 60,
+	},
 ];
 
 export const REVENUE_CLOSE_METRIC_SPECS: ProductMetricSpec[] = [
@@ -1303,7 +1422,8 @@ export const REVENUE_METRIC_SPECS: ProductMetricSpec[] = [
 		eventTimeField: "invoice createdAt",
 		businessDefinition: {
 			revenueDoor: "sync.tools",
-			population: "latest invoice states with amount remaining greater than zero",
+			population:
+				"latest invoice states with amount remaining greater than zero",
 			includedStatuses: ["open", "past_due", "uncollectible"],
 		},
 		computation: { aggregate: "invoice_detail" },

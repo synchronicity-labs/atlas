@@ -19,7 +19,8 @@ export type HubspotSalesQuery = {
 		| "team-activity-totals"
 		| "closed-deal-vs-goal"
 		| "lead-pipeline-status"
-		| "lead-stage-view";
+		| "lead-stage-view"
+		| "active-pilot-summary";
 	months: number;
 	pipelines: string[];
 };
@@ -49,6 +50,7 @@ type DealRecord = {
 	createdAt: Date | null;
 	closeAt: Date | null;
 	daysToClose: number | null;
+	stageHistory: Array<{ stageId: string; changedAt: Date }>;
 };
 
 type PipelineRecord = {
@@ -146,6 +148,7 @@ export function parseHubspotSalesQuery(value: unknown): HubspotSalesQuery {
 		"closed-deal-vs-goal",
 		"lead-pipeline-status",
 		"lead-stage-view",
+		"active-pilot-summary",
 	]);
 	if (!supported.has(report))
 		throw new Error("Unsupported HubSpot sales report.");
@@ -198,6 +201,15 @@ function parseDeal(payload: unknown, sourceCreatedAt: Date | null): DealRecord {
 			properties.hs_projected_amount ??
 			properties.hs_forecast_amount,
 	);
+	const history = record(value.propertyHistory);
+	const stageHistory = Array.isArray(history.dealstage)
+		? history.dealstage.flatMap((entry) => {
+				const item = record(entry);
+				const stageId = stringValue(item.value);
+				const changedAt = dateValue(item.timestamp);
+				return stageId && changedAt ? [{ stageId, changedAt }] : [];
+			})
+		: [];
 	return {
 		id: stringValue(value.id),
 		name:
@@ -220,7 +232,107 @@ function parseDeal(payload: unknown, sourceCreatedAt: Date | null): DealRecord {
 			properties.days_to_close === undefined
 				? null
 				: numberValue(properties.days_to_close),
+		stageHistory,
 	};
+}
+
+type PilotSummaryDeal = Pick<
+	DealRecord,
+	| "id"
+	| "name"
+	| "companyIds"
+	| "pipelineId"
+	| "stageId"
+	| "ownerId"
+	| "createdAt"
+	| "stageHistory"
+>;
+
+type PilotSummaryPipeline = {
+	stages: Map<string, string | { label: string }>;
+};
+
+export function buildActivePilotSummary(input: {
+	now: Date;
+	dataThrough: Date;
+	deals: PilotSummaryDeal[];
+	pipelines: Map<string, PilotSummaryPipeline>;
+	owners: Map<string, string>;
+	companies: Map<string, string>;
+}): HubspotSalesResult {
+	const weekStart = new Date(input.now);
+	weekStart.setUTCHours(0, 0, 0, 0);
+	weekStart.setUTCDate(
+		weekStart.getUTCDate() - ((weekStart.getUTCDay() + 6) % 7),
+	);
+	const active = input.deals.filter((deal) =>
+		pilotStage(input.pipelines, deal),
+	);
+	const entered = new Set<string>();
+	const exited = new Set<string>();
+	for (const deal of input.deals) {
+		let wasPilot = false;
+		for (const history of [...deal.stageHistory].sort(
+			(a, b) => a.changedAt.getTime() - b.changedAt.getTime(),
+		)) {
+			const isPilot = pilotStage(input.pipelines, {
+				...deal,
+				stageId: history.stageId,
+			});
+			if (history.changedAt >= weekStart) {
+				if (!wasPilot && isPilot) entered.add(deal.id);
+				if (wasPilot && !isPilot) exited.add(deal.id);
+			}
+			wasPilot = isPilot;
+		}
+		if (
+			deal.stageHistory.length === 0 &&
+			deal.createdAt &&
+			deal.createdAt >= weekStart &&
+			pilotStage(input.pipelines, deal)
+		) {
+			entered.add(deal.id);
+		}
+	}
+	const accounts = active
+		.map((deal) => input.companies.get(deal.companyIds[0] ?? "") ?? deal.name)
+		.sort();
+	const owners = [
+		...new Set(
+			active.map((deal) => input.owners.get(deal.ownerId) ?? "Unassigned"),
+		),
+	].sort();
+	return {
+		columns: [
+			column("week_start", "Week start", "type/DateTime"),
+			column("active_pilots", "Active pilots", "type/Integer"),
+			column("new_pilots", "New pilots", "type/Integer"),
+			column("exited_pilots", "Exited pilots", "type/Integer"),
+			column("pilot_accounts", "Pilot accounts", "type/Text"),
+			column("owners", "Owners", "type/Text"),
+			column("data_through", "Data through", "type/DateTime"),
+		],
+		rows: [
+			[
+				weekStart.toISOString(),
+				active.length,
+				entered.size,
+				exited.size,
+				accounts.join("; "),
+				owners.join("; "),
+				input.dataThrough.toISOString(),
+			],
+		],
+	};
+}
+
+function pilotStage(
+	pipelines: Map<string, PilotSummaryPipeline>,
+	deal: Pick<PilotSummaryDeal, "pipelineId" | "stageId">,
+): boolean {
+	const value = pipelines.get(deal.pipelineId)?.stages.get(deal.stageId);
+	const label = typeof value === "string" ? value : value?.label;
+	return ["pilot", "pilot/poc"].includes(label?.trim().toLowerCase() ?? "");
 }
 
 function metricRows(payload: unknown): Array<{
@@ -280,7 +392,7 @@ export async function executeHubspotSalesQuery(
 	const query = parseHubspotSalesQuery(input);
 	const source = await db.dataSource.findUnique({
 		where: { key: "hubspot:crm" },
-		select: { id: true },
+		select: { id: true, lastSyncAt: true },
 	});
 	if (!source) throw new Error("HubSpot CRM has not been ingested yet.");
 	const [dealRows, pipelineRows, ownerRows, companyRows, activityRows] =
@@ -354,6 +466,16 @@ export async function executeHubspotSalesQuery(
 	const activities = new Map(
 		activityRows.map((row) => [row.externalId, row.payload] as const),
 	);
+	if (query.report === "active-pilot-summary") {
+		return buildActivePilotSummary({
+			now: new Date(),
+			dataThrough: source.lastSyncAt ?? new Date(0),
+			deals,
+			pipelines,
+			owners,
+			companies,
+		});
+	}
 
 	if (
 		query.report === "contact-deal-totals" ||

@@ -1,9 +1,13 @@
 import { createHash, randomUUID } from "node:crypto";
 import { type Db, type Prisma, SyncMode, SyncRunStatus } from "@crm/db";
-import { executeHubspotSalesQuery } from "@crm/db/hubspot-sales";
+import {
+	executeHubspotSalesQuery,
+	parseHubspotSalesQuery,
+} from "@crm/db/hubspot-sales";
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { InjectDatabase } from "../database/database.constants";
 import { ProductMetricPublisher } from "../metabase/product-metric.publisher";
+import { pilotSummaryVerificationChecks } from "./pilot-verification";
 
 const SOURCE_KEY = "hubspot:crm";
 
@@ -104,6 +108,9 @@ export class SalesService {
 				continue;
 			}
 			try {
+				const parsedQuery = parseHubspotSalesQuery(
+					JSON.parse(version.queryText),
+				);
 				const result = await this.preview(version.queryText);
 				const payload = { columns: result.columns, rows: result.rows };
 				const contentHash = hash(payload);
@@ -133,6 +140,10 @@ export class SalesService {
 					result,
 					syncRunId: run.id,
 					capturedAt,
+					verificationChecks:
+						parsedQuery.report === "active-pilot-summary"
+							? pilotSummaryVerificationChecks(result, parsedQuery)
+							: [],
 				});
 				await this.db.question.update({
 					where: { id: question.id },

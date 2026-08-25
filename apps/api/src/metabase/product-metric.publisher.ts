@@ -328,6 +328,71 @@ const STUDIO_NATIVE_INSIGHT_SPECS: ProductMetricSpec[] = [
 	},
 ];
 
+const ACTIVE_PILOT_CHECKS = [
+	{
+		name: "active_registry_parity",
+		reason: "The active pilot count must reconcile to the account list.",
+	},
+	{
+		name: "deal_stage_mapping",
+		reason:
+			"The query must use the approved Enterprise and Studio pilot pipelines.",
+	},
+	{
+		name: "owner_coverage",
+		reason: "Every active pilot must have an assigned CRM owner.",
+	},
+	{
+		name: "oldest_complete_watermark",
+		reason: "The report must expose the complete HubSpot source watermark.",
+	},
+];
+
+const HUBSPOT_REPORT_SPECS: ProductMetricSpec[] = [
+	{
+		questionNumber: 7006,
+		sourceExternalId: "cron:sales:weekly-active-pilots",
+		key: "sales.weekly_active_pilots",
+		name: "Weekly active pilot count",
+		description:
+			"Current active pilots and current-week entries and exits from the approved Enterprise and Studio HubSpot pilot stages.",
+		grain: FactGrain.WEEK,
+		source: {
+			key: "hubspot:crm",
+			kind: DataSourceKind.HUBSPOT,
+			label: "HubSpot CRM",
+		},
+		eventTimeField: "week_start",
+		businessDefinition: {
+			entity: "hubspot_deal",
+			periodAssignment: "Monday through Sunday UTC",
+			active:
+				"current deal stage is Pilot in Sync Enterprise or Pilot/POC in Sync Studios",
+			newPilot:
+				"deal entered an approved pilot stage during the current half-open UTC week",
+			exitedPilot:
+				"deal left an approved pilot stage during the current half-open UTC week",
+			accountLabel:
+				"linked HubSpot company name, with deal name retained when the association is absent",
+		},
+		computation: {
+			aggregate: "current_registry_and_stage_transitions",
+			outputs: [
+				"active_pilots",
+				"new_pilots",
+				"exited_pilots",
+				"pilot_accounts",
+				"owners",
+			],
+		},
+		requiresCrossSourceEligibility: false,
+		pendingChecks: ACTIVE_PILOT_CHECKS,
+		ownerTeam: "Sales",
+		createdBy: "atlas-sales-registry",
+		cadenceMinutes: 6 * 60,
+	},
+];
+
 export const PRODUCT_METRIC_SPECS: ProductMetricSpec[] = [
 	{
 		questionNumber: 15,
@@ -992,6 +1057,7 @@ export const PRODUCT_METRIC_SPECS: ProductMetricSpec[] = [
 		cadenceMinutes: 8 * 60,
 	},
 	...STUDIO_NATIVE_INSIGHT_SPECS,
+	...HUBSPOT_REPORT_SPECS,
 	{
 		questionNumber: 7041,
 		sourceExternalId: "cron:studio:monthly-period-kpis",

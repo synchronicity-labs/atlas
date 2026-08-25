@@ -399,13 +399,17 @@ export class MarketingClient {
 		if (query.mode === "retention_week_two") {
 			return this.posthogWeekTwoRetention(query);
 		}
-		const dataThrough = utcDay();
+		const sourceThrough = utcDay();
 		const periods = completePeriods(
 			query.grain,
 			query.periods,
 			query.mode === "funnel_conversion" ? 42 : 0,
-			dataThrough,
+			sourceThrough,
 		);
+		const dataThrough = new Date(periods.at(-1)?.end ?? sourceThrough);
+		if (query.mode === "funnel_conversion") {
+			dataThrough.setUTCDate(dataThrough.getUTCDate() + 42);
+		}
 		const results = await Promise.all(
 			periods.map(async (period) => ({
 				period,
@@ -421,6 +425,7 @@ export class MarketingClient {
 					decimalColumn("median_seconds"),
 					decimalColumn("average_seconds"),
 					decimalColumn("converted_users"),
+					dateColumn("window_end"),
 					dateColumn("data_through"),
 				],
 				rows: results.map(({ period, result }) => {
@@ -440,6 +445,7 @@ export class MarketingClient {
 						number(funnel.average_conversion_time),
 						convertedUsers,
 						dataThrough.toISOString(),
+						dataThrough.toISOString(),
 					];
 				}),
 			};
@@ -450,6 +456,7 @@ export class MarketingClient {
 				decimalColumn("signups"),
 				decimalColumn("subscriptions"),
 				decimalColumn("conversion_pct"),
+				dateColumn("window_end"),
 				dateColumn("data_through"),
 			],
 			rows: results.map(({ period, result }) => {
@@ -462,6 +469,7 @@ export class MarketingClient {
 					subscriptions,
 					round(signups > 0 ? (subscriptions / signups) * 100 : 0),
 					dataThrough.toISOString(),
+					dataThrough.toISOString(),
 				];
 			}),
 		};
@@ -471,7 +479,7 @@ export class MarketingClient {
 		query: Extract<MarketingQuery, { source: "posthog_insight" }>,
 	): Promise<MarketingResult> {
 		const boundary = completePeriod("week", 0).start;
-		const dataThrough = utcDay();
+		const dataThrough = new Date(boundary);
 		const start = new Date(boundary);
 		start.setUTCDate(start.getUTCDate() - (query.periods + 3) * 7);
 		const result = await this.posthogNative(
@@ -500,6 +508,7 @@ export class MarketingClient {
 						retainedUsers,
 						round(cohortUsers > 0 ? (retainedUsers / cohortUsers) * 100 : 0),
 						dataThrough.toISOString(),
+						dataThrough.toISOString(),
 					],
 				];
 			})
@@ -510,6 +519,7 @@ export class MarketingClient {
 				decimalColumn("cohort_users"),
 				decimalColumn("week_two_users"),
 				decimalColumn("week_two_retention_pct"),
+				dateColumn("window_end"),
 				dateColumn("data_through"),
 			],
 			rows: rows.slice(-query.periods),

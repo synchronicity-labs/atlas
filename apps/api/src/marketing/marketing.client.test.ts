@@ -1,4 +1,6 @@
 import { afterEach, describe, expect, mock, test } from "bun:test";
+import { FactGrain } from "@crm/db";
+import { inferMetricWindow } from "../metabase/product-metric.publisher";
 import { MarketingClient } from "./marketing.client";
 import type { MarketingConfig } from "./marketing.config";
 
@@ -135,6 +137,7 @@ describe("MarketingClient PostHog retries", () => {
 			[480, 600, 10],
 			[420, 540, 12],
 		]);
+		expectMetricWindow(result, FactGrain.WEEK);
 		expect(fetchMock).toHaveBeenCalledTimes(2);
 		const firstBody = JSON.parse(
 			String((fetchMock.mock.calls[0]?.[1] as RequestInit | undefined)?.body),
@@ -172,6 +175,7 @@ describe("MarketingClient PostHog retries", () => {
 			[200, 25, 12.5],
 			[200, 25, 12.5],
 		]);
+		expectMetricWindow(result, FactGrain.MONTH);
 	});
 
 	test("publishes only mature native week-two retention cohorts", async () => {
@@ -214,5 +218,16 @@ describe("MarketingClient PostHog retries", () => {
 
 		expect(result.rows).toHaveLength(1);
 		expect(result.rows[0]?.slice(1, 4)).toEqual([800, 80, 10]);
+		expectMetricWindow(result, FactGrain.WEEK);
 	});
 });
+
+function expectMetricWindow(
+	result: Awaited<ReturnType<MarketingClient["execute"]>>,
+	grain: FactGrain,
+) {
+	const window = inferMetricWindow(result, grain, new Date());
+	expect(window.dataThrough.getTime()).toBeLessThanOrEqual(
+		window.periodEnd.getTime(),
+	);
+}

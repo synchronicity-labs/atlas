@@ -1,9 +1,11 @@
 import { describe, expect, it } from "bun:test";
 import {
 	buildTinybirdEligibility,
+	compactEligibilityQuery,
 	type EligibilityRow,
 	governProductPostgresQuery,
 	governTinybirdQuery,
+	hasSubscribedPopulation,
 } from "./tinybird-eligibility.service";
 
 const row = (input: Partial<EligibilityRow>): EligibilityRow => ({
@@ -70,7 +72,7 @@ describe("revenue TinyBird eligibility", () => {
 		expect(governed.queryText).toContain(`"organizationId" not in ('org-1')`);
 	});
 
-	it("keeps free-user questions pending until the banned-user join exists", () => {
+	it("keeps free-user questions pending until a source-side join exists", () => {
 		const snapshot = buildTinybirdEligibility(
 			[row({ email: "operator@sync.so" })],
 			new Date("2026-08-19T00:00:00.000Z"),
@@ -111,6 +113,28 @@ where "organizationPlanType" in ('hobbyist', 'creator', 'growth', 'scale')`,
 });
 
 describe("product activity eligibility", () => {
+	it("requests only bounded internal exclusion rows", () => {
+		const query = compactEligibilityQuery().toLowerCase();
+
+		expect(query).toContain("@sync.so");
+		expect(query).toContain("@sync.labs");
+		expect(query).not.toContain("u.banned");
+		expect(query).not.toContain("first_subscribed_at");
+		expect(query).toContain("limit 2000");
+	});
+
+	it("recognizes quoted paid-plan predicates", () => {
+		expect(
+			hasSubscribedPopulation(`select count(*) from sync_prod.sync_usage3
+where "organizationPlanType" is not null
+  and "organizationPlanType" != ''`),
+		).toBe(true);
+		expect(
+			hasSubscribedPopulation(`select count(*) from sync_prod.sync_usage3
+where "organizationPlanType" in ('hobbyist', 'creator')`),
+		).toBe(true);
+	});
+
 	it("excludes banned people only when they never subscribed", () => {
 		const snapshot = buildTinybirdEligibility(
 			[

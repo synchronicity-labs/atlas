@@ -28,6 +28,8 @@
 		"modal:import:rudy": "doppler run -- bun apps/agent/scripts/import-rudy-modal-costs.ts",
 		"economics:sync": "doppler run -- sh -c 'curl -fsS -X POST -H \"Authorization: Bearer $CRON_SECRET\" http://localhost:3001/internal/sync/atlas/6'",
 		"customer:sync": "doppler run -- bun apps/agent/scripts/sync-customer-data.ts",
+		"contracts:sync": "doppler run -- bun apps/agent/scripts/sync-contracts-drive.ts",
+		"contracts:reconcile": "doppler run -- bun apps/agent/scripts/reconcile-contracts.ts",
 		"hubspot:sales:sync": "doppler run -- bun apps/agent/scripts/sync-hubspot-sales.ts"
 	},
 	"devDependencies": {

@@ -43,7 +43,7 @@ export class GoogleServiceAccountClient {
 			return cached.value;
 		}
 		if (!this.credential) {
-			throw new Error("Google reporting is not configured.");
+			throw new Error("Google service account is not configured.");
 		}
 		const now = Math.floor(Date.now() / 1000);
 		const assertion = this.jwt(scopes, now);
@@ -75,7 +75,7 @@ export class GoogleServiceAccountClient {
 
 	private jwt(scopes: string[], now: number): string {
 		if (!this.credential) {
-			throw new Error("Google reporting is not configured.");
+			throw new Error("Google service account is not configured.");
 		}
 		const header = base64Url(JSON.stringify({ alg: "RS256", typ: "JWT" }));
 		const payload = base64Url(

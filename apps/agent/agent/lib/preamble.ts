@@ -27,10 +27,14 @@ export async function sessionPreamble(
 		dealId?: string | null;
 		atlasContextKind?: string | null;
 		atlasContextId?: string | null;
+		sourceRecordId?: string | null;
 	},
 	opened: Opened,
 ): Promise<Preamble> {
 	if (opened.kind === "workspace-profile") return workspacePreamble();
+	if (opened.kind === "contract-parse" && record.sourceRecordId) {
+		return contractPreamble(record.sourceRecordId, opened);
+	}
 	if (record.atlasContextKind === "workspace") return atlasWorkspacePreamble();
 	if (record.atlasContextKind === "dashboard" && record.atlasContextId) {
 		return atlasDashboardPreamble(Number(record.atlasContextId));
@@ -42,6 +46,58 @@ export async function sessionPreamble(
 	if (record.companyId) return companyPreamble(record.companyId, opened);
 	if (record.dealId) return dealPreamble(record.dealId, opened);
 	return noRecordPreamble();
+}
+
+export async function contractPreamble(
+	sourceRecordId: string,
+	opened: Opened,
+): Promise<Preamble> {
+	const document = await db.contractDocument.findUnique({
+		where: { sourceRecordId },
+		select: {
+			textStatus: true,
+			parseStatus: true,
+			truncated: true,
+			contractCustomer: { select: { folderName: true, legalName: true } },
+			sourceRecord: { select: { externalId: true, payload: true } },
+		},
+	});
+	if (!document) {
+		return {
+			markdown: `Contract source record \`${sourceRecordId}\` does not exist. Stop without guessing.`,
+			focus: {},
+		};
+	}
+	const payload = document.sourceRecord.payload as {
+		name?: unknown;
+		url?: unknown;
+	};
+	const name = typeof payload.name === "string" ? payload.name : "Contract";
+	const url = typeof payload.url === "string" ? payload.url : null;
+
+	return {
+		markdown: [
+			"## This contract parsing session",
+			"",
+			`Parse **${name}** from customer folder **${document.contractCustomer?.folderName ?? "Unassigned"}**.`,
+			document.contractCustomer?.legalName
+				? `The currently extracted legal customer name is ${document.contractCustomer.legalName}. Replace it only when this document gives direct evidence.`
+				: "No legal customer name has been extracted yet.",
+			`Source record id: \`${sourceRecordId}\`. Drive file id: \`${document.sourceRecord.externalId}\`.`,
+			url ? `Drive source: ${url}` : "",
+			`Text status: ${document.textStatus}. Parse status: ${document.parseStatus}. Stored text truncated: ${document.truncated ? "yes" : "no"}.`,
+			opened.reason ? `Why now: ${opened.reason}` : "",
+			"",
+			"Call `read_contract` with this source record id. Continue with its `nextOffset` until `hasMore` is false. Then call `record_contract_extraction` once.",
+			"",
+			"Use only the stored contract text. Do not call web search, web fetch, research tools, or any other outside source. Never place contract text in a third-party query or the workspace. Do not infer missing dates, amounts, parties, renewal terms, or commitments. Store a field only when the document states it, and attach a short supporting quote.",
+			"",
+			"This is extraction, not legal advice. Preserve uncertainty in `unresolvedFields` and stop after recording the result.",
+		]
+			.filter(Boolean)
+			.join("\n"),
+		focus: {},
+	};
 }
 
 export async function atlasWorkspacePreamble(): Promise<Preamble> {

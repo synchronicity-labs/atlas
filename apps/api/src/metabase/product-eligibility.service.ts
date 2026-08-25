@@ -644,7 +644,15 @@ limit ${PAGE_SIZE} offset ${offset}`,
   u.id::text as owner_user_id,
   lower(coalesce(u.email, '')) as email,
   coalesce(u.banned, false) as banned,
-  coalesce(u.is_anonymous, false) as is_anonymous
+  coalesce(u.is_anonymous, false) as is_anonymous,
+  exists (
+    select 1
+    from public.user_organizations paid_membership
+    join public.organizations paid_organization
+      on paid_organization.id = paid_membership.organization_id
+    where paid_membership.user_id = u.id
+      and paid_organization.first_subscribed_at is not null
+  ) as has_subscribed
 from auth.users u
 where u.id::text in (${ids.map(sqlString).join(", ")})`,
 			});
@@ -660,7 +668,15 @@ where u.id::text in (${ids.map(sqlString).join(", ")})`,
   u.id::text as owner_user_id,
   lower(coalesce(u.email, '')) as email,
   coalesce(u.banned, false) as banned,
-  coalesce(u.is_anonymous, false) as is_anonymous
+  coalesce(u.is_anonymous, false) as is_anonymous,
+  exists (
+    select 1
+    from public.user_organizations paid_membership
+    join public.organizations paid_organization
+      on paid_organization.id = paid_membership.organization_id
+    where paid_membership.user_id = u.id
+      and paid_organization.first_subscribed_at is not null
+  ) as has_subscribed
 from public.api_keys k
 left join auth.users u on u.id = k.user_id
 where k.id::text in (${ids.map(sqlString).join(", ")})`,
@@ -710,9 +726,10 @@ limit 10000`,
 			const email = text(values[3]).toLowerCase();
 			const banned = bool(values[4]);
 			const anonymous = bool(values[5]);
+			const hasSubscribed = bool(values[6]);
 			principals.set(`${type}:${id}`, {
 				eligible:
-					!banned &&
+					(!banned || hasSubscribed) &&
 					!anonymous &&
 					!email.endsWith("@sync.so") &&
 					!email.endsWith("@sync.labs"),

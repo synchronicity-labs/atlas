@@ -29,7 +29,12 @@ import type {
 	QuestionPreviewInput,
 	QuestionSaveVersionInput,
 } from "./questions.contracts";
-import { assertReadOnlyQuery } from "./read-only-query";
+import {
+	assertReadOnlyQuery,
+	bindDefaultMetabaseTemplateVariables,
+	boundSensitiveIdentityResult,
+} from "./read-only-query";
+import { filterQuestionResult } from "./reporting-period";
 
 const SORTABLE: Record<
 	string,
@@ -413,12 +418,17 @@ export class QuestionsService {
 						question.databaseExternalId,
 					);
 		const limit = 500;
+		const rows = filterQuestionResult(
+			result.columns,
+			result.rows,
+			input.reportingPeriod,
+		);
 
 		return {
 			columns: result.columns,
-			rows: result.rows.slice(0, limit),
-			rowCount: result.rows.length,
-			truncated: result.rows.length > limit,
+			rows: rows.slice(0, limit),
+			rowCount: rows.length,
+			truncated: rows.length > limit,
 			durationMs: Date.now() - startedAt,
 		};
 	}
@@ -459,20 +469,28 @@ export class QuestionsService {
 	) {
 		const config = metabaseConfig();
 		if (!config) throw new Error("Metabase is not configured.");
+		const boundQueryText = bindDefaultMetabaseTemplateVariables(
+			language,
+			queryText,
+		);
 		if (language !== "SQL" || databaseExternalId !== "166") {
 			return new MetabaseClient(config).preview({
 				language,
-				queryText,
+				queryText: boundSensitiveIdentityResult(
+					language,
+					boundQueryText,
+					databaseExternalId,
+				),
 				databaseExternalId,
 			});
 		}
 		const classified = usesRevenueDoorPolicy(questionNumber)
 			? await this.revenueDoorPolicy.compileForQuestion(
 					questionNumber,
-					queryText,
+					boundQueryText,
 				)
 			: null;
-		const classifiedQueryText = classified?.queryText ?? queryText;
+		const classifiedQueryText = classified?.queryText ?? boundQueryText;
 		assertReadOnlyQuery(language, classifiedQueryText);
 		const eligibility = usesRevenueDoorPolicy(questionNumber)
 			? await this.tinybirdEligibility.currentForRevenue()

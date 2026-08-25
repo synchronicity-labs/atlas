@@ -92,6 +92,8 @@ function task(overrides: Partial<LeasedTask> = {}): LeasedTask {
 		id: "task_1",
 		contactId: "contact_1",
 		companyId: null,
+		productUserId: null,
+		sourceRecordId: null,
 		kind: "identify",
 		reason: "A new contact",
 		budget: 4,
@@ -132,5 +134,20 @@ describe("taskAuth", () => {
 
 		expect(auth).toMatchObject({ issuer: "eve" });
 		expect(isAutomated({ auth: { current: auth } })).toBe(true);
+	});
+
+	it("carries the source record for contract parsing", () => {
+		const auth = taskAuth(
+			task({
+				contactId: null,
+				sourceRecordId: "source_record_1",
+				kind: "contract-parse",
+			}),
+		);
+
+		expect(auth.attributes).toMatchObject({
+			taskKind: "contract-parse",
+			sourceRecordId: "source_record_1",
+		});
 	});
 });

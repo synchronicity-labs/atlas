@@ -112,6 +112,8 @@ export async function completeRun(input: {
 	snapshots: number;
 	checkpoint?: unknown;
 	freshnessMs: number;
+	state?: SourceStatus;
+	lastError?: string | null;
 }) {
 	const now = new Date();
 	await db.$transaction([
@@ -128,9 +130,9 @@ export async function completeRun(input: {
 		db.dataSource.update({
 			where: { id: input.sourceId },
 			data: {
-				state: SourceStatus.HEALTHY,
+				state: input.state ?? SourceStatus.HEALTHY,
 				lastSyncAt: now,
-				lastError: null,
+				lastError: input.lastError ?? null,
 				freshnessDeadlineAt: new Date(now.getTime() + input.freshnessMs),
 			},
 		}),
@@ -176,6 +178,7 @@ export async function persistSourceRecord(input: {
 			payload: inputJson(input.payload),
 			sourceCreatedAt: input.sourceCreatedAt ?? null,
 			sourceUpdatedAt: input.sourceUpdatedAt ?? null,
+			sourceDeletedAt: null,
 			syncedAt: now,
 		},
 	});

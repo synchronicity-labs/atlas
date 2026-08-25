@@ -100,10 +100,7 @@ export function AgentConversationPanel({
 }) {
 	const conversations = useConversations(recordFilter(record));
 
-	const history = useMemo(
-		() => conversations.data ?? [],
-		[conversations.data],
-	);
+	const history = useMemo(() => conversations.data ?? [], [conversations.data]);
 
 	const [landedOn, setLandedOn] = useState<string | null>(null);
 	useEffect(() => {

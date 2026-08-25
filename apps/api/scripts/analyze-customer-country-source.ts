@@ -58,7 +58,8 @@ const candidateUsersByCustomer = new Map<
 >();
 for (const organization of organizations) {
 	if (!organization.stripeCustomerId) continue;
-	const candidates = candidateUsersByCustomer.get(organization.stripeCustomerId) ?? [];
+	const candidates =
+		candidateUsersByCustomer.get(organization.stripeCustomerId) ?? [];
 	for (const membership of organization.memberships) {
 		candidates.push({
 			userId: membership.productUser.externalId,
@@ -104,8 +105,11 @@ for (const [customerId, candidates] of candidateUsersByCustomer) {
 		const rightOwner = right.role === "owner" ? 1 : 0;
 		return rightOwner - leftOwner || left.userId.localeCompare(right.userId);
 	});
-	const matched = ranked.find((candidate) => countryByUser.has(candidate.userId));
-	if (matched) countryByCustomer.set(customerId, countryByUser.get(matched.userId)!);
+	const matched = ranked.find((candidate) =>
+		countryByUser.has(candidate.userId),
+	);
+	const country = matched ? countryByUser.get(matched.userId) : null;
+	if (country) countryByCustomer.set(customerId, country);
 }
 
 const byCountry = new Map<
@@ -127,7 +131,9 @@ for (const customer of customers) {
 	};
 	aggregate.ytdRevenue += customer.ytdRevenue;
 	aggregate.totalRevenue += customer.observedRevenue;
-	aggregate.activeLatestCompleteMonth += customer.activeLatestCompleteMonth ? 1 : 0;
+	aggregate.activeLatestCompleteMonth += customer.activeLatestCompleteMonth
+		? 1
+		: 0;
 	aggregate.cohortCustomers += 1;
 	byCountry.set(country, aggregate);
 }
@@ -140,7 +146,7 @@ const rankedCountries = [...byCountry.entries()]
 	.map(([country, aggregate]) => ({
 		country,
 		ytdRevenue: Math.round(aggregate.ytdRevenue),
-		sharePct: round(100 * aggregate.ytdRevenue / totalYtdRevenue),
+		sharePct: round((100 * aggregate.ytdRevenue) / totalYtdRevenue),
 		activeLatestCompleteMonth: aggregate.activeLatestCompleteMonth,
 		realizedLtv: Math.round(
 			aggregate.totalRevenue / Math.max(aggregate.cohortCustomers, 1),
@@ -158,7 +164,9 @@ console.log(
 			productUsersChecked: userIds.length,
 			productUsersWithPosthogCountry: countryByUser.size,
 			customersWithPosthogCountry: countryByCustomer.size,
-			countryCoveragePct: round(100 * countryByCustomer.size / customers.length),
+			countryCoveragePct: round(
+				(100 * countryByCustomer.size) / customers.length,
+			),
 			rankedCountries,
 		},
 		null,

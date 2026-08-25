@@ -6,7 +6,8 @@ import { claimDue } from "../agent/lib/tasks";
 const REASON = "lane-test";
 
 const VISIBLE = { only: DIRECT_KINDS } as const;
-const RESEARCH = { except: DIRECT_KINDS } as const;
+const RESEARCH = { except: [...DIRECT_KINDS, "contract-parse"] } as const;
+const CONTRACTS = { only: ["contract-parse"] } as const;
 
 async function clear() {
 	await db.agentTask.deleteMany({ where: { reason: REASON } });
@@ -86,13 +87,25 @@ describe("dispatch lanes", () => {
 		expect(ordered).toEqual([us.id, identify.id]);
 	});
 
-	it("leases the two lanes independently", async () => {
+	it("leases the visible and research lanes independently", async () => {
 		const brand = await queue("brand", PRIORITY.brand);
 
 		await claimDue(10, VISIBLE);
 		const again = await claimDue(10, RESEARCH);
 
 		expect(again.map((t) => t.id)).not.toContain(brand.id);
+	});
+
+	it("keeps contract parsing out of the general research lane", async () => {
+		const contract = await queue("contract-parse", PRIORITY.contract + 10_000);
+		const profile = await queue("company-profile", PRIORITY.companyProfile);
+
+		const research = await claimDue(10, RESEARCH);
+		const contracts = await claimDue(1, CONTRACTS);
+
+		expect(research.map((task) => task.id)).toContain(profile.id);
+		expect(research.map((task) => task.id)).not.toContain(contract.id);
+		expect(contracts.map((task) => task.id)).toEqual([contract.id]);
 	});
 });
 

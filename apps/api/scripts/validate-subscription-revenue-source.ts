@@ -8,7 +8,7 @@ const client = new MetabaseClient(config);
 const result = await client.preview({
 	language: "SQL",
 	databaseExternalId: "166",
-queryText: `with bounds as (
+	queryText: `with bounds as (
   select
     toStartOfMonth(toTimeZone(now(), 'UTC')) as month_start,
     toStartOfMinute(toTimeZone(now(), 'UTC')) as data_through

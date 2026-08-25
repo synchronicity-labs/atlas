@@ -45,6 +45,15 @@ import ReactGridLayout, {
 } from "react-grid-layout";
 import { toast } from "sonner";
 import { QuestionExplanationTooltip } from "@/components/question-explanation";
+import {
+	filterReportingRows,
+	ReportingPeriodControl,
+	type ReportingPeriodFilters,
+	reportingDate,
+	reportingHistoryBounds,
+	reportingPeriodLabel,
+	useReportingPeriod,
+} from "@/components/reporting-period";
 import { RudyChatTrigger } from "@/components/rudy-chat";
 import { useTRPC } from "@/lib/trpc/client";
 import type { RouterOutputs } from "@/lib/trpc/types";
@@ -153,6 +162,58 @@ function rows(snapshot: SnapshotData): unknown[][] {
 	return snapshot.rows.filter(Array.isArray) as unknown[][];
 }
 
+function filterCardHistory(
+	card: DashboardCard,
+	filters: ReportingPeriodFilters,
+): DashboardCard {
+	if (!card.snapshot) return card;
+	const sourceRows = rows(card.snapshot);
+	const filtered = filterReportingRows(
+		columns(card.snapshot),
+		sourceRows,
+		filters,
+	);
+	if (filtered.dateColumnIndex == null) return card;
+
+	const filteredCard = structuredClone(card);
+	const filteredSnapshot = filteredCard.snapshot as SnapshotData;
+	let visibleRows = filtered.rows;
+	if (card.visualization === "NUMBER" && filtered.rows.length === 1) {
+		const selectedDate = reportingDate(
+			filtered.rows[0]?.[filtered.dateColumnIndex],
+		);
+		const previousRow = selectedDate
+			? [...sourceRows].reverse().find((row) => {
+					const date = reportingDate(row[filtered.dateColumnIndex ?? 0]);
+					return date ? date < selectedDate : false;
+				})
+			: null;
+		if (previousRow) visibleRows = [previousRow, ...filtered.rows];
+	}
+	if (filteredSnapshot) filteredSnapshot.rows = visibleRows;
+
+	const rawSettings = (filteredCard as unknown as { displaySettings?: unknown })
+		.displaySettings;
+	const currentSettings =
+		rawSettings &&
+		typeof rawSettings === "object" &&
+		!Array.isArray(rawSettings)
+			? (rawSettings as Record<string, unknown>)
+			: {};
+	const selectedLabel =
+		filters.from && filters.to
+			? reportingPeriodLabel(filters)
+			: filters.range === "mtd" || filters.range === "previous-month"
+				? reportingPeriodLabel(filters)
+				: null;
+	(filteredCard as unknown as { displaySettings: unknown }).displaySettings = {
+		...currentSettings,
+		...(selectedLabel ? { timeframe: selectedLabel } : {}),
+		unavailableMessage: "No saved result is available for this period.",
+	};
+	return filteredCard;
+}
+
 function humanize(value: string): string {
 	return value
 		.replaceAll("_", " ")
@@ -205,9 +266,13 @@ function stringArraySetting(
 
 function visibleColumnEntries(card: DashboardCard) {
 	const hiddenColumns = new Set(stringArraySetting(card, "hiddenColumns"));
-	return columns(card.snapshot)
-		.map((column, index) => ({ column, index }))
-		.filter(({ column }) => !hiddenColumns.has(column.name));
+	const visibleColumns: Array<{ column: Column; index: number }> = [];
+	for (const [index, column] of columns(card.snapshot).entries()) {
+		if (!hiddenColumns.has(column.name)) {
+			visibleColumns.push({ column, index });
+		}
+	}
+	return visibleColumns;
 }
 
 function chartPeriod(value: unknown, compact = false): string {
@@ -412,22 +477,34 @@ function ScalarCard({ card }: { card: DashboardCard }) {
 		const formattedPeriod = formatMonthPeriod(period);
 		switch (card.question.number) {
 			case 1110:
-				currentPeriodLabel = `${formattedPeriod} estimated month-end usage`;
+				currentPeriodLabel = isCurrentMonth
+					? `${formattedPeriod} estimated month-end usage`
+					: `${formattedPeriod} actual usage`;
 				break;
 			case 1111:
-				currentPeriodLabel = `${formattedPeriod} current subscription value`;
+				currentPeriodLabel = isCurrentMonth
+					? `${formattedPeriod} current subscription value`
+					: `${formattedPeriod} month-end subscription value`;
 				break;
 			case 1117:
-				currentPeriodLabel = `${formattedPeriod} estimated month-end top-ups`;
+				currentPeriodLabel = isCurrentMonth
+					? `${formattedPeriod} estimated month-end top-ups`
+					: `${formattedPeriod} actual top-ups`;
 				break;
 			case 1118:
-				currentPeriodLabel = `${formattedPeriod} estimated month-end variable revenue`;
+				currentPeriodLabel = isCurrentMonth
+					? `${formattedPeriod} estimated month-end variable revenue`
+					: `${formattedPeriod} actual variable revenue`;
 				break;
 			case 1102:
-				currentPeriodLabel = `${formattedPeriod} estimated month-end revenue`;
+				currentPeriodLabel = isCurrentMonth
+					? `${formattedPeriod} estimated month-end revenue`
+					: `${formattedPeriod} actual revenue`;
 				break;
 			case 1119:
-				currentPeriodLabel = `${formattedPeriod} estimated month-end usage`;
+				currentPeriodLabel = isCurrentMonth
+					? `${formattedPeriod} estimated month-end usage`
+					: `${formattedPeriod} actual usage`;
 				break;
 			default:
 				currentPeriodLabel = formatMonthPeriod(period, { includeMtd: true });
@@ -1353,6 +1430,8 @@ export function AtlasDashboard({ number }: { number: number }) {
 		"tab",
 		parseAsInteger.withDefault(1).withOptions({ history: "push" }),
 	);
+	const reportingPeriod = useReportingPeriod();
+	const historyFilters = reportingPeriod.filters;
 	const [editing, setEditing] = useState(false);
 	const [draft, setDraft] = useState<Layout>([]);
 	const [visualizations, setVisualizations] = useState<
@@ -1398,9 +1477,31 @@ export function AtlasDashboard({ number }: { number: number }) {
 		() => baseCards.filter((card) => !card.snapshot),
 		[baseCards],
 	);
-	const readyCards = useMemo(
-		() => baseCards.filter((card) => card.snapshot),
+	const historyBounds = useMemo(
+		() =>
+			reportingHistoryBounds(
+				baseCards.flatMap((card) =>
+					card.snapshot
+						? [
+								{
+									columns: columns(card.snapshot),
+									rows: rows(card.snapshot),
+								},
+							]
+						: [],
+				),
+			),
 		[baseCards],
+	);
+	const readyCards = useMemo(
+		() =>
+			baseCards.reduce<DashboardCard[]>((filtered, card) => {
+				if (card.snapshot) {
+					filtered.push(filterCardHistory(card, historyFilters));
+				}
+				return filtered;
+			}, []),
+		[baseCards, historyFilters],
 	);
 	const visibleCards = editing ? baseCards : readyCards;
 
@@ -1503,6 +1604,12 @@ export function AtlasDashboard({ number }: { number: number }) {
 						<MetricTrustIndicator summary={data.verification} />
 					</div>
 					<div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
+						<ReportingPeriodControl
+							filters={historyFilters}
+							bounds={historyBounds}
+							onPreset={(range) => void reportingPeriod.setPreset(range)}
+							onCustom={(from, to) => void reportingPeriod.setCustom(from, to)}
+						/>
 						<RudyChatTrigger
 							record={{ kind: "dashboard", id: String(data.number) }}
 						/>

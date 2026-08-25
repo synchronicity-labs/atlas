@@ -1,7 +1,7 @@
 import {
 	GoogleServiceAccountClient,
 	googleServiceAccount,
-} from "../google/google-service-account";
+} from "@crm/db/google-service-account";
 import type { CatalogSheet } from "./metric-catalog.parser";
 
 const SHEETS_SCOPE = "https://www.googleapis.com/auth/spreadsheets.readonly";

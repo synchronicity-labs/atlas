@@ -186,6 +186,7 @@ enum DataSourceKind {
   GOOGLE_ANALYTICS
   GOOGLE_SEARCH_CONSOLE
   GOOGLE_SHEETS
+  GOOGLE_DRIVE
   ATLAS
 
   @@schema("public")
@@ -199,6 +200,7 @@ enum ExternalRecordKind {
   PIPELINE
   OWNER
   ACTIVITY
+  DOCUMENT
 
   @@schema("public")
 }
@@ -207,6 +209,7 @@ enum IdentityLinkMethod {
   EXACT_EXTERNAL_ID
   EXACT_EMAIL
   EXACT_DOMAIN
+  EXACT_NAME
   SOURCE_ASSOCIATION
   MEMBER_DOMAIN
 
@@ -357,6 +360,61 @@ enum VerificationStatus {
   @@schema("metrics")
 }
 
+enum ContractTextStatus {
+  PENDING
+  EXTRACTED
+  NEEDS_OCR
+  FAILED
+
+  @@schema("public")
+}
+
+enum ContractParseStatus {
+  PENDING
+  PARSED
+  FAILED
+
+  @@schema("public")
+}
+
+enum ContractMappingStatus {
+  SUGGESTED
+  VERIFIED
+  REJECTED
+
+  @@schema("public")
+}
+
+enum ContractFindingKind {
+  NO_PRODUCT_ACCOUNT
+  AMBIGUOUS_ACCOUNT
+  PRICE_MISMATCH
+  POSSIBLE_MISSING_ADDENDUM
+  INACTIVE_COMMITMENT
+  MISSING_OCR
+  SOURCE_DOCUMENT_REMOVED
+  PAYMENT_RISK
+
+  @@schema("public")
+}
+
+enum ContractFindingStatus {
+  OPEN
+  ACKNOWLEDGED
+  DISMISSED
+  RESOLVED
+
+  @@schema("public")
+}
+
+enum ContractFindingSeverity {
+  INFO
+  WARNING
+  CRITICAL
+
+  @@schema("public")
+}
+
 model Company {
   id          String  @id @default(cuid())
   name        String
@@ -409,6 +467,7 @@ model Company {
   sourceRecords            SourceRecord[]
   productUserLinks         ProductUserCompanyLink[]
   productOrganizationLinks ProductOrganizationCompanyLink[]
+  contractCustomers        ContractCustomer[]
   createdAt                DateTime                         @default(now())
   updatedAt                DateTime                         @updatedAt
 
@@ -546,11 +605,13 @@ model ContactBrief {
 }
 
 model AgentTask {
-  id            String       @id @default(cuid())
-  contactId     String?
-  companyId     String?
-  productUserId String?
-  productUser   ProductUser? @relation(fields: [productUserId], references: [id], onDelete: Cascade)
+  id             String        @id @default(cuid())
+  contactId      String?
+  companyId      String?
+  productUserId  String?
+  productUser    ProductUser?  @relation(fields: [productUserId], references: [id], onDelete: Cascade)
+  sourceRecordId String?
+  sourceRecord   SourceRecord? @relation(fields: [sourceRecordId], references: [id], onDelete: Cascade)
 
   kind   String
   reason String
@@ -572,6 +633,7 @@ model AgentTask {
   @@index([dueAt, leasedUntil])
   @@index([contactId])
   @@index([productUserId])
+  @@index([sourceRecordId])
   @@map("agentTask")
   @@schema("public")
 }
@@ -919,23 +981,24 @@ model DataSource {
   createdAt           DateTime       @default(now())
   updatedAt           DateTime       @updatedAt
 
-  dashboards            SourceDashboard[]
-  cards                 SourceCard[]
-  syncRuns              SyncRun[]
-  syncCursors           SyncCursor[]
-  resultSnapshots       ResultSnapshot[]
-  questions             Question[]
-  productUsers          ProductUser[]
-  productOrganizations  ProductOrganization[]
-  productUserSnapshots  ProductUserSnapshot[]
-  stripeCustomerBillingCountries StripeCustomerBillingCountry[]
+  dashboards                            SourceDashboard[]
+  cards                                 SourceCard[]
+  syncRuns                              SyncRun[]
+  syncCursors                           SyncCursor[]
+  resultSnapshots                       ResultSnapshot[]
+  questions                             Question[]
+  productUsers                          ProductUser[]
+  productOrganizations                  ProductOrganization[]
+  productUserSnapshots                  ProductUserSnapshot[]
+  stripeCustomerBillingCountries        StripeCustomerBillingCountry[]
   stripeCustomerBillingCountrySnapshots StripeCustomerBillingCountrySnapshot[]
-  sourceRecords         SourceRecord[]
-  sourceRecordSnapshots SourceRecordSnapshot[]
-  ingestionDatasets     IngestionDataset[]
-  sourceWatermarks      SourceWatermark[]
-  normalizedFacts       NormalizedFact[]
-  metricCatalogEntries  MetricCatalogEntry[]
+  sourceRecords                         SourceRecord[]
+  sourceRecordSnapshots                 SourceRecordSnapshot[]
+  contractCustomers                     ContractCustomer[]
+  ingestionDatasets                     IngestionDataset[]
+  sourceWatermarks                      SourceWatermark[]
+  normalizedFacts                       NormalizedFact[]
+  metricCatalogEntries                  MetricCatalogEntry[]
 
   @@map("dataSource")
   @@schema("public")
@@ -1140,37 +1203,37 @@ model MetricDefinition {
 }
 
 model MetricCatalogEntry {
-  id               String                @id @default(cuid())
-  sourceId         String
-  source           DataSource            @relation(fields: [sourceId], references: [id], onDelete: Cascade)
-  sourceDocumentId String
-  sourceTabId      Int
-  sourceTabName    String
-  sourceTabIndex   Int
-  sourceRange      String
-  sourceRow        Int
-  externalKey      String
-  title            String
-  description      String?
-  ownerTeam        String?
-  sourceHint       String?
-  trackability     String?
-  kind             MetricCatalogKind     @default(UNCLASSIFIED)
-  readiness        MetricReadinessStatus @default(CATALOGED)
-  metricId         String?
-  metric            MetricDefinition?     @relation(fields: [metricId], references: [id], onDelete: SetNull)
+  id                  String                  @id @default(cuid())
+  sourceId            String
+  source              DataSource              @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  sourceDocumentId    String
+  sourceTabId         Int
+  sourceTabName       String
+  sourceTabIndex      Int
+  sourceRange         String
+  sourceRow           Int
+  externalKey         String
+  title               String
+  description         String?
+  ownerTeam           String?
+  sourceHint          String?
+  trackability        String?
+  kind                MetricCatalogKind       @default(UNCLASSIFIED)
+  readiness           MetricReadinessStatus   @default(CATALOGED)
+  metricId            String?
+  metric              MetricDefinition?       @relation(fields: [metricId], references: [id], onDelete: SetNull)
   canonicalQuestionId String?
-  canonicalQuestion   Question?            @relation("CatalogCanonicalQuestion", fields: [canonicalQuestionId], references: [id], onDelete: SetNull)
-  evidence          MetricCatalogEvidence[]
-  attempts          MetricCatalogAttempt[]
-  rawRow           Json
-  ambiguities      Json
-  contentHash      String
-  firstSeenAt      DateTime               @default(now())
-  lastSeenAt       DateTime
-  missingAt        DateTime?
-  createdAt        DateTime               @default(now())
-  updatedAt        DateTime               @updatedAt
+  canonicalQuestion   Question?               @relation("CatalogCanonicalQuestion", fields: [canonicalQuestionId], references: [id], onDelete: SetNull)
+  evidence            MetricCatalogEvidence[]
+  attempts            MetricCatalogAttempt[]
+  rawRow              Json
+  ambiguities         Json
+  contentHash         String
+  firstSeenAt         DateTime                @default(now())
+  lastSeenAt          DateTime
+  missingAt           DateTime?
+  createdAt           DateTime                @default(now())
+  updatedAt           DateTime                @updatedAt
 
   @@unique([sourceDocumentId, externalKey])
   @@index([kind, readiness])
@@ -1380,11 +1443,11 @@ model Question {
   createdAt                 DateTime        @default(now())
   updatedAt                 DateTime        @updatedAt
 
-  versions        QuestionVersion[]
-  dashboardCards  DashboardCard[]
-  changeProposals QuestionChangeProposal[]
-  catalogEvidence MetricCatalogEvidence[]
-  canonicalCatalogEntries MetricCatalogEntry[] @relation("CatalogCanonicalQuestion")
+  versions                QuestionVersion[]
+  dashboardCards          DashboardCard[]
+  changeProposals         QuestionChangeProposal[]
+  catalogEvidence         MetricCatalogEvidence[]
+  canonicalCatalogEntries MetricCatalogEntry[]     @relation("CatalogCanonicalQuestion")
 
   @@unique([connector, sourceExternalId])
   @@index([status, updatedAt])
@@ -1569,8 +1632,10 @@ model ProductOrganization {
   createdAt            DateTime   @default(now())
   updatedAt            DateTime   @updatedAt
 
-  memberships  ProductOrganizationMembership[]
-  companyLinks ProductOrganizationCompanyLink[]
+  memberships           ProductOrganizationMembership[]
+  companyLinks          ProductOrganizationCompanyLink[]
+  contractCustomerLinks ContractCustomerProductOrganization[]
+  contractFindings      ContractFinding[]
 
   @@unique([sourceId, externalId])
   @@index([name])
@@ -1682,18 +1747,125 @@ model SourceRecord {
   payload         Json
   sourceCreatedAt DateTime?
   sourceUpdatedAt DateTime?
+  sourceDeletedAt DateTime?
   syncedAt        DateTime
   createdAt       DateTime           @default(now())
   updatedAt       DateTime           @updatedAt
 
   snapshots        SourceRecordSnapshot[]
   productUserLinks ProductUserSourceLink[]
+  agentTasks       AgentTask[]
+  contractDocument ContractDocument?
 
   @@unique([sourceId, kind, externalId])
   @@index([companyId])
   @@index([contactId])
   @@index([sourceId, syncedAt])
+  @@index([sourceId, sourceDeletedAt])
   @@map("sourceRecord")
+  @@schema("public")
+}
+
+model ContractCustomer {
+  id              String     @id @default(cuid())
+  sourceId        String
+  source          DataSource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  externalId      String
+  folderName      String
+  legalName       String?
+  companyId       String?
+  company         Company?   @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  sourceDeletedAt DateTime?
+  syncedAt        DateTime
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  documents            ContractDocument[]
+  productOrganizations ContractCustomerProductOrganization[]
+  findings             ContractFinding[]
+
+  @@unique([sourceId, externalId], map: "contractCustomer_source_external_key")
+  @@index([companyId], map: "contractCustomer_company_idx")
+  @@index([sourceId, sourceDeletedAt], map: "contractCustomer_source_deleted_idx")
+  @@map("contractCustomer")
+  @@schema("public")
+}
+
+model ContractDocument {
+  sourceRecordId     String              @id
+  sourceRecord       SourceRecord        @relation(fields: [sourceRecordId], references: [id], onDelete: Cascade)
+  contractCustomerId String?
+  contractCustomer   ContractCustomer?   @relation(fields: [contractCustomerId], references: [id], onDelete: SetNull)
+  revisionKey        String
+  textStatus         ContractTextStatus  @default(PENDING)
+  text               String?
+  textHash           String?
+  byteCount          Int?
+  characterCount     Int?
+  pageCount          Int?
+  truncated          Boolean             @default(false)
+  extractionError    String?
+  extractionWarnings Json?
+  extractedAt        DateTime?
+  parseStatus        ContractParseStatus @default(PENDING)
+  parserVersion      String?
+  parsed             Json?
+  parseError         String?
+  parsedAt           DateTime?
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+
+  @@index([contractCustomerId], map: "contractDocument_customer_idx")
+  @@index([textStatus, parseStatus], map: "contractDocument_status_idx")
+  @@map("contractDocument")
+  @@schema("public")
+}
+
+model ContractCustomerProductOrganization {
+  id                    String                @id @default(cuid())
+  contractCustomerId    String
+  contractCustomer      ContractCustomer      @relation(fields: [contractCustomerId], references: [id], onDelete: Cascade)
+  productOrganizationId String
+  productOrganization   ProductOrganization   @relation(fields: [productOrganizationId], references: [id], onDelete: Cascade)
+  status                ContractMappingStatus @default(SUGGESTED)
+  method                IdentityLinkMethod
+  confidence            Float
+  evidence              Json
+  verifiedAt            DateTime?
+  createdAt             DateTime              @default(now())
+  updatedAt             DateTime              @updatedAt
+
+  @@unique([contractCustomerId, productOrganizationId], map: "contractCustomerProductOrg_customer_org_key")
+  @@index([productOrganizationId], map: "contractCustomerProductOrg_org_idx")
+  @@index([status], map: "contractCustomerProductOrg_status_idx")
+  @@map("contractCustomerProductOrganization")
+  @@schema("public")
+}
+
+model ContractFinding {
+  id                    String                  @id @default(cuid())
+  findingKey            String                  @unique
+  contractCustomerId    String
+  contractCustomer      ContractCustomer        @relation(fields: [contractCustomerId], references: [id], onDelete: Cascade)
+  productOrganizationId String?
+  productOrganization   ProductOrganization?    @relation(fields: [productOrganizationId], references: [id], onDelete: SetNull)
+  kind                  ContractFindingKind
+  status                ContractFindingStatus   @default(OPEN)
+  severity              ContractFindingSeverity @default(WARNING)
+  title                 String
+  summary               String
+  evidence              Json
+  dataThrough           DateTime
+  firstSeenAt           DateTime                @default(now())
+  lastSeenAt            DateTime                @default(now())
+  resolvedAt            DateTime?
+  createdAt             DateTime                @default(now())
+  updatedAt             DateTime                @updatedAt
+
+  @@index([contractCustomerId, status], map: "contractFinding_customer_status_idx")
+  @@index([productOrganizationId], map: "contractFinding_org_idx")
+  @@index([kind, status], map: "contractFinding_kind_status_idx")
+  @@map("contractFinding")
   @@schema("public")
 }
 

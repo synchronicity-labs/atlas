@@ -381,6 +381,7 @@ export class MetabaseClient {
 		const raw = await this.request<DatasetResponse>("/api/dataset", {
 			method: "POST",
 			body: JSON.stringify({ ...datasetQuery, parameters: [] }),
+			signal: AbortSignal.timeout(PREVIEW_TIMEOUT_MS),
 		});
 		return this.result(raw);
 	}

@@ -1,7 +1,7 @@
 import {
 	type GoogleServiceAccount,
 	googleServiceAccount,
-} from "../google/google-service-account";
+} from "@crm/db/google-service-account";
 
 export type MarketingConfig = {
 	google: GoogleServiceAccount | null;

@@ -119,21 +119,28 @@ country scan. All endpoints require `Authorization: Bearer $CRON_SECRET`.
 The generated Vercel configuration schedules the users-only continuation hourly,
 the source Metabase mirror every eight hours, the Atlas scoreboard every 15 minutes,
 and historical backfill every 15 minutes until the source status reports
-`backfillFinished`. The Atlas scoreboard advances by at most twelve questions per
-request and runs at most four queries at once. Retries are safe: run status and
+`backfillFinished`. Dashboard 1 advances by at most two Metabase questions per
+request; report dashboards advance by at most four. A refresh runs at most four
+queries at once. Retries are safe: run status and
 cursors are persisted, snapshots are idempotent, and a failed batch resumes from its
 last checkpoint.
 
-Every Atlas-owned TinyBird execution first reads the current product-user
-eligibility set from Product Postgres. Raw usage facts are filtered by `userId`;
-Stripe mirrors are filtered by the organization or customer linked to an excluded
-owner. Banned, anonymous, `@sync.so`, and `@sync.labs` identities are excluded.
-Disabled identities remain in historical KPI populations because deletion after
-qualification is a retention signal; question 6001 reports those organizations
-separately. The exclusion is applied when a question runs, not when the immutable
-raw fact first arrives, so a later ban can change a historical metric on the next
-refresh. Previously published report snapshots remain unchanged. Each governed run
-stores the eligibility snapshot hash and capture time used for the calculation.
+Atlas never downloads or exports the full Product identity or organization-membership
+table for metric eligibility. Product questions use a server-side join, a bounded
+aggregate, or a small exclusion set that is capped at the source. The API also applies
+a hard 2,000-row result bound to Product Postgres identity queries as a final guard.
+A partial identity result can never certify a metric.
+
+Raw usage facts are filtered by `userId`; Stripe mirrors are filtered by the
+organization or customer linked to an excluded owner. Internal users are excluded.
+Banned users who never subscribed are excluded, while paid history from users who
+did subscribe remains in money metrics even if the user was banned later. Disabled
+identities remain in historical KPI populations because deletion after qualification
+is a retention signal; question 6001 reports those organizations separately. The
+exclusion is applied when a question runs, not when the immutable raw fact first
+arrives, so a later ban can change a historical metric on the next refresh.
+Previously published report snapshots remain unchanged. Each governed run stores the
+eligibility snapshot hash and capture time used for the calculation.
 
 Local operators can trigger the same paths without copying a secret:
 

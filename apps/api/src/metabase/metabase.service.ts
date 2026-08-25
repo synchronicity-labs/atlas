@@ -14,7 +14,11 @@ import { Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import type { EnvironmentVariables } from "../config/env.validation";
 import { InjectDatabase } from "../database/database.constants";
-import { assertReadOnlyQuery } from "../questions/read-only-query";
+import {
+	assertReadOnlyQuery,
+	bindDefaultMetabaseTemplateVariables,
+	boundSensitiveIdentityResult,
+} from "../questions/read-only-query";
 import {
 	abuseEnforcementVerificationChecks,
 	abuseUsesAllIdentities,
@@ -56,7 +60,10 @@ import {
 	type StripeCustomerBillingCountryRow,
 	stripeCustomerBillingCountryQuery,
 } from "./stripe-customer-billing-country";
-import { TinybirdEligibilityService } from "./tinybird-eligibility.service";
+import {
+	hasSubscribedPopulation,
+	TinybirdEligibilityService,
+} from "./tinybird-eligibility.service";
 
 const SOURCE_KEY = "metabase:sync";
 const DASHBOARD_SCOPE = "product-scoreboard";
@@ -1155,12 +1162,31 @@ export class MetabaseService {
 						question.versions[0]?.queryText,
 					),
 			);
-			const [generalEligibility, revenueEligibility] = await Promise.all([
-				needsGeneralEligibility ? this.tinybirdEligibility.current() : null,
-				needsRevenueEligibility
-					? this.tinybirdEligibility.currentForRevenue()
-					: null,
-			]);
+			const needsPaidActivityEligibility = questionsToProcess.some(
+				(question) => {
+					const version = question.versions[0];
+					return (
+						["34", "166"].includes(question.databaseExternalId ?? "") &&
+						version?.queryLanguage === QueryLanguage.SQL &&
+						!usesSubscribedRevenueEligibility(
+							question.number,
+							question.name,
+							version.queryText,
+						) &&
+						hasSubscribedPopulation(version.queryText)
+					);
+				},
+			);
+			const [generalEligibility, revenueEligibility, paidActivityEligibility] =
+				await Promise.all([
+					needsGeneralEligibility ? this.tinybirdEligibility.current() : null,
+					needsRevenueEligibility
+						? this.tinybirdEligibility.currentForRevenue()
+						: null,
+					needsPaidActivityEligibility
+						? this.tinybirdEligibility.currentForPaidActivity()
+						: null,
+				]);
 			for (
 				let offset = 0;
 				offset < questionsToProcess.length;
@@ -1181,16 +1207,20 @@ export class MetabaseService {
 							}
 							const language =
 								version.queryLanguage === QueryLanguage.SQL ? "SQL" : "MBQL";
-							assertReadOnlyQuery(language, version.queryText);
+							const boundQueryText = bindDefaultMetabaseTemplateVariables(
+								language,
+								version.queryText,
+							);
+							assertReadOnlyQuery(language, boundQueryText);
 							const revenueDoor =
 								language === "SQL" && usesRevenueDoorPolicy(question.number)
 									? await this.revenueDoorPolicy.compileForQuestion(
 											question.number,
-											version.queryText,
+											boundQueryText,
 										)
 									: null;
 							const classifiedQueryText =
-								revenueDoor?.queryText ?? version.queryText;
+								revenueDoor?.queryText ?? boundQueryText;
 							assertReadOnlyQuery(language, classifiedQueryText);
 							const eligibility = abuseUsesAllIdentities(
 								question.sourceExternalId,
@@ -1202,7 +1232,9 @@ export class MetabaseService {
 											classifiedQueryText,
 										)
 									? revenueEligibility
-									: generalEligibility;
+									: hasSubscribedPopulation(classifiedQueryText)
+										? paidActivityEligibility
+										: generalEligibility;
 							const governed = eligibility
 								? this.tinybirdEligibility.govern(
 										classifiedQueryText,
@@ -1216,7 +1248,11 @@ export class MetabaseService {
 									: classifiedQueryText;
 							const result = await client.preview({
 								language,
-								queryText: executedQueryText,
+								queryText: boundSensitiveIdentityResult(
+									language,
+									executedQueryText,
+									question.databaseExternalId,
+								),
 								databaseExternalId: question.databaseExternalId,
 							});
 							const verificationChecks: PublishVerificationCheck[] = [];

@@ -33,19 +33,25 @@ what you found, accurately, and move on.
 Every session starts from one record, and your session instructions say which
 and give you its id. Read that record before anything else:
 
-| Opened on | Start with            |
-| --------- | --------------------- |
-| a person  | `read_crm_history`    |
-| a company | `read_company_history`|
-| a deal    | `read_deal_history`   |
-| Atlas     | `read_atlas`          |
+| Opened on  | Start with             |
+| ---------- | ---------------------- |
+| a person   | `read_crm_history`     |
+| a company  | `read_company_history` |
+| a deal     | `read_deal_history`    |
+| Atlas      | `read_atlas`           |
+| a contract | `read_contract`        |
 
 For Atlas questions, the current query and result provenance are part of the
 record. Read those before interpreting a chart. Atlas reporting periods are UTC.
 When asked to edit a question, use `propose_atlas_question_change`; it creates a
 reviewable draft and does not mutate the live query.
 
-All three are free — our own database, no vendor, no budget — and they are the
+For contract parsing tasks, read every stored text chunk and call
+`record_contract_extraction` once. Contract text is internal. Do not send any
+part of it to web search, research vendors, or another outside source. Extract
+only terms that the document states and preserve missing fields as unresolved.
+
+All four are free — our own database, no vendor, no budget — and they are the
 best evidence in the system besides.
 
 The one session that opens on no record is the one that writes up **the company

@@ -5,6 +5,7 @@ export type LeasedTask = {
 	contactId: string | null;
 	companyId: string | null;
 	productUserId: string | null;
+	sourceRecordId: string | null;
 	kind: string;
 	reason: string;
 	budget: number;
@@ -18,6 +19,7 @@ export type TaskSubject = {
 	contactId: string | null;
 	companyId: string | null;
 	productUserId: string | null;
+	sourceRecordId: string | null;
 	kind: string;
 };
 
@@ -57,7 +59,7 @@ export async function claimDue(
 			FOR UPDATE SKIP LOCKED
 		) AS due
 		WHERE t.id = due.id
-		RETURNING t.id, t."contactId", t."companyId", t."productUserId", t.kind, t.reason,
+		RETURNING t.id, t."contactId", t."companyId", t."productUserId", t."sourceRecordId", t.kind, t.reason,
 			t.budget, t.attempts, t.priority, t."dueAt";
 	`;
 
@@ -76,7 +78,7 @@ export async function retireExhausted(): Promise<TaskSubject[]> {
 		WHERE t."finishedAt" IS NULL
 			AND t."attempts" >= ${MAX_ATTEMPTS}
 			AND (t."leasedUntil" IS NULL OR t."leasedUntil" < ${now})
-		RETURNING t.id, t."contactId", t."companyId", t."productUserId", t.kind;
+		RETURNING t.id, t."contactId", t."companyId", t."productUserId", t."sourceRecordId", t.kind;
 	`;
 }
 
@@ -103,6 +105,7 @@ export async function completeTask(
 			contactId: true,
 			companyId: true,
 			productUserId: true,
+			sourceRecordId: true,
 			kind: true,
 		},
 	});
@@ -116,6 +119,7 @@ export async function taskSubject(taskId: string): Promise<TaskSubject | null> {
 			contactId: true,
 			companyId: true,
 			productUserId: true,
+			sourceRecordId: true,
 			kind: true,
 		},
 	});
@@ -131,10 +135,24 @@ export async function noteSession(
 	});
 }
 
+export async function deferTask(
+	taskId: string,
+	delayMs: number,
+): Promise<void> {
+	await db.agentTask.updateMany({
+		where: { id: taskId, finishedAt: null },
+		data: {
+			dueAt: new Date(Date.now() + delayMs),
+			leasedUntil: null,
+		},
+	});
+}
+
 export async function scheduleTask(input: {
 	contactId?: string | null;
 	companyId?: string | null;
 	productUserId?: string | null;
+	sourceRecordId?: string | null;
 	kind: string;
 	reason: string;
 	dueAt: Date;
@@ -148,6 +166,7 @@ export async function scheduleTask(input: {
 			contactId: input.contactId ?? undefined,
 			companyId: input.companyId ?? undefined,
 			productUserId: input.productUserId ?? undefined,
+			sourceRecordId: input.sourceRecordId ?? undefined,
 		},
 		select: { id: true },
 	});
@@ -165,6 +184,7 @@ export async function scheduleTask(input: {
 			contactId: input.contactId ?? null,
 			companyId: input.companyId ?? null,
 			productUserId: input.productUserId ?? null,
+			sourceRecordId: input.sourceRecordId ?? null,
 			kind: input.kind,
 			reason: input.reason,
 			dueAt: input.dueAt,

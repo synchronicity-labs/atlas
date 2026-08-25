@@ -1,9 +1,9 @@
-import { EnrichmentStatus } from "@crm/db";
+import { ContractParseStatus, db, EnrichmentStatus } from "@crm/db";
 import { defineChannel, POST } from "eve/channels";
 import { verifyKey } from "../lib/context-dev";
 import { brief, drainAll, taskAuth } from "../lib/dispatch";
 import { settle } from "../lib/enrichment";
-import { completeTask, taskSubject } from "../lib/tasks";
+import { completeTask, deferTask, taskSubject } from "../lib/tasks";
 
 const TASK_MARKER = "task:";
 
@@ -75,7 +75,24 @@ export default defineChannel({
 			const taskId = taskFromToken(channel.continuationToken);
 			if (!taskId) return;
 
-			const subject = await completeTask(taskId, "ran");
+			const pending = await taskSubject(taskId);
+			if (pending?.kind === "contract-parse" && pending.sourceRecordId) {
+				const parsed = await db.contractDocument.count({
+					where: {
+						sourceRecordId: pending.sourceRecordId,
+						parseStatus: ContractParseStatus.PARSED,
+					},
+				});
+				if (parsed === 0) {
+					await deferTask(taskId, 5 * 60_000);
+					return;
+				}
+			}
+
+			const subject = await completeTask(
+				taskId,
+				pending?.kind === "contract-parse" ? "Contract parsed." : "ran",
+			);
 			if (subject) await settle(subject, EnrichmentStatus.COMPLETE);
 		},
 

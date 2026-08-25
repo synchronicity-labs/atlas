@@ -139,16 +139,18 @@ months.
   `isSamePerson`, in code, rather than asking the model to remember a follow-up
   call.
 
-### Two lanes: what a rep sees, and what a rep asks for
+### Three lanes: visible work, research, and contracts
 
-`schedules/dispatch.ts` drains the queue in **two independent lanes**, and which
-lane a row lands in is decided by one list — `DIRECT_KINDS` in
-[`@crm/db/agent-tasks`](../packages/db/src/agent-tasks.ts).
+`schedules/dispatch.ts` drains the queue in **three independent lanes**. Direct
+work is selected by `DIRECT_KINDS` in
+[`@crm/db/agent-tasks`](../packages/db/src/agent-tasks.ts). Contract parsing has
+its own rate-limited lane. Everything else is research.
 
 | | Kinds | How it runs | Per tick |
 | --- | --- | --- | --- |
 | **Visible** | `brand`, `portrait` | Directly, no `receive`, no model | 60, six at a time |
-| **Research** | everything else | One eve session per row | 12 |
+| **Research** | everything except visible work and `contract-parse` | One eve session per row | 12 |
+| **Contracts** | `contract-parse` | One eve session per row | 1 |
 
 **Neither kind in the visible lane has anything in it to decide.** A portrait is
 three reads keyed on identifiers already on the record and a byte copy. A brand
@@ -164,11 +166,31 @@ contact task, so `stripe.com` showed as `stripe.com` in a grey square while the
 agent wrote paragraphs about people who worked there.
 
 Lanes are why that cannot recur. A logo does not queue behind research, because
-it is not in that queue. `test/lanes.integration.spec.ts` pins it: thirty
-`identify` rows do not delay one `brand` row.
+it is not in that queue. Contract parsing also cannot consume the twelve-session
+research batch. `test/lanes.integration.spec.ts` pins these boundaries.
 
 The schedule still decides nothing, which is the rule it has to keep. The row
 says what the work is; the lane only says whether it needs a conversation.
+
+### Contract ingestion and reconciliation
+
+`schedules/customer-sync.ts` crawls the configured contract Drive every six
+hours with the read-only Google service account. It keeps one source record per
+Drive file and schedules `contract-parse` when a supported document is new or
+changed. The dispatch schedule processes up to four contract rows per tick so contract
+work cannot consume the general research batch.
+
+The parser reads only text already stored in Atlas. It records structured terms
+with evidence and never sends contract text to an outside source. Finished task
+rows are not reopened for retry. A retry gets a new task row, because the task id
+is also the eve continuation token for its session.
+
+`lib/contracts-reconciliation.ts` runs after customer-source sync. It waits
+while any extractable document is still pending, then compares verified Product
+and Stripe accounts with parsed commitments and per-frame prices. Findings are
+durable rows with review state. They include unmatched accounts, inactive
+commitments, price mismatches, possible missing addendums, and documents that
+need OCR.
 
 ### Priority is what a rep sees first
 
@@ -199,7 +221,7 @@ thrown away at the point the batch is handed to a concurrency-limited pool.
 
 ### Starting now instead of on the minute
 
-`POST /internal/crm/dispatch` on the crm channel drains **both lanes** on demand,
+`POST /internal/crm/dispatch` on the crm channel drains **all lanes** on demand,
 and `AgentTriggerService.poke()` calls it after writing *any* `AgentTask` row.
 Add a company and its logo appears; add a contact and the research starts. You do
 not wait out the cron.
@@ -211,7 +233,7 @@ sixty seconds, not the work.
 
 It used to run the visible lane only, on the reasoning that a lane needing no
 `receive` and no session auth keeps eve's principal plumbing out of the route.
-That was true and it cost more than it saved, because it made the two lanes
+That was true and it cost more than it saved, because it made the lanes
 behave differently in the one environment where the cron does not exist. Under
 `eve dev` the visible lane ran on every poke and the research lane ran *never* —
 so a fresh clone showed every logo resolving within seconds while twenty
@@ -389,10 +411,11 @@ not the next deploy.
 - `lib/tasks.ts` is the work queue. `claimDue` leases rows with
   `FOR UPDATE SKIP LOCKED`, so two dispatchers take disjoint work and a run that
   dies frees its row when the lease expires.
-- `schedules/dispatch.ts` is the **only** schedule. It decides nothing: it
-  leases what is due and starts a session per row. Anything that looks like
-  "every N minutes, the oldest ten contacts" belongs in a task's `dueAt`, not in
-  a cron expression.
+- `schedules/dispatch.ts` is the only **task-dispatch** schedule. It decides
+  nothing: it leases what is due and starts a session per row. Source ingestion
+  has its own `customer-sync` schedule. Anything that looks like "every N
+  minutes, the oldest ten contacts" belongs in a task's `dueAt`, not in a cron
+  expression.
 - `tools/schedule_recheck.ts` is how the agent books its own next look, and its
   `reason` is shown to the rep. An agent that cannot say why it will be back in
   fourteen days does not have a reason, it has a default.
@@ -808,7 +831,7 @@ was empty. Nothing was broken and nothing reported a problem, because nothing
 ran.
 
 **The poke is what makes dev behave like production now**, which is most of why
-it was widened to both lanes — see [starting now](#starting-now-instead-of-on-the-minute).
+it was widened to all lanes — see [starting now](#starting-now-instead-of-on-the-minute).
 A row written by the API is dispatched immediately whatever the clock is doing,
 so the schedule is a backstop rather than the only door.
 
@@ -830,10 +853,11 @@ bun run --filter=agent dispatch
 # {"scheduleId":"dispatch","sessionIds":["wrun_01KZ…", …]}
 ```
 
-It drains **both lanes**, exactly as the cron does: up to `VISIBLE_BATCH` (60)
+It drains **all lanes**, exactly as the cron does: up to `VISIBLE_BATCH` (60)
 `brand` and `portrait` rows six at a time, handled in the process with no session
-at all, and `RESEARCH_BATCH` (12) research rows, one session each. So the
-`sessionIds` it prints are the research rows only — a run that resolved forty
+at all, `RESEARCH_BATCH` (12) general research rows, and one `contract-parse`
+row. Each research and contract row gets one session. So the
+`sessionIds` it prints are the session-backed rows only — a run that resolved forty
 logos prints an empty list and was not idle. Either way it spends real credits, a
 vendor call per visible row and a model session per research one; that is the
 point of it, and the reason it is a command you run rather than a ticker somebody

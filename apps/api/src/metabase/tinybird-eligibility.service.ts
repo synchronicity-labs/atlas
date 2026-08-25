@@ -3,23 +3,22 @@ import { Injectable } from "@nestjs/common";
 import { MetabaseClient } from "./metabase.client";
 import { metabaseConfig } from "./metabase.config";
 
-const ELIGIBILITY_QUERY = `select
+export function compactEligibilityQuery(): string {
+	return `select
   u.id::text as user_id,
   lower(coalesce(u.email, '')) as email,
-  coalesce(u.banned, false) as banned,
-  coalesce(u.disabled, false) as disabled,
-  coalesce(u.is_anonymous, false) as is_anonymous,
   lower(coalesce(uo.role, '')) as membership_role,
   o.id::text as organization_id,
   o.stripe_customer_id::text as customer_id,
-  (o.first_subscribed_at is not null) as has_subscribed,
   count(*) over()::bigint as source_row_count
 from auth.users u
 left join public.user_organizations uo on uo.user_id = u.id
 left join public.organizations o on o.id = uo.organization_id
 where lower(coalesce(u.email, '')) like '%@sync.so'
   or lower(coalesce(u.email, '')) like '%@sync.labs'
-order by u.id, o.id`;
+order by u.id, o.id
+limit 2000`;
+}
 
 const USER_TABLES = [
 	"sync_prod.sync_usage3",
@@ -85,25 +84,31 @@ export type EligibilityRow = {
 
 @Injectable()
 export class TinybirdEligibilityService {
-	private baseCache:
-		| {
-				expiresAt: number;
-				capturedAt: Date;
-				sourceRows: number;
-				rows: EligibilityRow[];
-		  }
-		| undefined;
+	private readonly baseCache = new Map<
+		string,
+		{
+			expiresAt: number;
+			capturedAt: Date;
+			sourceRows: number;
+			rows: EligibilityRow[];
+		}
+	>();
 
 	async current(): Promise<TinybirdEligibilitySnapshot> {
-		return this.load("ALL_IDENTITIES");
+		return this.load("ALL_IDENTITIES", "PRODUCT_ACTIVITY");
+	}
+
+	async currentForPaidActivity(): Promise<TinybirdEligibilitySnapshot> {
+		return this.load("SUBSCRIBED_ORGANIZATIONS", "PRODUCT_ACTIVITY");
 	}
 
 	async currentForRevenue(): Promise<TinybirdEligibilitySnapshot> {
-		return this.load("SUBSCRIBED_ORGANIZATIONS");
+		return this.load("SUBSCRIBED_ORGANIZATIONS", "MONEY");
 	}
 
 	private async load(
 		scope: TinybirdEligibilitySnapshot["scope"],
+		policy: TinybirdEligibilitySnapshot["policy"],
 	): Promise<TinybirdEligibilitySnapshot> {
 		const base = await this.baseRows();
 		return buildTinybirdEligibility(
@@ -111,18 +116,21 @@ export class TinybirdEligibilityService {
 			base.capturedAt,
 			base.sourceRows,
 			scope,
+			policy,
 		);
 	}
 
 	private async baseRows() {
-		if (this.baseCache && this.baseCache.expiresAt > Date.now()) {
-			return this.baseCache;
+		const cacheKey = "compact-internal-exclusions";
+		const cached = this.baseCache.get(cacheKey);
+		if (cached && cached.expiresAt > Date.now()) {
+			return cached;
 		}
 		const config = metabaseConfig();
 		if (!config) throw new Error("Metabase is not configured.");
 		const result = await new MetabaseClient(config).preview({
 			language: "SQL",
-			queryText: ELIGIBILITY_QUERY,
+			queryText: compactEligibilityQuery(),
 			databaseExternalId: "34",
 		});
 		const rows = result.rows.map((values) =>
@@ -135,23 +143,24 @@ export class TinybirdEligibilityService {
 		);
 		const sourceRows = number(rows[0]?.source_row_count, rows.length);
 		const capturedAt = new Date();
-		this.baseCache = {
+		const value = {
 			expiresAt: Date.now() + 5 * 60 * 1000,
 			capturedAt,
 			sourceRows,
 			rows: rows.map((row) => ({
 				userId: text(row.user_id),
 				email: text(row.email),
-				banned: bool(row.banned),
-				disabled: bool(row.disabled),
-				isAnonymous: bool(row.is_anonymous),
+				banned: false,
+				disabled: false,
+				isAnonymous: false,
 				membershipRole: text(row.membership_role),
 				organizationId: text(row.organization_id),
 				customerId: text(row.customer_id),
-				hasSubscribed: bool(row.has_subscribed),
+				hasSubscribed: false,
 			})),
 		};
-		return this.baseCache;
+		this.baseCache.set(cacheKey, value);
+		return value;
 	}
 
 	govern(
@@ -168,9 +177,11 @@ export function buildTinybirdEligibility(
 	capturedAt: Date,
 	sourceRows = rows.length,
 	scope: TinybirdEligibilitySnapshot["scope"] = "ALL_IDENTITIES",
+	policy: TinybirdEligibilitySnapshot["policy"] = scope ===
+	"SUBSCRIBED_ORGANIZATIONS"
+		? "MONEY"
+		: "PRODUCT_ACTIVITY",
 ): TinybirdEligibilitySnapshot {
-	const policy: TinybirdEligibilitySnapshot["policy"] =
-		scope === "SUBSCRIBED_ORGANIZATIONS" ? "MONEY" : "PRODUCT_ACTIVITY";
 	const subscribedByUser = new Map<string, boolean>();
 	for (const row of rows) {
 		subscribedByUser.set(
@@ -534,13 +545,13 @@ function prependPostgresCommonTableExpressions(
 	return `${leadingComments}with ${prefix}\n${statement}`;
 }
 
-function hasSubscribedPopulation(queryText: string): boolean {
+export function hasSubscribedPopulation(queryText: string): boolean {
 	const normalized = queryText.toLowerCase().replaceAll(/\s+/g, " ");
 	return (
-		/organizationplantype[^\n)]*\bin\s*\(\s*'[^']+'/.test(normalized) ||
-		/organizationplantype\s+is\s+not\s+null/.test(normalized) ||
-		/organizationplantype\s*(?:!=|<>)\s*''/.test(normalized) ||
-		/stripesubscriptionid\s+is\s+not\s+null/.test(normalized)
+		/"?organizationplantype"?[^\n)]*\bin\s*\(\s*'[^']+'/.test(normalized) ||
+		/"?organizationplantype"?\s+is\s+not\s+null/.test(normalized) ||
+		/"?organizationplantype"?\s*(?:!=|<>)\s*''/.test(normalized) ||
+		/"?stripesubscriptionid"?\s+is\s+not\s+null/.test(normalized)
 	);
 }
 
@@ -568,10 +579,6 @@ function sqlString(value: string): string {
 
 function text(value: unknown): string {
 	return typeof value === "string" ? value.trim() : "";
-}
-
-function bool(value: unknown): boolean {
-	return value === true || value === 1 || value === "1" || value === "true";
 }
 
 function number(value: unknown, fallback: number): number {

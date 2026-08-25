@@ -11,6 +11,7 @@
 		"./domain": "./src/domain.ts",
 		"./enums": "./src/generated/prisma/enums.ts",
 		"./favicon": "./src/favicon.ts",
+		"./google-service-account": "./src/google-service-account.ts",
 		"./hubspot-sales": "./src/hubspot-sales.ts",
 		"./images": "./src/images.ts",
 		"./safe-fetch": "./src/safe-fetch.ts",

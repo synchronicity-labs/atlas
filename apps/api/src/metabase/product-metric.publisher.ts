@@ -738,13 +738,6 @@ export const PRODUCT_METRIC_SPECS: ProductMetricSpec[] = [
 			output: "paid_qualified_pct",
 		},
 		requiresCrossSourceEligibility: true,
-		pendingChecks: [
-			{
-				name: "v3_paid_qualified_payment_basis",
-				reason:
-					"V3 top-ups are successful one-time Stripe payments, not usage invoices. Confirm whether a V3 paid-qualified organization-month uses subscription invoices plus successful top-up payments in the same UTC month, subscription invoices only, or another rule.",
-			},
-		],
 	},
 	{
 		questionNumber: 160,
@@ -1263,6 +1256,121 @@ export const PRODUCT_METRIC_SPECS: ProductMetricSpec[] = [
 		ownerTeam: "Security Operations",
 		createdBy: "atlas-abuse-registry",
 		cadenceMinutes: 8 * 60,
+	},
+	{
+		questionNumber: 7020,
+		sourceExternalId: "atlas:product:paid-generated-hours-by-surface",
+		key: "product.paid_generated_hours_by_surface",
+		name: "Paid-plan generated hours by surface",
+		description:
+			"Final generated media hours from completed paid-plan generations in the current UTC month, split between the product app, API, plugins, MCP, agent workflows, and other sources.",
+		grain: FactGrain.MONTH,
+		source: {
+			key: "tinybird:usage",
+			kind: DataSourceKind.TINYBIRD,
+			label: "TinyBird product usage",
+		},
+		eventTimeField: "generationEndedAt",
+		businessDefinition: {
+			entity: "completed_paid_plan_generation",
+			periodAssignment: "generationEndedAt in UTC",
+			valueBasis:
+				"final outputMediaLength; a 30-second generated segment counts as 30 seconds even when its input is one hour",
+			surfaceTaxonomy: {
+				app: ["studio"],
+				api: ["api"],
+				plugins: ["premiere-plugin", "resolve-plugin", "*-plugin"],
+				mcp: ["mcp", "mcp:*"],
+				agent: ["agent"],
+				other: ["unknown", "any source not listed above"],
+			},
+		},
+		computation: {
+			aggregate: "sum_output_duration_seconds_divided_by_3600",
+			outputs: ["app", "api", "plugins", "mcp", "agent", "other"],
+		},
+		requiresCrossSourceEligibility: true,
+	},
+	{
+		questionNumber: 7021,
+		sourceExternalId: "atlas:product:paid-generated-hours-share-by-surface",
+		key: "product.paid_generated_hours_share_by_surface",
+		name: "Share of paid-plan generated hours by surface",
+		description:
+			"Each surface's share of final generated media hours from completed paid-plan generations in the current UTC month.",
+		grain: FactGrain.MONTH,
+		source: {
+			key: "tinybird:usage",
+			kind: DataSourceKind.TINYBIRD,
+			label: "TinyBird product usage",
+		},
+		eventTimeField: "generationEndedAt",
+		businessDefinition: {
+			entity: "completed_paid_plan_generation",
+			periodAssignment: "generationEndedAt in UTC",
+			numerator: "final generated media seconds for the surface",
+			denominator: "final generated media seconds across all surfaces",
+			surfaceTaxonomy: "same governed taxonomy as paid generated hours",
+		},
+		computation: {
+			aggregate: "surface_share_percentage",
+			outputs: ["app", "api", "plugins", "mcp", "agent", "other"],
+		},
+		requiresCrossSourceEligibility: true,
+	},
+	{
+		questionNumber: 7022,
+		sourceExternalId: "atlas:product:accrued-value-by-surface",
+		key: "product.accrued_value_by_surface",
+		name: "Paid usage accrued by surface",
+		description:
+			"Usage revenue incurred by completed paid-plan generations in the current UTC month, split between the product app, API, plugins, MCP, agent workflows, and other sources. Subscription revenue is not allocated to a surface.",
+		grain: FactGrain.MONTH,
+		source: {
+			key: "tinybird:usage",
+			kind: DataSourceKind.TINYBIRD,
+			label: "TinyBird product usage",
+		},
+		eventTimeField: "generationEndedAt",
+		businessDefinition: {
+			entity: "completed_paid_plan_generation",
+			periodAssignment: "generationEndedAt in UTC",
+			valueBasis: "generationCostMillicents divided by 100000",
+			cashBasis: false,
+			surfaceTaxonomy: "same governed taxonomy as paid generated hours",
+		},
+		computation: {
+			aggregate: "sum_accrued_value_usd",
+			outputs: ["app", "api", "plugins", "mcp", "agent", "other"],
+		},
+		requiresCrossSourceEligibility: true,
+	},
+	{
+		questionNumber: 7023,
+		sourceExternalId: "atlas:product:accrued-value-share-by-surface",
+		key: "product.accrued_value_share_by_surface",
+		name: "Share of paid usage accrued by surface",
+		description:
+			"Each surface's share of usage revenue incurred by completed paid-plan generations in the current UTC month. Subscription revenue is not allocated to a surface.",
+		grain: FactGrain.MONTH,
+		source: {
+			key: "tinybird:usage",
+			kind: DataSourceKind.TINYBIRD,
+			label: "TinyBird product usage",
+		},
+		eventTimeField: "generationEndedAt",
+		businessDefinition: {
+			entity: "completed_paid_plan_generation",
+			periodAssignment: "generationEndedAt in UTC",
+			numerator: "accrued usage value for the surface",
+			denominator: "accrued usage value across all surfaces",
+			surfaceTaxonomy: "same governed taxonomy as paid generated hours",
+		},
+		computation: {
+			aggregate: "surface_share_percentage",
+			outputs: ["app", "api", "plugins", "mcp", "agent", "other"],
+		},
+		requiresCrossSourceEligibility: true,
 	},
 ];
 
@@ -3263,9 +3371,9 @@ function verificationRows(input: {
 	const eligibility = input.eligibility;
 	const incompleteEligibilityReason =
 		eligibility?.limitation === "BANNED_NEVER_SUBSCRIBED_JOIN_REQUIRED"
-			? "This question includes people who have not subscribed. Atlas applied the shared internal-user filter, but it still needs the governed banned-user join before it can approve the population."
+			? "This question includes people who have not subscribed. Atlas applied the small internal-user exclusion list. It will not copy the full identity table. The question still needs a bounded server-side join to exclude banned people who never subscribed."
 			: eligibility && eligibility.complete === false
-				? `Atlas could load only ${eligibility.returnedRows.toLocaleString()} of ${eligibility.sourceRows.toLocaleString()} internal and banned-user records because the source response was capped. Atlas did not apply or approve a partial population rule.`
+				? "Atlas did not approve a partial population check. It will use a bounded server-side join or a small exclusion set instead of downloading the full identity table."
 				: "The query has not yet applied the shared Atlas population rule.";
 	const eligibilityPassedReason =
 		eligibility?.policy === "MONEY"

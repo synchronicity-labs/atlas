@@ -18,6 +18,7 @@ export default defineDynamic({
 					dealId: asString(attributes.dealId),
 					atlasContextKind: asString(attributes.atlasContextKind),
 					atlasContextId: asString(attributes.atlasContextId),
+					sourceRecordId: asString(attributes.sourceRecordId),
 				},
 				{
 					dispatched: Boolean(kind),

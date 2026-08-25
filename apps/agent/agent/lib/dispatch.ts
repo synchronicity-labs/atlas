@@ -21,6 +21,7 @@ export const VISIBLE_LEASE_MS = 2 * 60_000;
 
 export const RESEARCH_BATCH = 12;
 export const RESEARCH_LEASE_MS = 30 * 60_000;
+export const CONTRACT_BATCH = 4;
 
 export async function retireAbandoned(): Promise<void> {
 	let abandoned: TaskSubject[] = [];
@@ -109,9 +110,27 @@ export async function runResearchLane(
 ): Promise<number> {
 	const tasks = await claimDue(
 		RESEARCH_BATCH,
-		{ except: DIRECT_KINDS },
+		{ except: [...DIRECT_KINDS, "contract-parse"] },
 		RESEARCH_LEASE_MS,
 	);
+	return startResearchTasks(tasks, start);
+}
+
+export async function runContractLane(
+	start: (task: LeasedTask) => Promise<{ id: string }>,
+): Promise<number> {
+	const tasks = await claimDue(
+		CONTRACT_BATCH,
+		{ only: ["contract-parse"] },
+		RESEARCH_LEASE_MS,
+	);
+	return startResearchTasks(tasks, start);
+}
+
+async function startResearchTasks(
+	tasks: LeasedTask[],
+	start: (task: LeasedTask) => Promise<{ id: string }>,
+): Promise<number> {
 	if (tasks.length === 0) return 0;
 
 	await Promise.all(
@@ -140,6 +159,7 @@ export function taskAuth(task: LeasedTask, base: AppAuth = APP_AUTH): AppAuth {
 			...(task.contactId ? { contactId: task.contactId } : {}),
 			...(task.companyId ? { companyId: task.companyId } : {}),
 			...(task.productUserId ? { productUserId: task.productUserId } : {}),
+			...(task.sourceRecordId ? { sourceRecordId: task.sourceRecordId } : {}),
 		},
 	};
 }
@@ -147,7 +167,11 @@ export function taskAuth(task: LeasedTask, base: AppAuth = APP_AUTH): AppAuth {
 export const drainAll = collapsing(
 	async (start: (task: LeasedTask) => Promise<{ id: string }>) => {
 		await retireAbandoned();
-		await Promise.all([runVisibleLane(), runResearchLane(start)]);
+		await Promise.all([
+			runVisibleLane(),
+			runResearchLane(start),
+			runContractLane(start),
+		]);
 	},
 );
 
@@ -173,6 +197,8 @@ function work(kind: string, reason: string): string {
 			return "This company's brand, industry, location and links are filled in separately and may already be there. Read the account, fill anything still missing, and write a brief if there is something worth saying.";
 		case "workspace-profile":
 			return "Write the profile of the company you work for, so that every other session knows who we are. Read our own site and keep it short.";
+		case "contract-parse":
+			return "Parse this customer contract from Atlas's stored text. Read every chunk, record only terms supported by the document, and do not send contract text to any outside source.";
 		default:
 			return `Handle this: ${reason}`;
 	}

@@ -45,6 +45,13 @@ import { parseAsString, useQueryState } from "nuqs";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { QuestionExplanationPanel } from "@/components/question-explanation";
+import {
+	filterReportingRows,
+	ReportingPeriodControl,
+	reportingDateColumnIndex,
+	reportingHistoryBounds,
+	useReportingPeriod,
+} from "@/components/reporting-period";
 import { RudyChatTrigger } from "@/components/rudy-chat";
 import { useTRPC } from "@/lib/trpc/client";
 
@@ -164,10 +171,17 @@ function QuestionPreview({
 	display: string;
 	name: string;
 }) {
-	if (!data || data.columns.length === 0 || data.rows.length === 0) {
+	if (!data || data.columns.length === 0) {
 		return (
 			<div className="flex min-h-64 items-center justify-center p-8 text-center text-muted-foreground text-sm">
 				Run the query to preview its result.
+			</div>
+		);
+	}
+	if (data.rows.length === 0) {
+		return (
+			<div className="flex min-h-64 items-center justify-center p-8 text-center text-muted-foreground text-sm">
+				No rows match the selected reporting period.
 			</div>
 		);
 	}
@@ -330,6 +344,7 @@ export function QuestionEditor({ number }: { number: number }) {
 	const [queryText, setQueryText] = useState("");
 	const [display, setDisplay] = useState("table");
 	const [preview, setPreview] = useState<PreviewData | null>(null);
+	const reportingPeriod = useReportingPeriod();
 	const [lastPreviewedQuery, setLastPreviewedQuery] = useState<string | null>(
 		null,
 	);
@@ -394,6 +409,28 @@ export function QuestionEditor({ number }: { number: number }) {
 			),
 		[data, description, display, language, latest, name, queryText],
 	);
+	const periodBounds = useMemo(
+		() =>
+			reportingHistoryBounds(
+				preview ? [{ columns: preview.columns, rows: preview.rows }] : [],
+			),
+		[preview],
+	);
+	const supportsPeriod =
+		preview == null || reportingDateColumnIndex(preview.columns) != null;
+	const visiblePreview = useMemo(() => {
+		if (!preview) return null;
+		const filtered = filterReportingRows(
+			preview.columns,
+			preview.rows,
+			reportingPeriod.filters,
+		);
+		return {
+			...preview,
+			rows: filtered.rows,
+			rowCount: filtered.rows.length,
+		};
+	}, [preview, reportingPeriod.filters]);
 
 	if (!data || !latest)
 		return <div className="h-96 animate-pulse rounded-lg bg-muted" />;
@@ -460,6 +497,13 @@ export function QuestionEditor({ number }: { number: number }) {
 					</div>
 				</div>
 				<div className="flex flex-wrap items-center gap-2 lg:justify-end">
+					<ReportingPeriodControl
+						filters={reportingPeriod.filters}
+						bounds={periodBounds}
+						supported={supportsPeriod}
+						onPreset={(range) => void reportingPeriod.setPreset(range)}
+						onCustom={(from, to) => void reportingPeriod.setCustom(from, to)}
+					/>
 					<RudyChatTrigger
 						record={{ kind: "question", id: String(data.number) }}
 					/>
@@ -468,7 +512,12 @@ export function QuestionEditor({ number }: { number: number }) {
 						size="sm"
 						disabled={run.isPending || !queryText.trim()}
 						onClick={() =>
-							run.mutate({ number, queryLanguage: language, queryText })
+							run.mutate({
+								number,
+								queryLanguage: language,
+								queryText,
+								reportingPeriod: reportingPeriod.filters,
+							})
 						}
 					>
 						<Icon icon={Play} />
@@ -596,13 +645,17 @@ export function QuestionEditor({ number }: { number: number }) {
 						<CardHeader>
 							<CardTitle>Preview</CardTitle>
 							<CardDescription>
-								{preview
-									? `${preview.rowCount.toLocaleString()} rows${preview.durationMs ? ` · ${preview.durationMs} ms` : ""}${preview.truncated ? " · showing first 500" : ""}`
+								{preview && visiblePreview
+									? `${preview.rowCount.toLocaleString()} rows in the selected period${preview.truncated ? ` · showing first ${visiblePreview.rowCount.toLocaleString()}` : ""}${preview.durationMs ? ` · ${preview.durationMs} ms` : ""}`
 									: "Run the query before saving a new version."}
 							</CardDescription>
 						</CardHeader>
 						<CardContent className="p-0">
-							<QuestionPreview data={preview} display={display} name={name} />
+							<QuestionPreview
+								data={visiblePreview}
+								display={display}
+								name={name}
+							/>
 						</CardContent>
 					</Card>
 				</div>

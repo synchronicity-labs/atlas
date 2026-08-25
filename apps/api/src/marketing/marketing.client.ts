@@ -1,4 +1,4 @@
-import { GoogleServiceAccountClient } from "../google/google-service-account";
+import { GoogleServiceAccountClient } from "@crm/db/google-service-account";
 import type { MarketingConfig } from "./marketing.config";
 import type { MarketingQuery } from "./marketing.contracts";
 

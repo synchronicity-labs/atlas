@@ -88,7 +88,11 @@ export class AtlasDashboardsService {
 			if (sourceKeys.has("atlas:billing-experiment")) {
 				sourceSyncs.push(this.billingExperiment.syncDashboard(number));
 			}
-			if (sourceKeys.has("atlas:marketing") || sourceKeys.has("atlas:abuse")) {
+			if (
+				sourceKeys.has("atlas:marketing") ||
+				sourceKeys.has("atlas:abuse") ||
+				sourceKeys.has("atlas:lipsync")
+			) {
 				sourceSyncs.push(this.marketing.syncDashboard(number));
 			}
 			if (sourceKeys.has("atlas:product-eligibility")) {

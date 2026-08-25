@@ -620,6 +620,85 @@ export const PRODUCT_METRIC_SPECS: ProductMetricSpec[] = [
 		],
 	},
 	{
+		questionNumber: 7004,
+		sourceExternalId: "cron:lipsync:product-funnel",
+		key: "marketing.lipsync_attributed_product_conversion",
+		name: "Lipsync-attributed product conversion",
+		description:
+			"Mature weekly signup cohorts whose first recorded referring domain is lipsync.com, with seven-day project, successful-generation, and paid-subscription conversion.",
+		grain: FactGrain.WEEK,
+		source: {
+			key: "posthog:product-events",
+			kind: DataSourceKind.POSTHOG,
+			label: "PostHog product events",
+		},
+		eventTimeField: "cohort_week",
+		businessDefinition: {
+			entity: "lipsync_attributed_signup_cohort",
+			population:
+				"clean-user signups whose first recorded referring domain is lipsync.com or www.lipsync.com",
+			periodAssignment: "signup timestamp in UTC Monday weeks",
+			periodCompleteness:
+				"the current signup week is excluded so every published cohort has a complete seven-day observation window",
+			projectConversion:
+				"the person's first project starts on or after signup and before seven days after signup",
+			successfulGenerationConversion:
+				"the person's first successful generation occurs on or after the qualifying project and before seven days after signup",
+			paidConversion:
+				"the person's first paid subscription starts on or after signup and before seven days after signup; this is a separate subset of signups and is not forced to follow generation",
+			trafficBoundary:
+				"GA4 sessions and Search Console demand remain separate governed questions because those sources do not share a stable person identifier with PostHog",
+		},
+		computation: {
+			aggregate: "unique_person_weekly_cohort_funnel",
+			outputs: [
+				"signups",
+				"projects_started",
+				"successful_generations",
+				"paid_subscriptions",
+				"signup_to_project_pct",
+				"signup_to_generation_pct",
+				"signup_to_paid_pct",
+			],
+		},
+		requiresCrossSourceEligibility: true,
+		pendingChecks: [
+			{
+				name: "lipsync_signup_cohort_population",
+				reason:
+					"Every published cohort must contain clean-user signups attributed through the approved first-referrer domain registry.",
+			},
+			{
+				name: "funnel_ordering",
+				reason:
+					"Project and generation stages must remain nested, paid conversion must remain a subset of signups, and rates must reconcile to counts.",
+			},
+			{
+				name: "referral_definition",
+				reason:
+					"Attribution must use the person's first recorded referring domain, not an event-level referrer.",
+			},
+			{
+				name: "seven_day_cohort_maturity",
+				reason:
+					"Every cohort must have a complete seven-day product-conversion window.",
+			},
+			{
+				name: "sensitive_detail_boundary",
+				reason:
+					"The published result must exclude person, user, organization, and email identifiers.",
+			},
+			{
+				name: "oldest_complete_watermark",
+				reason:
+					"All rows must use one UTC data-through boundary for the oldest complete cohort window.",
+			},
+		],
+		ownerTeam: "Marketing",
+		createdBy: "atlas-lipsync-funnel-registry",
+		cadenceMinutes: 8 * 60,
+	},
+	{
 		questionNumber: 7007,
 		sourceExternalId: "cron:exit-survey:weekly-summary",
 		key: "customer_success.exit_survey_cancellation_coverage",

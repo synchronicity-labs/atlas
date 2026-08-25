@@ -54,7 +54,7 @@ export async function syncSalesDashboard() {
 		...new Map(
 			dashboard.cards.map((card) => [card.question.id, card.question]),
 		).values(),
-	];
+	].filter((question) => question.sourceId === source.id);
 	const period = new Date().toISOString().slice(0, 7);
 	const run = await db.syncRun.create({
 		data: {

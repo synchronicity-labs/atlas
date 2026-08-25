@@ -1,13 +1,8 @@
-import { syncHubspot } from "./hubspot-sync";
-import { syncPosthogLinkedUsers } from "./posthog-users";
+import { syncHubspotSales } from "./hubspot-sync";
 import { syncSalesDashboard } from "./sales-dashboard";
 
 export async function runCustomerSync() {
-	const hubspot = await syncHubspot().catch((error) => ({
-		configured: true,
-		error: error instanceof Error ? error.message : String(error),
-	}));
-	const posthog = await syncPosthogLinkedUsers().catch((error) => ({
+	const hubspot = await syncHubspotSales().catch((error) => ({
 		configured: true,
 		error: error instanceof Error ? error.message : String(error),
 	}));
@@ -15,5 +10,5 @@ export async function runCustomerSync() {
 		configured: true,
 		error: error instanceof Error ? error.message : String(error),
 	}));
-	return { hubspot, posthog, sales };
+	return { hubspot, sales };
 }

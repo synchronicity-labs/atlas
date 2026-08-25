@@ -208,6 +208,10 @@ writeFileSync(
 				path: "/internal/sync/atlas/7/metabase",
 				schedule: "1-59/5 * * * *",
 			},
+			{
+				path: "/internal/sync/atlas/9/native",
+				schedule: "43 */8 * * *",
+			},
 		],
 	}),
 );

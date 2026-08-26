@@ -243,6 +243,17 @@ class HubspotClient {
 		return this.request(`/crm/v3/objects/${input.object}?${params.toString()}`);
 	}
 
+	async companies(ids: string[]): Promise<HubspotPage> {
+		return this.request("/crm/v3/objects/companies/batch/read", {
+			method: "POST",
+			body: JSON.stringify({
+				archived: false,
+				properties: COMPANY_PROPERTIES,
+				inputs: ids.map((id) => ({ id })),
+			}),
+		});
+	}
+
 	async pipelineKind(object: string): Promise<{ results?: HubspotPipeline[] }> {
 		return this.request(`/crm/v3/pipelines/${object}`);
 	}
@@ -592,6 +603,37 @@ async function persistDeal(sourceId: string, record: HubspotRecord) {
 	return persisted.snapshotCreated;
 }
 
+async function persistAssociatedCompanies(
+	sourceId: string,
+	client: HubspotClient,
+	deals: HubspotRecord[],
+) {
+	const ids = [
+		...new Set(deals.flatMap((deal) => associationIds(deal, "companies"))),
+	];
+	if (ids.length === 0) return;
+	const existing = await db.sourceRecord.findMany({
+		where: {
+			sourceId,
+			kind: ExternalRecordKind.COMPANY,
+			externalId: { in: ids },
+		},
+		select: { externalId: true, companyId: true },
+	});
+	const linked = new Set(
+		existing.flatMap((record) => (record.companyId ? [record.externalId] : [])),
+	);
+	const missing = ids.filter((id) => !linked.has(id));
+	for (let offset = 0; offset < missing.length; offset += 100) {
+		const response = await client.companies(
+			missing.slice(offset, offset + 100),
+		);
+		for (const company of response.results ?? []) {
+			if (!company.archived) await persistCompany(sourceId, company);
+		}
+	}
+}
+
 async function syncPipelines(sourceId: string, client: HubspotClient) {
 	const scope = "hubspot:pipelines";
 	const run = await beginRun({ sourceId, scope });
@@ -736,6 +778,13 @@ async function syncScope(input: {
 							? ["companies", "contacts"]
 							: undefined,
 			});
+			if (input.object === "deals") {
+				await persistAssociatedCompanies(
+					input.sourceId,
+					input.client,
+					page.results ?? [],
+				);
+			}
 			for (const record of page.results ?? []) {
 				if (record.archived) continue;
 				if (input.object === "companies") {

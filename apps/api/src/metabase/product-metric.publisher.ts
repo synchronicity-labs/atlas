@@ -348,6 +348,39 @@ const ACTIVE_PILOT_CHECKS = [
 	},
 ];
 
+const ACTIVE_PILOT_ADOPTION_CHECKS = [
+	{
+		name: "active_registry_parity",
+		reason:
+			"Every approved active HubSpot pilot must appear exactly once in the result.",
+	},
+	{
+		name: "deal_stage_mapping",
+		reason:
+			"The question must use the approved Enterprise and Studio pilot pipelines.",
+	},
+	{
+		name: "account_identity_join",
+		reason:
+			"Workspace identity must use exact company-domain evidence and must keep unmatched pilots visible.",
+	},
+	{
+		name: "usage_population_exclusions",
+		reason:
+			"Pilot adoption must exclude internal, banned, disabled, and anonymous users, and all counts must reconcile.",
+	},
+	{
+		name: "sensitive_detail_boundary",
+		reason:
+			"The governed result must exclude domains, emails, and user, organization, or workspace identifiers.",
+	},
+	{
+		name: "oldest_complete_watermark",
+		reason:
+			"Every row must use the HubSpot source watermark, which is older than the live product query.",
+	},
+];
+
 const STUDIO_BOOKING_CHECKS = [
 	{
 		name: "deal_stage_mapping",
@@ -391,6 +424,61 @@ const ENTERPRISE_BOOKING_CHECKS = [
 ];
 
 const HUBSPOT_REPORT_SPECS: ProductMetricSpec[] = [
+	{
+		questionNumber: 7001,
+		sourceExternalId: "cron:active-pilots:adoption",
+		key: "sales.active_pilot_product_adoption",
+		name: "Active pilot registry and product adoption",
+		description:
+			"Current active Enterprise and Studio pilots joined to product workspaces by exact company-domain evidence, with unmatched pilots retained as not verified.",
+		grain: FactGrain.DAY,
+		source: {
+			key: "hubspot:crm",
+			kind: DataSourceKind.HUBSPOT,
+			label: "HubSpot CRM joined to Product Postgres",
+		},
+		eventTimeField: "data_through",
+		businessDefinition: {
+			entity: "active_hubspot_pilot",
+			active:
+				"current deal stage is the approved Enterprise Pilot or Studio Pilot/POC stage",
+			workspaceIdentity:
+				"at least one eligible product member has an email domain that exactly equals the normalized HubSpot company domain",
+			unmatchedPolicy:
+				"retain the pilot with workspace_mapping=not_verified and zero product metrics",
+			activity:
+				"eligible workspace users and non-deleted generations, with current 24-hour and all-time counts",
+			population:
+				"exclude internal, banned, disabled, and anonymous users from identity proof and usage",
+			privacyPolicy:
+				"publish account and internal CRM owner labels, but no domain, email, user, organization, or workspace identifiers",
+		},
+		computation: {
+			aggregate: "active_pilot_registry_joined_to_exact_domain_workspaces",
+			outputs: [
+				"pilot_status",
+				"pilot_start",
+				"workspace_mapping",
+				"matched_workspaces",
+				"users",
+				"active_users_24h",
+				"pending_invites",
+				"generations_24h",
+				"generations_to_date",
+				"completed_generations",
+				"failed_generations",
+				"output_hours",
+				"model_usage",
+				"surface_usage",
+				"latest_activity_at",
+			],
+		},
+		requiresCrossSourceEligibility: true,
+		pendingChecks: ACTIVE_PILOT_ADOPTION_CHECKS,
+		ownerTeam: "Sales",
+		createdBy: "atlas-sales-pilot-adoption-registry",
+		cadenceMinutes: 6 * 60,
+	},
 	{
 		questionNumber: 7006,
 		sourceExternalId: "cron:sales:weekly-active-pilots",

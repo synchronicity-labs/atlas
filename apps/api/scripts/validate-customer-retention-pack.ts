@@ -57,38 +57,78 @@ group by customer_id
 order by customer_id
 limit 20`,
 	logoChurnByTier: `with
-customer_months as (
-  select
-    toDate(concat(month, '-01')) as month_start,
-    customer_id,
-    argMax(lower(plan), revenue_usd) as customer_tier
-  from sync_prod.paid_customer_monthly_revenue
-  where lower(plan) in ('hobbyist', 'creator', 'growth', 'scale')
-  group by month_start, customer_id
+paid_subscription_ids as (
+  select distinct "subscriptionId" as subscription_id
+  from sync_prod.sync_stripe_invoices_paid
+  where "subscriptionId" is not null
+    and "subscriptionId" != ''
+    and "amountPaid" > 0
 ),
-pairs as (
+subscription_states as (
   select
-    addMonths(prior.month_start, 1) as period_start,
-    prior.customer_tier as tier,
-    prior.customer_id,
-    current.customer_id as retained_customer_id
-  from customer_months prior
-  left join customer_months current
-    on current.customer_id = prior.customer_id
-   and current.month_start = addMonths(prior.month_start, 1)
-  where period_start >= addMonths(toStartOfMonth(toTimeZone(now(), 'UTC')), -7)
-    and period_start <= toStartOfMonth(toTimeZone(now(), 'UTC'))
+    subscriptions.id as subscription_id,
+    argMax(
+      subscriptions."organizationId",
+      tuple(subscriptions."createdAt", subscriptions."currentPeriodStart", subscriptions."currentPeriodEnd")
+    ) as organization_id,
+    min(subscriptions."createdAt") as created_at,
+    max(subscriptions."canceledAt") as canceled_at,
+    argMax(
+      lower(coalesce(subscriptions."orgPlan", 'unknown')),
+      tuple(subscriptions."createdAt", subscriptions."currentPeriodStart", subscriptions."currentPeriodEnd")
+    ) as tier
+  from sync_prod.sync_stripe_subscriptions subscriptions
+  inner join paid_subscription_ids paid on paid.subscription_id = subscriptions.id
+  where subscriptions."organizationId" is not null
+    and subscriptions."organizationId" != ''
+  group by subscriptions.id
+),
+months as (
+  select
+    addMonths(toStartOfMonth(toTimeZone(now(), 'UTC')), -number) as period_start,
+    addMonths(period_start, 1) as period_end
+  from numbers(8)
+),
+organization_months as (
+  select
+    months.period_start,
+    months.period_end,
+    subscriptions.organization_id,
+    argMaxIf(
+      subscriptions.tier,
+      tuple(subscriptions.created_at, subscriptions.subscription_id),
+      subscriptions.created_at < months.period_start
+        and (isNull(subscriptions.canceled_at) or subscriptions.canceled_at >= months.period_start)
+    ) as tier,
+    countIf(
+      subscriptions.created_at < months.period_start
+        and (isNull(subscriptions.canceled_at) or subscriptions.canceled_at >= months.period_start)
+    ) > 0 as active_at_start,
+    countIf(
+      subscriptions.created_at < months.period_end
+        and (isNull(subscriptions.canceled_at) or subscriptions.canceled_at >= months.period_end)
+    ) > 0 as active_at_end,
+    countIf(
+      subscriptions.canceled_at >= months.period_start
+        and subscriptions.canceled_at < months.period_end
+    ) > 0 as canceled_in_month
+  from months
+  cross join subscription_states subscriptions
+  group by months.period_start, months.period_end, subscriptions.organization_id
 )
 select
   period_start,
   tier,
-  countDistinct(customer_id) as starting_paid_customers,
-  countDistinctIf(customer_id, retained_customer_id != '') as retained_paid_customers,
-  starting_paid_customers - retained_paid_customers as churned_paid_customers,
-  round(100.0 * churned_paid_customers / nullIf(starting_paid_customers, 0), 2) as logo_churn_pct,
-  period_start < toStartOfMonth(toTimeZone(now(), 'UTC')) as is_complete_month
-from pairs
-group by period_start, tier
+  countIf(active_at_start) as starting_paid_organizations,
+  countIf(active_at_start and canceled_in_month and not active_at_end) as churned_paid_organizations,
+  starting_paid_organizations - churned_paid_organizations as retained_paid_organizations,
+  round(100.0 * churned_paid_organizations / nullIf(starting_paid_organizations, 0), 2) as logo_churn_pct,
+  round(100.0 * retained_paid_organizations / nullIf(starting_paid_organizations, 0), 2) as gross_logo_retention_pct,
+  period_end <= toStartOfMonth(toTimeZone(now(), 'UTC')) as is_complete_month
+from organization_months
+where active_at_start
+  and tier in ('hobbyist', 'creator', 'growth', 'scale')
+group by period_start, period_end, tier
 order by period_start, tier`,
 	revenueRetentionByTier: `with
 customer_months as (
@@ -138,18 +178,30 @@ customer_months as (
   where lower(plan) in ('hobbyist', 'creator', 'growth', 'scale')
   group by month_start, customer_id
 ),
+cohort_events as (
+  select customer_id, month_start
+  from customer_months
+  where customer_revenue_usd > 0
+  union all
+  select
+    customerId as customer_id,
+    toStartOfMonth(toTimeZone("createdAt", 'UTC')) as month_start
+  from sync_prod.sync_stripe_payments
+  where lower(status) = 'succeeded'
+    and customerId != ''
+),
 cohorts as (
   select customer_id, min(month_start) as cohort_month
-  from customer_months
+  from cohort_events
   group by customer_id
 ),
 cohort_customers as (
   select
     cohorts.customer_id,
     cohorts.cohort_month,
-    month_zero.customer_revenue_usd as month_0_revenue_usd
+    coalesce(month_zero.customer_revenue_usd, 0) as month_0_revenue_usd
   from cohorts
-  inner join customer_months month_zero
+  left join customer_months month_zero
     on month_zero.customer_id = cohorts.customer_id
    and month_zero.month_start = cohorts.cohort_month
 ),
@@ -182,6 +234,7 @@ from cohort_sizes sizes
 inner join retention on retention.cohort_month = sizes.cohort_month
 where sizes.cohort_month >= toDate('2025-01-01')
   and sizes.cohort_month < toStartOfMonth(toTimeZone(now(), 'UTC'))
+  and sizes.month_0_revenue_usd > 0
 order by sizes.cohort_month, retention.month_number`,
 	usageActiveByTier: `with
 month_bounds as (
@@ -189,35 +242,55 @@ month_bounds as (
     addMonths(toStartOfMonth(toTimeZone(now(), 'UTC')), -1) as month_start,
     toStartOfMonth(toTimeZone(now(), 'UTC')) as month_end
 ),
-paid_customers as (
-  select
-    customer_id,
-    argMax(lower(plan), revenue_usd) as tier
-  from sync_prod.paid_customer_monthly_revenue
-  cross join month_bounds
-  where month = formatDateTime(month_start, '%Y-%m')
-    and lower(plan) in ('hobbyist', 'creator', 'growth', 'scale')
-  group by customer_id
+paid_subscription_ids as (
+  select distinct "subscriptionId" as subscription_id
+  from sync_prod.sync_stripe_invoices_paid
+  where "subscriptionId" is not null
+    and "subscriptionId" != ''
+    and "amountPaid" > 0
 ),
-used_customers as (
-  select distinct "stripeCustomerId" as customer_id
+subscription_states as (
+  select
+    subscriptions.id as subscription_id,
+    argMax(subscriptions."organizationId", tuple(subscriptions."createdAt", subscriptions.eventType)) as organization_id,
+    argMax(lower(coalesce(subscriptions."orgPlan", 'unknown')), tuple(subscriptions."createdAt", subscriptions.eventType)) as tier,
+    min(subscriptions."createdAt") as created_at,
+    max(subscriptions."canceledAt") as canceled_at
+  from sync_prod.sync_stripe_subscriptions subscriptions
+  inner join paid_subscription_ids paid on paid.subscription_id = subscriptions.id
+  group by subscriptions.id
+),
+active_organizations as (
+  select
+    organization_id,
+    argMax(tier, tuple(created_at, subscription_id)) as tier
+  from subscription_states
+  cross join month_bounds
+  where organization_id != ''
+    and created_at < month_end
+    and (isNull(canceled_at) or canceled_at >= month_end)
+  group by organization_id
+  having tier in ('hobbyist', 'creator', 'growth', 'scale')
+),
+used_organizations as (
+  select distinct "organizationId" as organization_id
   from sync_prod.sync_usage3
   cross join month_bounds
   where "generationEndedAt" >= month_start
     and "generationEndedAt" < month_end
     and "frameCount" > 0
-    and "stripeCustomerId" is not null
-    and "stripeCustomerId" != ''
+    and "organizationId" is not null
+    and "organizationId" != ''
 )
 select
   month_bounds.month_start as period_start,
-  paid.tier,
-  countDistinct(paid.customer_id) as paid_customers,
-  countDistinctIf(paid.customer_id, used.customer_id != '') as usage_active_customers,
-  round(100.0 * usage_active_customers / nullIf(paid_customers, 0), 2) as usage_active_pct
-from paid_customers paid
+  active.tier,
+  countDistinct(active.organization_id) as active_subscriber_organizations,
+  countDistinctIf(active.organization_id, used.organization_id != '') as usage_active_organizations,
+  round(100.0 * usage_active_organizations / nullIf(active_subscriber_organizations, 0), 2) as usage_active_pct
+from active_organizations active
 cross join month_bounds
-left join used_customers used on used.customer_id = paid.customer_id
+left join used_organizations used on used.organization_id = active.organization_id
 group by period_start, tier
 order by tier`,
 	realizedLtvByTier: `with
@@ -253,7 +326,14 @@ select
   starting_tier as tier,
   countDistinct(customer_id) as cohort_customers,
   round(sum(lifetime_revenue_usd) / nullIf(cohort_customers, 0), 2) as realized_ltv_usd,
-  round(realized_ltv_usd * 0.65, 2) as gross_margin_adjusted_ltv_usd,
+  multiIf(
+    starting_tier = 'hobbyist', 0.83,
+    starting_tier = 'creator', 0.81,
+    starting_tier = 'growth', 0.72,
+    starting_tier = 'scale', 0.66,
+    0
+  ) as gross_margin_assumption,
+  round(realized_ltv_usd * gross_margin_assumption, 2) as gross_margin_adjusted_ltv_usd,
   round(gross_margin_adjusted_ltv_usd / 3.0, 2) as cac_target_usd
 from customer_lifetime_revenue
 where cohort_month >= toDate('2025-01-01')

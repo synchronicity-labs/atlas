@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { MetricReadinessStatus, MetricTrustStatus } from "@crm/db";
 import {
+	CUSTOMER_ECONOMICS_METRIC_SPECS,
 	declaredQuestionIdentityPolicy,
 	marketingSourceCoverageChecks,
 	metricTrustStatus,
@@ -12,6 +13,23 @@ import {
 } from "./product-metric.publisher";
 
 describe("product feedback metric registry", () => {
+	test("keeps unmatched customer economics tables in reconciliation", () => {
+		const paidInvoiceRevenue = CUSTOMER_ECONOMICS_METRIC_SPECS.find(
+			(spec) => spec.questionNumber === 7400,
+		);
+		const unmatchedReferences = CUSTOMER_ECONOMICS_METRIC_SPECS.filter(
+			(spec) => spec.questionNumber !== 7400,
+		);
+
+		expect(paidInvoiceRevenue?.pendingChecks).toBeUndefined();
+		expect(unmatchedReferences).toHaveLength(6);
+		expect(
+			unmatchedReferences.every(
+				(spec) => (spec.pendingChecks?.length ?? 0) === 1,
+			),
+		).toBe(true);
+	});
+
 	test("requests owner approval only for canonical KPIs that need a definition", () => {
 		expect(
 			needsApprovedMetricDefinitionCheck({

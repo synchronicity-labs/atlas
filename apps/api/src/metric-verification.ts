@@ -46,6 +46,15 @@ const CHECK_LABELS: Record<string, string> = {
 		"The same person is counted once across Sync sites",
 	approved_rating_definition: "Positive-rating rule is approved",
 	approved_completed_status: "Completed-generation rule is approved",
+	matt_panel_logo_churn_match: "Logo churn matches Matt's reference panel",
+	matt_panel_paid_invoice_retention_match:
+		"Revenue retention matches Matt's reference panel",
+	matt_panel_cohort_retention_match:
+		"Cohort retention matches Matt's reference panel",
+	matt_panel_usage_active_match:
+		"Usage-active rates match Matt's reference panel",
+	matt_panel_ltv_match: "Lifetime value matches Matt's updated cost allocation",
+	approved_winback_definition: "Paid win-back rule is approved",
 };
 
 export function summarizeMetricVerification(

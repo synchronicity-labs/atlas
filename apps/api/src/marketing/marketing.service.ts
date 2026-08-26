@@ -10,8 +10,14 @@ import {
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { InjectDatabase } from "../database/database.constants";
 import { abuseRingVerificationChecks } from "../metabase/abuse-detail-verification";
+import { MetabaseClient } from "../metabase/metabase.client";
+import { metabaseConfig } from "../metabase/metabase.config";
 import { ProductMetricPublisher } from "../metabase/product-metric.publisher";
 import { TinybirdEligibilityService } from "../metabase/tinybird-eligibility.service";
+import {
+	adobePluginVerificationChecks,
+	adobePluginWeeklyReport,
+} from "./adobe-plugin";
 import { exitSurveyVerificationChecks } from "./exit-survey-verification";
 import { geoConversionVerificationChecks } from "./geo-conversion-verification";
 import { lipsyncFunnelVerificationChecks } from "./lipsync-funnel-verification";
@@ -84,7 +90,8 @@ export class MarketingService {
 	async preview(queryText: string): Promise<MarketingResult> {
 		const query = this.parse(queryText);
 		const eligibility = await this.productUserEligibility();
-		return new MarketingClient(marketingConfig()).execute(
+		return this.execute(
+			new MarketingClient(marketingConfig()),
 			this.withProductUserEligibility(query, eligibility.predicate),
 		);
 	}
@@ -194,33 +201,41 @@ export class MarketingService {
 				const appliesCleanUserPolicy =
 					parsedQuery.source === "posthog" &&
 					parsedQuery.personPolicy === "exclude_banned_product_users";
-				const result = await client.execute(
+				const result = await this.execute(
+					client,
 					this.withProductUserEligibility(parsedQuery, eligibility.predicate),
 				);
 				const verificationChecks =
-					question.sourceExternalId === "cron:exit-survey:weekly-summary" &&
-					parsedQuery.source === "posthog"
-						? exitSurveyVerificationChecks(result, parsedQuery.query)
-						: question.sourceExternalId === "cron:geo:weekly-conversion" &&
+					question.sourceExternalId === "cron:adobe-plugin:weekly-kpis" &&
+					parsedQuery.source === "adobe_plugin"
+						? adobePluginVerificationChecks(result, parsedQuery)
+						: question.sourceExternalId === "cron:exit-survey:weekly-summary" &&
 								parsedQuery.source === "posthog"
-							? geoConversionVerificationChecks(result, parsedQuery.query)
-							: question.sourceExternalId === "cron:lipsync:product-funnel" &&
+							? exitSurveyVerificationChecks(result, parsedQuery.query)
+							: question.sourceExternalId === "cron:geo:weekly-conversion" &&
 									parsedQuery.source === "posthog"
-								? lipsyncFunnelVerificationChecks(result, parsedQuery.query)
-								: question.sourceExternalId?.startsWith(
-											"cron:studio:insight-",
-										) && parsedQuery.source === "posthog_insight"
-									? studioInsightVerificationChecks(result, parsedQuery)
-									: (question.sourceExternalId === "cron:studio:period-kpis" ||
-												question.sourceExternalId ===
-													"cron:studio:monthly-period-kpis") &&
-											parsedQuery.source === "posthog"
-										? studioPeriodVerificationChecks(result, parsedQuery.query)
-										: question.sourceExternalId ===
-													"cron:abuse:operational-detail" &&
+								? geoConversionVerificationChecks(result, parsedQuery.query)
+								: question.sourceExternalId === "cron:lipsync:product-funnel" &&
+										parsedQuery.source === "posthog"
+									? lipsyncFunnelVerificationChecks(result, parsedQuery.query)
+									: question.sourceExternalId?.startsWith(
+												"cron:studio:insight-",
+											) && parsedQuery.source === "posthog_insight"
+										? studioInsightVerificationChecks(result, parsedQuery)
+										: (question.sourceExternalId ===
+													"cron:studio:period-kpis" ||
+													question.sourceExternalId ===
+														"cron:studio:monthly-period-kpis") &&
 												parsedQuery.source === "posthog"
-											? abuseRingVerificationChecks(result, parsedQuery.query)
-											: undefined;
+											? studioPeriodVerificationChecks(
+													result,
+													parsedQuery.query,
+												)
+											: question.sourceExternalId ===
+														"cron:abuse:operational-detail" &&
+													parsedQuery.source === "posthog"
+												? abuseRingVerificationChecks(result, parsedQuery.query)
+												: undefined;
 				const payload = { columns: result.columns, rows: result.rows };
 				const contentHash = hash(payload);
 				const externalId =
@@ -321,6 +336,20 @@ export class MarketingService {
 		if (query.source === "posthog") assertReadOnlyHogql(query.query);
 		if (query.source === "posthog_insight") assertReadOnlyInsightQuery(query);
 		return query;
+	}
+
+	private async execute(
+		client: MarketingClient,
+		query: ReturnType<typeof marketingQuery.parse>,
+	): Promise<MarketingResult> {
+		if (query.source !== "adobe_plugin") return client.execute(query);
+		const config = metabaseConfig();
+		if (!config) throw new Error("Metabase is not configured.");
+		return adobePluginWeeklyReport({
+			query,
+			nativeInsight: (nativeQuery) => client.nativeInsight(nativeQuery),
+			metabase: new MetabaseClient(config),
+		});
 	}
 
 	private async productUserEligibility(): Promise<{

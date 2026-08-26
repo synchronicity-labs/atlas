@@ -1254,6 +1254,92 @@ export const PRODUCT_METRIC_SPECS: ProductMetricSpec[] = [
 		cadenceMinutes: 8 * 60,
 	},
 	{
+		questionNumber: 7003,
+		sourceExternalId: "cron:adobe-plugin:weekly-kpis",
+		key: "product.adobe_plugin_weekly_kpis",
+		name: "Adobe plugin adoption, retention, and NPS",
+		description:
+			"Complete UTC-week Adobe Premiere plugin installs, activation, mature recurring retention, post-generation actions, and de-identified NPS aggregates.",
+		grain: FactGrain.WEEK,
+		source: {
+			key: "atlas:adobe-plugin-composite",
+			kind: DataSourceKind.ATLAS,
+			label: "PostHog plugin events and product NPS survey",
+		},
+		eventTimeField: "period_start",
+		businessDefinition: {
+			entity: "adobe_plugin_weekly_report",
+			population:
+				"PostHog test-account-filtered plugin events and Adobe Plugin NPS version 1 submissions created before the data-through boundary",
+			periodAssignment: "complete Monday-Sunday UTC weeks",
+			installs: "unique plugin_installed users",
+			activation:
+				"ordered install, sign-in, generation, and download funnel for the latest complete week",
+			twoDayActivation:
+				"users with a second plugin generation within two days from a fully mature 30-day cohort window",
+			retention:
+				"recurring weekly plugin generation cohorts, with W1-W3 published only after the full return-week window",
+			powerRetention:
+				"recurring weekly cohorts with at least 10 plugin generations in the cohort week",
+			postGeneration:
+				"preview, download, and insert events divided by completed plugin generations; action rates can exceed 100 percent",
+			nps: "version 1 submitted scores with comments excluded from the governed result",
+		},
+		computation: {
+			aggregate: "composite_weekly_plugin_report",
+			outputs: [
+				"unique_installs",
+				"activation_funnel",
+				"two_day_activation_pct",
+				"weekly_retention_pct",
+				"power_retention_pct",
+				"post_generation_action_pct",
+				"nps_score",
+				"nps_response_rate_pct",
+			],
+		},
+		requiresCrossSourceEligibility: false,
+		pendingChecks: [
+			{
+				name: "event_definition_review",
+				reason:
+					"The report must use the approved Adobe plugin event, funnel, retention, and survey definitions.",
+			},
+			{
+				name: "report_population",
+				reason:
+					"Every required report section must be present with a valid non-negative population.",
+			},
+			{
+				name: "metric_reconciliation",
+				reason: "Every rate must reconcile to its numerator and denominator.",
+			},
+			{
+				name: "cohort_maturity",
+				reason:
+					"Retention and two-day activation cohorts must have their complete observation windows.",
+			},
+			{
+				name: "nps_response_parity",
+				reason:
+					"NPS categories and score distribution must reconcile to scored responses.",
+			},
+			{
+				name: "sensitive_detail_boundary",
+				reason:
+					"The governed result must exclude survey comments and person-level identifiers.",
+			},
+			{
+				name: "oldest_complete_watermark",
+				reason:
+					"Every row must use the same complete UTC data-through boundary.",
+			},
+		],
+		ownerTeam: "Product",
+		createdBy: "atlas-adobe-plugin-registry",
+		cadenceMinutes: 8 * 60,
+	},
+	{
 		questionNumber: 7002,
 		sourceExternalId: "cron:studio:period-kpis",
 		key: "product.studio_weekly_delivery_logo_movement",

@@ -77,11 +77,18 @@ export const posthogInsightQuery = z.object({
 	query: posthogNativeQuery,
 });
 
+export const adobePluginQuery = z.object({
+	source: z.literal("adobe_plugin"),
+	report: z.literal("weekly-kpis"),
+	version: z.literal(1),
+});
+
 export const marketingQuery = z.discriminatedUnion("source", [
 	ga4Query,
 	searchConsoleQuery,
 	posthogQuery,
 	posthogInsightQuery,
+	adobePluginQuery,
 ]);
 
 export type MarketingQuery = z.infer<typeof marketingQuery>;

@@ -1365,7 +1365,7 @@ export const PRODUCT_METRIC_SPECS: ProductMetricSpec[] = [
 			signups:
 				"all clean user signups with a recognized product-page attribution slug",
 			paidOrganizations:
-				"first-touch organizations with at least one positive paid subscription invoice in the same week",
+				"first-touch organizations with at least one subscription whose first positive paid invoice occurs at or after the attributed signup and before the week ends",
 			paidConversion:
 				"paid organizations divided by first-touch attributed organizations; this is not sessions-to-paid conversion",
 			attributionCoverage:

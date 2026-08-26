@@ -31,6 +31,7 @@ import {
 } from "./api-reliability";
 import { BetterStackClient, betterStackConfig } from "./betterstack.client";
 import { exitSurveyVerificationChecks } from "./exit-survey-verification";
+import { GbrainEvidenceService } from "./gbrain-evidence.service";
 import { geoConversionVerificationChecks } from "./geo-conversion-verification";
 import { lipsyncFunnelVerificationChecks } from "./lipsync-funnel-verification";
 import { MarketingClient, type MarketingResult } from "./marketing.client";
@@ -40,6 +41,10 @@ import {
 	applyPosthogPersonPolicy,
 	productUserEligibilityPredicate,
 } from "./marketing.eligibility";
+import {
+	modelFeedbackVerificationChecks,
+	modelFeedbackWeeklyReport,
+} from "./model-feedback";
 import {
 	productPagesVerificationChecks,
 	productPagesWeeklyReport,
@@ -67,6 +72,30 @@ function errorMessage(error: unknown): string {
 		: "Unknown marketing sync error.";
 }
 
+export function groupMarketingQuestionsBySource<
+	T extends { number: number; sourceId: string | null },
+>(questions: T[]): Map<string, T[]> {
+	const groups = new Map<string, T[]>();
+	for (const question of questions) {
+		if (!question.sourceId) {
+			throw new Error(`Q${question.number} has no configured Atlas source.`);
+		}
+		const group = groups.get(question.sourceId) ?? [];
+		group.push(question);
+		groups.set(question.sourceId, group);
+	}
+	return groups;
+}
+
+export function requiresProductUserEligibility(
+	query: ReturnType<typeof marketingQuery.parse>,
+): boolean {
+	return (
+		query.source === "posthog" &&
+		query.personPolicy === "exclude_banned_product_users"
+	);
+}
+
 function sourceVerificationChecks(
 	sourceExternalId: string | null,
 	query: ReturnType<typeof marketingQuery.parse>,
@@ -87,6 +116,11 @@ function sourceVerificationChecks(
 		query.source === "api_reliability"
 	)
 		return apiReliabilityVerificationChecks(result, query);
+	if (
+		sourceExternalId === "cron:model-feedback:weekly-coverage" &&
+		query.source === "model_feedback"
+	)
+		return modelFeedbackVerificationChecks(result, query);
 	if (
 		sourceExternalId === "cron:adobe-plugin:weekly-kpis" &&
 		query.source === "adobe_plugin"
@@ -160,10 +194,14 @@ export class MarketingService {
 		@InjectDatabase() private readonly db: Db,
 		private readonly metricPublisher: ProductMetricPublisher,
 		private readonly tinybirdEligibility: TinybirdEligibilityService,
+		private readonly gbrainEvidence: GbrainEvidenceService,
 	) {}
 
 	async preview(queryText: string): Promise<MarketingResult> {
 		const query = this.parse(queryText);
+		if (!requiresProductUserEligibility(query)) {
+			return this.execute(new MarketingClient(marketingConfig()), query);
+		}
 		const eligibility = await this.productUserEligibility();
 		return this.execute(
 			new MarketingClient(marketingConfig()),
@@ -225,148 +263,160 @@ export class MarketingService {
 		if (questions.length === 0) {
 			throw new Error("This dashboard has no marketing questions.");
 		}
-		const sourceIds = new Set(
-			questions.flatMap((question) =>
-				question.sourceId ? [question.sourceId] : [],
-			),
-		);
-		if (sourceIds.size !== 1) {
-			throw new Error(
-				"Marketing questions must share one configured Atlas source.",
-			);
-		}
-		const sourceId = [...sourceIds][0];
-		if (!sourceId) throw new Error("The marketing source is not configured.");
-		const source = await this.db.dataSource.findUnique({
-			where: { id: sourceId },
-		});
-		if (!source) throw new Error("The marketing source is not configured.");
+		const questionsBySource = groupMarketingQuestionsBySource(questions);
 		const period = month();
-		const run = await this.db.syncRun.create({
-			data: {
-				runKey: `${source.key}:${period}:${new Date().toISOString()}:${randomUUID()}`,
-				sourceId: source.id,
-				mode: SyncMode.INCREMENTAL,
-				status: SyncRunStatus.RUNNING,
-				scope: `dashboard:${number}`,
-				period,
-			},
-		});
-		await this.db.dataSource.update({
-			where: { id: source.id },
-			data: { state: SourceStatus.SYNCING, lastError: null },
-		});
-
 		const client = new MarketingClient(marketingConfig());
-		const eligibility = await this.productUserEligibility();
 		let cardsProcessed = 0;
 		let snapshotsCreated = 0;
 		const errors: Array<{ number: number; message: string }> = [];
-		for (const question of questions) {
-			const version = question.versions[0];
-			if (version?.queryLanguage !== "API") {
-				errors.push({
-					number: question.number,
-					message: "Question has no API version.",
-				});
-				continue;
-			}
-			try {
-				const parsedQuery = this.parse(version.queryText);
-				const appliesCleanUserPolicy =
-					parsedQuery.source === "posthog" &&
-					parsedQuery.personPolicy === "exclude_banned_product_users";
-				const result = await this.execute(
-					client,
-					this.withProductUserEligibility(parsedQuery, eligibility.predicate),
-				);
-				const verificationChecks = sourceVerificationChecks(
-					question.sourceExternalId,
-					parsedQuery,
-					result,
-				);
-				const payload = { columns: result.columns, rows: result.rows };
-				const contentHash = hash(payload);
-				const externalId =
-					question.sourceExternalId ?? `marketing:question:${question.number}`;
-				const capturedAt = new Date();
-				const created = await this.db.resultSnapshot.createMany({
-					data: [
-						{
-							idempotencyKey: `${source.key}:${externalId}:v${version.version}:${period}:${contentHash}`,
-							sourceId: source.id,
-							dashboardExternalId: `atlas:${number}`,
-							questionExternalId: externalId,
-							reportingPeriod: period,
-							capturedAt,
-							contentHash,
-							columns: json(result.columns),
-							rows: json(result.rows),
-							rowCount: result.rows.length,
-						},
-					],
-					skipDuplicates: true,
-				});
-				await this.metricPublisher.publish({
-					question,
-					version,
-					result,
-					syncRunId: run.id,
-					capturedAt,
-					eligibility: {
-						applied: appliesCleanUserPolicy,
-						capturedAt: eligibility.capturedAt,
-						contentHash: eligibility.contentHash,
-						excludedUsers: eligibility.excludedExternalIds.length,
-						excludedOrganizations: 0,
-						excludedCustomers: 0,
-						complete: eligibility.complete,
-						sourceRows: eligibility.sourceRows,
-						returnedRows: eligibility.returnedRows,
-						scope: eligibility.scope,
-						policy: eligibility.policy,
-					},
-					verificationChecks,
-				});
-				await this.db.question.update({
-					where: { id: question.id },
-					data: { lastCheckedAt: capturedAt },
-				});
-				cardsProcessed += 1;
-				snapshotsCreated += created.count;
-			} catch (error) {
-				errors.push({ number: question.number, message: errorMessage(error) });
-			}
-		}
-		const finishedAt = new Date();
-		const failed = errors.length > 0;
-		const lastError = failed
-			? errors.map((error) => `Q${error.number}: ${error.message}`).join(" | ")
-			: null;
-		await this.db.$transaction([
-			this.db.syncRun.update({
-				where: { id: run.id },
+		const runIds: string[] = [];
+		for (const [sourceId, sourceQuestions] of questionsBySource) {
+			const source = await this.db.dataSource.findUnique({
+				where: { id: sourceId },
+			});
+			if (!source)
+				throw new Error(`Atlas source ${sourceId} is not configured.`);
+			const run = await this.db.syncRun.create({
 				data: {
-					status: failed ? SyncRunStatus.FAILED : SyncRunStatus.COMPLETED,
-					finishedAt,
-					cardsProcessed,
-					snapshotsCreated,
-					error: lastError,
-					checkpoint: json({ errors }),
+					runKey: `${source.key}:${period}:${new Date().toISOString()}:${randomUUID()}`,
+					sourceId: source.id,
+					mode: SyncMode.INCREMENTAL,
+					status: SyncRunStatus.RUNNING,
+					scope: `dashboard:${number}`,
+					period,
 				},
-			}),
-			this.db.dataSource.update({
+			});
+			runIds.push(run.id);
+			await this.db.dataSource.update({
 				where: { id: source.id },
-				data: {
-					state: failed ? SourceStatus.ERROR : SourceStatus.HEALTHY,
-					lastSyncAt: finishedAt,
-					lastError,
-					freshnessDeadlineAt: new Date(Date.now() + FRESHNESS_MS),
-				},
-			}),
-		]);
+				data: { state: SourceStatus.SYNCING, lastError: null },
+			});
+			const sourceErrors: Array<{ number: number; message: string }> = [];
+			let sourceCardsProcessed = 0;
+			let sourceSnapshotsCreated = 0;
+			for (const question of sourceQuestions) {
+				const version = question.versions[0];
+				if (version?.queryLanguage !== "API") {
+					sourceErrors.push({
+						number: question.number,
+						message: "Question has no API version.",
+					});
+					continue;
+				}
+				try {
+					const parsedQuery = this.parse(version.queryText);
+					const eligibility = requiresProductUserEligibility(parsedQuery)
+						? await this.productUserEligibility()
+						: null;
+					const result = await this.execute(
+						client,
+						eligibility
+							? this.withProductUserEligibility(
+									parsedQuery,
+									eligibility.predicate,
+								)
+							: parsedQuery,
+					);
+					const verificationChecks = sourceVerificationChecks(
+						question.sourceExternalId,
+						parsedQuery,
+						result,
+					);
+					const payload = { columns: result.columns, rows: result.rows };
+					const contentHash = hash(payload);
+					const externalId =
+						question.sourceExternalId ??
+						`marketing:question:${question.number}`;
+					const capturedAt = new Date();
+					const created = await this.db.resultSnapshot.createMany({
+						data: [
+							{
+								idempotencyKey: `${source.key}:${externalId}:v${version.version}:${period}:${contentHash}`,
+								sourceId: source.id,
+								dashboardExternalId: `atlas:${number}`,
+								questionExternalId: externalId,
+								reportingPeriod: period,
+								capturedAt,
+								contentHash,
+								columns: json(result.columns),
+								rows: json(result.rows),
+								rowCount: result.rows.length,
+							},
+						],
+						skipDuplicates: true,
+					});
+					await this.metricPublisher.publish({
+						question,
+						version,
+						result,
+						syncRunId: run.id,
+						capturedAt,
+						eligibility: eligibility
+							? {
+									applied: true,
+									capturedAt: eligibility.capturedAt,
+									contentHash: eligibility.contentHash,
+									excludedUsers: eligibility.excludedExternalIds.length,
+									excludedOrganizations: 0,
+									excludedCustomers: 0,
+									complete: eligibility.complete,
+									sourceRows: eligibility.sourceRows,
+									returnedRows: eligibility.returnedRows,
+									scope: eligibility.scope,
+									policy: eligibility.policy,
+								}
+							: undefined,
+						verificationChecks,
+					});
+					await this.db.question.update({
+						where: { id: question.id },
+						data: { lastCheckedAt: capturedAt },
+					});
+					sourceCardsProcessed += 1;
+					sourceSnapshotsCreated += created.count;
+				} catch (error) {
+					sourceErrors.push({
+						number: question.number,
+						message: errorMessage(error),
+					});
+				}
+			}
+			const finishedAt = new Date();
+			const failed = sourceErrors.length > 0;
+			const lastError = failed
+				? sourceErrors
+						.map((error) => `Q${error.number}: ${error.message}`)
+						.join(" | ")
+				: null;
+			await this.db.$transaction([
+				this.db.syncRun.update({
+					where: { id: run.id },
+					data: {
+						status: failed ? SyncRunStatus.FAILED : SyncRunStatus.COMPLETED,
+						finishedAt,
+						cardsProcessed: sourceCardsProcessed,
+						snapshotsCreated: sourceSnapshotsCreated,
+						error: lastError,
+						checkpoint: json({ errors: sourceErrors }),
+					},
+				}),
+				this.db.dataSource.update({
+					where: { id: source.id },
+					data: {
+						state: failed ? SourceStatus.ERROR : SourceStatus.HEALTHY,
+						lastSyncAt: finishedAt,
+						lastError,
+						freshnessDeadlineAt: new Date(Date.now() + FRESHNESS_MS),
+					},
+				}),
+			]);
+			cardsProcessed += sourceCardsProcessed;
+			snapshotsCreated += sourceSnapshotsCreated;
+			errors.push(...sourceErrors);
+		}
 		return {
-			runId: run.id,
+			runId: runIds.length === 1 ? runIds[0] : null,
+			runIds,
 			period,
 			cardsProcessed,
 			snapshotsCreated,
@@ -395,7 +445,8 @@ export class MarketingService {
 			query.source !== "adobe_plugin" &&
 			query.source !== "product_pages" &&
 			query.source !== "api_adoption" &&
-			query.source !== "api_reliability"
+			query.source !== "api_reliability" &&
+			query.source !== "model_feedback"
 		) {
 			return client.execute(query);
 		}
@@ -410,15 +461,21 @@ export class MarketingService {
 		const config = metabaseConfig();
 		if (!config) throw new Error("Metabase is not configured.");
 		const metabase = new MetabaseClient(config);
-		return query.source === "adobe_plugin"
-			? adobePluginWeeklyReport({
+		return query.source === "model_feedback"
+			? modelFeedbackWeeklyReport({
 					query,
-					nativeInsight: (nativeQuery) => client.nativeInsight(nativeQuery),
 					metabase,
+					evidence: this.gbrainEvidence,
 				})
-			: query.source === "product_pages"
-				? productPagesWeeklyReport({ query, marketing: client, metabase })
-				: apiAdoptionWeeklyReport({ query, metabase });
+			: query.source === "adobe_plugin"
+				? adobePluginWeeklyReport({
+						query,
+						nativeInsight: (nativeQuery) => client.nativeInsight(nativeQuery),
+						metabase,
+					})
+				: query.source === "product_pages"
+					? productPagesWeeklyReport({ query, marketing: client, metabase })
+					: apiAdoptionWeeklyReport({ query, metabase });
 	}
 
 	private async productUserEligibility(): Promise<{

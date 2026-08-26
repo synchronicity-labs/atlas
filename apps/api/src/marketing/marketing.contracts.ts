@@ -108,6 +108,12 @@ export const apiReliabilityQuery = z.object({
 	version: z.literal(1),
 });
 
+export const modelFeedbackQuery = z.object({
+	source: z.literal("model_feedback"),
+	report: z.literal("weekly-coverage"),
+	version: z.literal(1),
+});
+
 export const marketingQuery = z.discriminatedUnion("source", [
 	ga4Query,
 	searchConsoleQuery,
@@ -117,6 +123,7 @@ export const marketingQuery = z.discriminatedUnion("source", [
 	productPagesQuery,
 	apiAdoptionQuery,
 	apiReliabilityQuery,
+	modelFeedbackQuery,
 ]);
 
 export type MarketingQuery = z.infer<typeof marketingQuery>;

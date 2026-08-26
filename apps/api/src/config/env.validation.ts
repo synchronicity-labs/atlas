@@ -122,6 +122,13 @@ export class EnvironmentVariables {
 	ATLAS_QUERY_SECRET?: string;
 
 	@IsOptional()
+	@IsString()
+	@MinLength(32, {
+		message: "ATLAS_GBRAIN_INGEST_SECRET must be at least 32 characters.",
+	})
+	ATLAS_GBRAIN_INGEST_SECRET?: string;
+
+	@IsOptional()
 	@IsUrl({ require_tld: false })
 	METABASE_BASE_URL?: string;
 

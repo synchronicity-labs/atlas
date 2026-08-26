@@ -224,6 +224,32 @@ describe("product feedback metric registry", () => {
 		);
 	});
 
+	test("registers the governed model feedback contract", () => {
+		const modelFeedback = PRODUCT_METRIC_SPECS.find(
+			(spec) => spec.questionNumber === 7014,
+		);
+
+		expect(modelFeedback?.sourceExternalId).toBe(
+			"cron:model-feedback:weekly-coverage",
+		);
+		expect(modelFeedback?.source.key).toBe("atlas:model-feedback-composite");
+		expect(modelFeedback?.businessDefinition).toMatchObject({
+			entity: "model_feedback_surface_week",
+			separationPolicy:
+				"support-negative counts remain separate from the product feedback denominator and never change the product negative rate",
+		});
+		expect(modelFeedback?.pendingChecks?.map((check) => check.name)).toEqual([
+			"feedback_denominator_parity",
+			"model_mapping",
+			"support_evidence_join",
+			"customer_text_boundary",
+			"oldest_complete_watermark",
+		]);
+		expect(
+			preferredAtlasQuestionNumber("cron:model-feedback:weekly-coverage"),
+		).toBe(7014);
+	});
+
 	test("registers the governed Lipsync-attributed product funnel", () => {
 		const lipsync = PRODUCT_METRIC_SPECS.find(
 			(spec) => spec.questionNumber === 7004,

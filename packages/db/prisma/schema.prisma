@@ -1423,6 +1423,21 @@ model ResultSnapshot {
   @@schema("public")
 }
 
+model GbrainModelFeedbackSnapshot {
+  id              String   @id @default(cuid())
+  weekStart       DateTime
+  dataThrough     DateTime
+  sourceItemCount Int
+  rows            Json
+  contentHash     String
+  capturedAt      DateTime @default(now())
+
+  @@unique([weekStart, contentHash])
+  @@index([weekStart, capturedAt])
+  @@map("gbrainModelFeedbackSnapshot")
+  @@schema("public")
+}
+
 model Question {
   id                        String          @id @default(cuid())
   number                    Int             @unique

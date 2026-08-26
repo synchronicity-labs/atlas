@@ -96,6 +96,7 @@ describe("contract Drive crawl", () => {
 		expect(result.customerFolders.map((folder) => folder.name)).toEqual([
 			"Acme",
 		]);
+		expect(result.customerFolders[0]?.kind).toBe("ENTERPRISE");
 		expect(result.unsupportedFiles).toBe(1);
 		expect(result.documents.map((document) => document.path)).toEqual([
 			["Acme", "Drafts", "Draft.pdf"],
@@ -105,9 +106,97 @@ describe("contract Drive crawl", () => {
 		]);
 		expect(result.documents[1]?.customerFolder).toBe("Acme");
 		expect(result.documents[1]?.customerFolderId).toBe("customer");
+		expect(result.documents[1]?.customerKind).toBe("ENTERPRISE");
 		expect(result.documents[1]?.version).toBe("7");
 		expect(result.documents[3]?.md5Checksum).toBe("root-hash");
 		expect(requests).toHaveLength(5);
+	});
+
+	it("classifies category folders and ignores unrelated top-level folders", async () => {
+		const requestedFolders: string[] = [];
+		const client = new ContractsDriveClient(
+			async () => "token",
+			async (input) => {
+				const url = new URL(String(input));
+				if (url.pathname.endsWith("/files/root")) {
+					return json({ id: "root", name: "Contracts", mimeType: folderMime });
+				}
+				const query = url.searchParams.get("q") ?? "";
+				const folderId = query.match(/^'([^']+)'/)?.[1] ?? "";
+				requestedFolders.push(folderId);
+				const filesByFolder: Record<string, unknown[]> = {
+					root: [
+						{
+							id: "enterprise",
+							name: "Enterprise_customers",
+							mimeType: folderMime,
+						},
+						{
+							id: "production",
+							name: "Productions_customers",
+							mimeType: folderMime,
+						},
+						{
+							id: "partners",
+							name: "Channel Partners",
+							mimeType: folderMime,
+						},
+						{ id: "prospects", name: "Prospects", mimeType: folderMime },
+					],
+					enterprise: [
+						{ id: "acme", name: "Acme", mimeType: folderMime },
+						{
+							id: "enterprise-readme",
+							name: "README",
+							mimeType: "application/vnd.google-apps.document",
+						},
+					],
+					production: [
+						{ id: "lemon", name: "Lemon Films", mimeType: folderMime },
+					],
+					partners: [{ id: "runware", name: "Runware", mimeType: folderMime }],
+					acme: [
+						{ id: "acme-doc", name: "Order.pdf", mimeType: "application/pdf" },
+					],
+					lemon: [
+						{ id: "lemon-doc", name: "SOW.pdf", mimeType: "application/pdf" },
+					],
+					runware: [
+						{
+							id: "runware-doc",
+							name: "Agreement.pdf",
+							mimeType: "application/pdf",
+						},
+					],
+				};
+				if (!(folderId in filesByFolder)) {
+					throw new Error(`Unexpected request ${url}`);
+				}
+				return json({ files: filesByFolder[folderId] });
+			},
+		);
+
+		const result = await client.crawl("root");
+
+		expect(
+			result.customerFolders.map(({ name, kind }) => ({ name, kind })),
+		).toEqual([
+			{ name: "Acme", kind: "ENTERPRISE" },
+			{ name: "Lemon Films", kind: "PRODUCTION" },
+			{ name: "Runware", kind: "CHANNEL_PARTNER" },
+		]);
+		expect(
+			result.documents.map(({ path, customerKind }) => ({
+				path,
+				customerKind,
+			})),
+		).toEqual([
+			{ path: ["Acme", "Order.pdf"], customerKind: "ENTERPRISE" },
+			{ path: ["Lemon Films", "SOW.pdf"], customerKind: "PRODUCTION" },
+			{ path: ["Runware", "Agreement.pdf"], customerKind: "CHANNEL_PARTNER" },
+		]);
+		expect(requestedFolders).not.toContain("prospects");
+		expect(result.folders).toBe(7);
 	});
 
 	it("exports Google Docs and downloads stored files", async () => {
@@ -128,6 +217,7 @@ describe("contract Drive crawl", () => {
 			parentId: "customer",
 			customerFolder: "Acme",
 			customerFolderId: "customer",
+			customerKind: "ENTERPRISE",
 			createdTime: null,
 			modifiedTime: null,
 			version: null,

@@ -1,4 +1,5 @@
 import {
+	ContractCustomerKind,
 	ContractFindingKind,
 	ContractFindingSeverity,
 	ContractFindingStatus,
@@ -122,6 +123,7 @@ type DatasetResponse = {
 
 const MANAGED_KINDS = [
 	ContractFindingKind.NO_PRODUCT_ACCOUNT,
+	ContractFindingKind.NO_STRIPE_ACCOUNT,
 	ContractFindingKind.AMBIGUOUS_ACCOUNT,
 	ContractFindingKind.PRICE_MISMATCH,
 	ContractFindingKind.POSSIBLE_MISSING_ADDENDUM,
@@ -285,6 +287,7 @@ export async function reconcileContracts(): Promise<{
 		select: {
 			id: true,
 			folderName: true,
+			kind: true,
 			documents: {
 				select: {
 					sourceRecordId: true,
@@ -317,9 +320,11 @@ export async function reconcileContracts(): Promise<{
 		},
 	});
 	const verified = customers.flatMap((customer) =>
-		customer.productOrganizations.filter(
-			(mapping) => mapping.status === ContractMappingStatus.VERIFIED,
-		),
+		customer.kind === ContractCustomerKind.ENTERPRISE
+			? customer.productOrganizations.filter(
+					(mapping) => mapping.status === ContractMappingStatus.VERIFIED,
+				)
+			: [],
 	);
 	const activityResult = await contractAccountActivities(
 		verified.map((mapping) => ({
@@ -406,6 +411,7 @@ export async function reconcileContracts(): Promise<{
 				},
 			});
 		}
+		if (customer.kind !== ContractCustomerKind.ENTERPRISE) continue;
 		if (verifiedMappings.length === 0) {
 			const ambiguous = suggestions.length > 1;
 			drafts.push({
@@ -520,6 +526,19 @@ export function commercialFindingDrafts(input: {
 		stripeCustomerId: input.activity.stripeCustomerId,
 		stripeSubscriptionId: input.activity.stripeSubscriptionId,
 	};
+	if (!input.activity.stripeCustomerId) {
+		drafts.push({
+			findingKey: `${input.customerId}:${input.productOrganizationExternalId}:no-stripe-account`,
+			contractCustomerId: input.customerId,
+			productOrganizationId: input.productOrganizationId,
+			kind: ContractFindingKind.NO_STRIPE_ACCOUNT,
+			severity: ContractFindingSeverity.WARNING,
+			title: `${input.customerName} has no Stripe customer ID`,
+			summary:
+				"The verified Product organization does not have a Stripe customer ID.",
+			evidence: commonEvidence,
+		});
+	}
 	if (
 		input.baseline &&
 		input.baseline.currency === "USD" &&

@@ -174,6 +174,29 @@ describe("contract reconciliation", () => {
 		]);
 	});
 
+	it("flags a verified Product organization without a Stripe customer ID", () => {
+		const findings = commercialFindingDrafts({
+			customerId: "customer_1",
+			customerName: "Customer",
+			productOrganizationId: "product_1",
+			productOrganizationExternalId: "org_1",
+			productOrganizationName: "Customer",
+			baseline: null,
+			framePrices: [],
+			activity: {
+				organizationId: "org_1",
+				stripeCustomerId: null,
+				stripeSubscriptionId: null,
+				subscription: null,
+				invoices: null,
+				usage: null,
+			},
+		});
+
+		expect(findings).toHaveLength(1);
+		expect(findings[0]?.kind).toBe("NO_STRIPE_ACCOUNT");
+	});
+
 	it("flags old unpaid invoices with no recent usage as critical", () => {
 		const findings = commercialFindingDrafts({
 			customerId: "customer_1",

@@ -1,4 +1,9 @@
-import { ContractParseStatus, ContractTextStatus, db } from "@crm/db";
+import {
+	ContractCustomerKind,
+	ContractParseStatus,
+	ContractTextStatus,
+	db,
+} from "@crm/db";
 import { defineTool } from "eve/tools";
 import { z } from "zod";
 import { suggestContractCustomerMappings } from "../lib/contracts-mapping";
@@ -104,7 +109,7 @@ export default defineTool({
 			select: {
 				contractCustomerId: true,
 				contractCustomer: {
-					select: { folderName: true, legalName: true },
+					select: { folderName: true, kind: true, legalName: true },
 				},
 			},
 		});
@@ -147,11 +152,13 @@ export default defineTool({
 					data: { legalName },
 				});
 			}
-			mappings = await suggestContractCustomerMappings(db, {
-				contractCustomerId: document.contractCustomerId,
-				folderName: document.contractCustomer?.folderName ?? "",
-				legalName: legalName ?? document.contractCustomer?.legalName,
-			});
+			if (document.contractCustomer?.kind === ContractCustomerKind.ENTERPRISE) {
+				mappings = await suggestContractCustomerMappings(db, {
+					contractCustomerId: document.contractCustomerId,
+					folderName: document.contractCustomer.folderName,
+					legalName: legalName ?? document.contractCustomer.legalName,
+				});
+			}
 		}
 
 		return {

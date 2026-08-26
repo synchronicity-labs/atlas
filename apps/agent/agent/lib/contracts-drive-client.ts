@@ -7,6 +7,10 @@ const DOCX_MIME =
 const MAX_ITEMS = 2_000;
 
 export type ContractDocumentFormat = "google-doc" | "pdf" | "docx";
+export type ContractCustomerKind =
+	| "ENTERPRISE"
+	| "PRODUCTION"
+	| "CHANNEL_PARTNER";
 
 const DOCUMENT_FORMATS: ReadonlyMap<string, ContractDocumentFormat> = new Map([
 	[GOOGLE_DOC_MIME, "google-doc"],
@@ -48,6 +52,7 @@ export type ContractDriveDocument = {
 	parentId: string;
 	customerFolder: string | null;
 	customerFolderId: string | null;
+	customerKind: ContractCustomerKind | null;
 	createdTime: string | null;
 	modifiedTime: string | null;
 	version: string | null;
@@ -60,6 +65,7 @@ export type ContractDriveDocument = {
 export type ContractDriveCustomerFolder = {
 	id: string;
 	name: string;
+	kind: ContractCustomerKind;
 	createdTime: string | null;
 	modifiedTime: string | null;
 	url: string | null;
@@ -88,32 +94,71 @@ export class ContractsDriveClient {
 			);
 		}
 
-		const queue = [
-			{ id: root.id, path: [] as string[], folderIds: [] as string[] },
-		];
+		const rootChildren = await this.children(root.id, token);
+		const categoryFolders = rootChildren.flatMap((file) => {
+			const kind =
+				file.mimeType === FOLDER_MIME ? contractCustomerKind(file.name) : null;
+			return kind ? [{ file, kind }] : [];
+		});
+		const categorized = categoryFolders.length > 0;
+		const queue: Array<{
+			id: string;
+			path: string[];
+			folderIds: string[];
+			kind: ContractCustomerKind;
+			children?: DriveFile[];
+			includeUnassignedDocuments: boolean;
+		}> = categorized
+			? categoryFolders.map(({ file, kind }) => ({
+					id: file.id,
+					path: [],
+					folderIds: [],
+					kind,
+					includeUnassignedDocuments: false,
+				}))
+			: [
+					{
+						id: root.id,
+						path: [],
+						folderIds: [],
+						kind: "ENTERPRISE",
+						children: rootChildren,
+						includeUnassignedDocuments: true,
+					},
+				];
 		const visited = new Set<string>();
+		if (categorized) visited.add(root.id);
 		const documents: ContractDriveDocument[] = [];
 		const customerFolders: ContractDriveCustomerFolder[] = [];
 		let unsupportedFiles = 0;
-		let scannedItems = 1;
+		let scannedItems = 1 + rootChildren.length;
+		if (scannedItems > MAX_ITEMS) {
+			throw new Error(
+				`The customer contracts folder exceeds the ${MAX_ITEMS} item safety limit.`,
+			);
+		}
 
 		while (queue.length > 0) {
 			const folder = queue.shift();
 			if (!folder || visited.has(folder.id)) continue;
 			visited.add(folder.id);
 
-			for (const file of await this.children(folder.id, token)) {
-				scannedItems += 1;
+			const files = folder.children ?? (await this.children(folder.id, token));
+			if (!folder.children) {
+				scannedItems += files.length;
 				if (scannedItems > MAX_ITEMS) {
 					throw new Error(
 						`The customer contracts folder exceeds the ${MAX_ITEMS} item safety limit.`,
 					);
 				}
+			}
+			for (const file of files) {
 				if (file.mimeType === FOLDER_MIME) {
 					if (folder.path.length === 0) {
 						customerFolders.push({
 							id: file.id,
 							name: file.name,
+							kind: folder.kind,
 							createdTime: file.createdTime ?? null,
 							modifiedTime: file.modifiedTime ?? null,
 							url: file.webViewLink ?? null,
@@ -123,7 +168,12 @@ export class ContractsDriveClient {
 						id: file.id,
 						path: [...folder.path, file.name],
 						folderIds: [...folder.folderIds, file.id],
+						kind: folder.kind,
+						includeUnassignedDocuments: folder.includeUnassignedDocuments,
 					});
+					continue;
+				}
+				if (folder.path.length === 0 && !folder.includeUnassignedDocuments) {
 					continue;
 				}
 				const format = DOCUMENT_FORMATS.get(file.mimeType);
@@ -140,6 +190,7 @@ export class ContractsDriveClient {
 					parentId: folder.id,
 					customerFolder: folder.path[0] ?? null,
 					customerFolderId: folder.folderIds[0] ?? null,
+					customerKind: folder.path[0] ? folder.kind : null,
 					createdTime: file.createdTime ?? null,
 					modifiedTime: file.modifiedTime ?? null,
 					version: file.version ?? null,
@@ -243,4 +294,36 @@ export class ContractsDriveClient {
 		}
 		return response;
 	}
+}
+
+function contractCustomerKind(name: string): ContractCustomerKind | null {
+	const normalized = name.toLowerCase().replace(/[^a-z0-9]+/g, "");
+	if (
+		["enterprise", "enterprises", "enterprisecustomers", "customers"].includes(
+			normalized,
+		)
+	) {
+		return "ENTERPRISE";
+	}
+	if (
+		[
+			"production",
+			"productions",
+			"productioncustomers",
+			"productionscustomers",
+			"studio",
+			"studios",
+			"studiocustomers",
+		].includes(normalized)
+	) {
+		return "PRODUCTION";
+	}
+	if (
+		["channelpartner", "channelpartners", "channelpartnercustomers"].includes(
+			normalized,
+		)
+	) {
+		return "CHANNEL_PARTNER";
+	}
+	return null;
 }

@@ -22,7 +22,7 @@ export default defineTool({
 				pageCount: true,
 				truncated: true,
 				contractCustomer: {
-					select: { folderName: true, legalName: true },
+					select: { folderName: true, kind: true, legalName: true },
 				},
 				sourceRecord: {
 					select: { externalId: true, payload: true, sourceUpdatedAt: true },
@@ -52,6 +52,7 @@ export default defineTool({
 			name: typeof payload.name === "string" ? payload.name : null,
 			url: typeof payload.url === "string" ? payload.url : null,
 			customerFolder: document.contractCustomer?.folderName ?? null,
+			customerKind: document.contractCustomer?.kind ?? null,
 			customerLegalName: document.contractCustomer?.legalName ?? null,
 			sourceUpdatedAt: jsonDate(document.sourceRecord.sourceUpdatedAt),
 			pageCount: document.pageCount,

@@ -219,7 +219,7 @@ because it is not a variable at all — see
 | `BLOB_READ_WRITE_TOKEN` | Mirrors every logo and profile picture into Vercel Blob rather than linking them. Read by the API and the seed too — see below |
 | `AI_GATEWAY_API_KEY` | The model. Not needed on Vercel, where OIDC handles it |
 | `AGENT_BRIDGE_SECRET` | Lets a rep talk to the agent from the contact sheet — [the bridge](./agent.md#the-bridge) |
-| `GOOGLE_SERVICE_ACCOUNT_JSON` + `CONTRACTS_DRIVE_FOLDER_ID` | Recursively indexes the read-only customer contract Drive during the customer-source sync |
+| `GOOGLE_SERVICE_ACCOUNT_JSON` + `CONTRACTS_DRIVE_FOLDER_ID` | Recursively indexes enterprise, production, and channel-partner contract folders during the customer-source sync |
 
 `apps/agent/agent/lib/capabilities.ts` is the single place that knows which are
 set. It prints the list at startup, states it in the session instructions so the

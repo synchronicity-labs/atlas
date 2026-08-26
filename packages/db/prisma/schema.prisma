@@ -385,8 +385,17 @@ enum ContractMappingStatus {
   @@schema("public")
 }
 
+enum ContractCustomerKind {
+  ENTERPRISE
+  PRODUCTION
+  CHANNEL_PARTNER
+
+  @@schema("public")
+}
+
 enum ContractFindingKind {
   NO_PRODUCT_ACCOUNT
+  NO_STRIPE_ACCOUNT
   AMBIGUOUS_ACCOUNT
   PRICE_MISMATCH
   POSSIBLE_MISSING_ADDENDUM
@@ -1797,18 +1806,19 @@ model SourceRecord {
 }
 
 model ContractCustomer {
-  id              String     @id @default(cuid())
+  id              String               @id @default(cuid())
   sourceId        String
-  source          DataSource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  source          DataSource           @relation(fields: [sourceId], references: [id], onDelete: Cascade)
   externalId      String
   folderName      String
+  kind            ContractCustomerKind @default(ENTERPRISE)
   legalName       String?
   companyId       String?
-  company         Company?   @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  company         Company?             @relation(fields: [companyId], references: [id], onDelete: SetNull)
   sourceDeletedAt DateTime?
   syncedAt        DateTime
-  createdAt       DateTime   @default(now())
-  updatedAt       DateTime   @updatedAt
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
 
   documents            ContractDocument[]
   productOrganizations ContractCustomerProductOrganization[]
@@ -1817,6 +1827,7 @@ model ContractCustomer {
   @@unique([sourceId, externalId], map: "contractCustomer_source_external_key")
   @@index([companyId], map: "contractCustomer_company_idx")
   @@index([sourceId, sourceDeletedAt], map: "contractCustomer_source_deleted_idx")
+  @@index([kind, sourceDeletedAt], map: "contractCustomer_kind_deleted_idx")
   @@map("contractCustomer")
   @@schema("public")
 }

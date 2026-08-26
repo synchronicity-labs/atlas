@@ -79,10 +79,12 @@ export async function syncContractsDrive() {
 					sourceId: source.id,
 					externalId: folder.id,
 					folderName: folder.name,
+					kind: folder.kind,
 					syncedAt: now,
 				},
 				update: {
 					folderName: folder.name,
+					kind: folder.kind,
 					sourceDeletedAt: null,
 					syncedAt: now,
 				},
@@ -270,7 +272,7 @@ export async function syncContractsDrive() {
 		let mappingSuggestions = 0;
 		await runLimited(
 			MAPPING_CONCURRENCY,
-			crawl.customerFolders,
+			crawl.customerFolders.filter((folder) => folder.kind === "ENTERPRISE"),
 			async (folder) => {
 				const customer = customers.get(folder.id);
 				if (!customer) return;

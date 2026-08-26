@@ -58,7 +58,9 @@ export async function contractPreamble(
 			textStatus: true,
 			parseStatus: true,
 			truncated: true,
-			contractCustomer: { select: { folderName: true, legalName: true } },
+			contractCustomer: {
+				select: { folderName: true, kind: true, legalName: true },
+			},
 			sourceRecord: { select: { externalId: true, payload: true } },
 		},
 	});
@@ -74,12 +76,20 @@ export async function contractPreamble(
 	};
 	const name = typeof payload.name === "string" ? payload.name : "Contract";
 	const url = typeof payload.url === "string" ? payload.url : null;
+	const customerKind = document.contractCustomer?.kind ?? null;
+	const categoryInstruction =
+		customerKind === "PRODUCTION"
+			? "Treat this as a managed-service production SOW. Capture the project or service amount, commitment, billing cadence, and payment terms. Do not infer a Product account or per-model Product rate from a service amount."
+			: customerKind === "CHANNEL_PARTNER"
+				? "Treat this as a channel-partner agreement. Capture partner economics and obligations without treating the partner as an enterprise Product customer."
+				: "Treat this as an enterprise Product agreement. Capture model-specific usage rates only when the document states them.";
 
 	return {
 		markdown: [
 			"## This contract parsing session",
 			"",
 			`Parse **${name}** from customer folder **${document.contractCustomer?.folderName ?? "Unassigned"}**.`,
+			`Contract category: ${customerKind ?? "unassigned"}. ${categoryInstruction}`,
 			document.contractCustomer?.legalName
 				? `The currently extracted legal customer name is ${document.contractCustomer.legalName}. Replace it only when this document gives direct evidence.`
 				: "No legal customer name has been extracted yet.",

@@ -18,6 +18,8 @@ import {
 	TinybirdEligibilityService,
 	type TinybirdEligibilitySnapshot,
 } from "../metabase/tinybird-eligibility.service";
+import { buildBillingDiagnostics } from "./billing-diagnostics";
+import { billingDiagnosticsVerificationChecks } from "./billing-diagnostics-verification";
 import {
 	type BillingExperimentQuery,
 	billingExperimentQuery,
@@ -51,6 +53,11 @@ type Invoice = {
 	plan: string | null;
 };
 
+type DiagnosticsInvoice = Invoice & {
+	amountRemainingUsd: number;
+	status: string;
+};
+
 type Payment = {
 	id: string;
 	organizationId: string;
@@ -63,6 +70,17 @@ type Cancellation = {
 	id: string;
 	organizationId: string;
 	canceledAt: number;
+};
+
+type DiagnosticsCancellation = Cancellation & {
+	reason: string | null;
+};
+
+type Subscription = {
+	organizationId: string;
+	status: string;
+	cancelAt: number | null;
+	canceledAt: number | null;
 };
 
 export type BillingExperimentArmReadout = {
@@ -90,6 +108,8 @@ type LiveReadout = {
 	asOf: string;
 	arms: BillingExperimentArmReadout[];
 };
+
+type LiveData = LiveReadout & { diagnostics: Result };
 
 type Result = MetabaseResult;
 
@@ -305,9 +325,7 @@ export function buildBillingExperimentReadout(input: {
 
 @Injectable()
 export class BillingExperimentService {
-	private cache:
-		| { expiresAt: number; promise: Promise<LiveReadout> }
-		| undefined;
+	private cache: { expiresAt: number; promise: Promise<LiveData> } | undefined;
 
 	constructor(
 		@InjectDatabase() private readonly db: Db,
@@ -446,6 +464,10 @@ export class BillingExperimentService {
 						returnedRows: eligibility.returnedRows,
 						scope: eligibility.scope,
 					},
+					verificationChecks:
+						question.sourceExternalId === "cron:billing-v3:diagnostics"
+							? billingDiagnosticsVerificationChecks(result)
+							: undefined,
 				});
 				await this.db.question.update({
 					where: { id: question.id },
@@ -502,6 +524,7 @@ export class BillingExperimentService {
 		}
 		if (query.report === "milestones") return this.milestones();
 		const live = await this.live();
+		if (query.report === "live-diagnostics") return live.diagnostics;
 		if (query.report === "live-cash") {
 			return {
 				columns: [
@@ -720,7 +743,7 @@ export class BillingExperimentService {
 		};
 	}
 
-	private live(): Promise<LiveReadout> {
+	private live(): Promise<LiveData> {
 		if (this.cache && this.cache.expiresAt > Date.now()) {
 			return this.cache.promise;
 		}
@@ -732,17 +755,22 @@ export class BillingExperimentService {
 		return promise;
 	}
 
-	private async loadLive(): Promise<LiveReadout> {
+	private async loadLive(): Promise<LiveData> {
 		const config = metabaseConfig();
 		if (!config) throw new Error("Metabase is not configured.");
 		const client = new MetabaseClient(config);
 		const eligibility = await this.tinybirdEligibility.currentForRevenue();
-		const [assignmentRows, invoiceRows, paymentRows, cancellationRows] =
-			await Promise.all([
-				this.queryAll(
-					client,
-					"34",
-					`select distinct on (a.organization_id)
+		const [
+			assignmentRows,
+			invoiceRows,
+			paymentRows,
+			cancellationRows,
+			subscriptionRows,
+		] = await Promise.all([
+			this.queryAll(
+				client,
+				"34",
+				`select distinct on (a.organization_id)
   a.organization_id::text as organization_id,
   case
     when a.cohort = 'control' and a.variant = 'control' and a.billing_version = 'v2' then 'v2_control'
@@ -767,28 +795,34 @@ where a.flag = 'billing_v3_experiment'
   and lower(u.email) not like '%@sync.so'
   and lower(u.email) not like '%@sync.labs'
 order by a.organization_id, a.created_at`,
-					eligibility,
-				),
-				this.queryAll(
-					client,
-					"166",
-					`select
+				eligibility,
+			),
+			this.queryAll(
+				client,
+				"166",
+				`select
   id,
-  "organizationId" as organization_id,
-  "billingReason" as billing_reason,
-  "amountPaid" / 100.0 as amount_usd,
-  "createdAt" as created_at,
-  plan
-from sync_prod.sync_stripe_invoices_paid
+  argMax("organizationId", "createdAt") as organization_id,
+  argMax("billingReason", "createdAt") as billing_reason,
+  max("amountPaid") / 100.0 as amount_usd,
+  if(countIf(status = 'paid') > 0, 0, max("amountRemaining")) / 100.0 as amount_remaining_usd,
+  if(
+    countIf(status = 'paid') > 0,
+    'paid',
+    if(countIf(status = 'uncollectible') > 0, 'uncollectible', 'open')
+  ) as invoice_status,
+  min("createdAt") as created_at,
+  argMax("orgPlan", "createdAt") as plan
+from sync_prod.sync_stripe_invoices
 where "createdAt" >= toDateTime('${EXPERIMENT_START}')
-  and "amountPaid" > 0
-order by "createdAt", id`,
-					eligibility,
-				),
-				this.queryAll(
-					client,
-					"166",
-					`select
+group by id
+order by created_at, id`,
+				eligibility,
+			),
+			this.queryAll(
+				client,
+				"166",
+				`select
   id,
   "organizationId" as organization_id,
   amount / 100.0 as amount_usd,
@@ -796,23 +830,44 @@ order by "createdAt", id`,
   "createdAt" as created_at
 from sync_prod.sync_stripe_payments
 where "createdAt" >= toDateTime('${EXPERIMENT_START}')
+  and "billingVersion" = 'v3'
+  and source in ('manual', 'auto')
 order by "createdAt", id`,
-					eligibility,
-				),
-				this.queryAll(
-					client,
-					"166",
-					`select
+				eligibility,
+			),
+			this.queryAll(
+				client,
+				"166",
+				`select
   id,
   "organizationId" as organization_id,
-  "canceledAt" as canceled_at
+  "canceledAt" as canceled_at,
+  coalesce(
+      nullIf("cancellationReason", ''),
+      nullIf("cancellationFeedback", ''),
+      'unknown'
+    ) as reason
 from sync_prod.sync_stripe_subscription_cancellations
 where "createdAt" >= toDateTime('${EXPERIMENT_START}')
   and "canceledAt" is not null
 order by "canceledAt", id`,
-					eligibility,
-				),
-			]);
+				eligibility,
+			),
+			this.queryAll(
+				client,
+				"166",
+				`select
+  "organizationId" as organization_id,
+  argMax(status, "createdAt") as status,
+  argMax("cancelAt", "createdAt") as cancel_at,
+  argMax("canceledAt", "createdAt") as canceled_at
+from sync_prod.sync_stripe_subscriptions_with_plan
+where "createdAt" >= toDateTime('${EXPERIMENT_START}')
+group by "organizationId"
+order by "organizationId"`,
+				eligibility,
+			),
+		]);
 		const assignments = assignmentRows.flatMap((row): Assignment[] => {
 			const assignmentAt = timestamp(row.assignment_at);
 			const arm = row.arm;
@@ -829,7 +884,7 @@ order by "canceledAt", id`,
 				},
 			];
 		});
-		const invoices = invoiceRows.flatMap((row): Invoice[] => {
+		const invoices = invoiceRows.flatMap((row): DiagnosticsInvoice[] => {
 			const createdAt = timestamp(row.created_at);
 			if (!createdAt) return [];
 			return [
@@ -838,8 +893,10 @@ order by "canceledAt", id`,
 					organizationId: String(row.organization_id),
 					billingReason: String(row.billing_reason ?? ""),
 					amountUsd: number(row.amount_usd),
+					amountRemainingUsd: number(row.amount_remaining_usd),
 					createdAt,
 					plan: row.plan ? String(row.plan) : null,
+					status: String(row.invoice_status ?? ""),
 				},
 			];
 		});
@@ -856,24 +913,46 @@ order by "canceledAt", id`,
 				},
 			];
 		});
-		const cancellations = cancellationRows.flatMap((row): Cancellation[] => {
-			const canceledAt = timestamp(row.canceled_at);
-			if (!canceledAt) return [];
-			return [
-				{
-					id: String(row.id),
-					organizationId: String(row.organization_id),
-					canceledAt,
-				},
-			];
-		});
-		return buildBillingExperimentReadout({
+		const cancellations = cancellationRows.flatMap(
+			(row): DiagnosticsCancellation[] => {
+				const canceledAt = timestamp(row.canceled_at);
+				if (!canceledAt) return [];
+				return [
+					{
+						id: String(row.id),
+						organizationId: String(row.organization_id),
+						canceledAt,
+						reason: row.reason ? String(row.reason) : null,
+					},
+				];
+			},
+		);
+		const subscriptions = subscriptionRows.map(
+			(row): Subscription => ({
+				organizationId: String(row.organization_id),
+				status: String(row.status ?? ""),
+				cancelAt: timestamp(row.cancel_at),
+				canceledAt: timestamp(row.canceled_at),
+			}),
+		);
+		const readout = buildBillingExperimentReadout({
 			asOf: new Date(),
 			assignments,
 			invoices,
 			payments,
 			cancellations,
 		});
+		return {
+			...readout,
+			diagnostics: buildBillingDiagnostics({
+				asOf: new Date(readout.asOf),
+				assignments,
+				invoices,
+				payments,
+				cancellations,
+				subscriptions,
+			}),
+		};
 	}
 
 	private async queryAll(

@@ -258,6 +258,30 @@ describe("product feedback metric registry", () => {
 		]);
 	});
 
+	test("registers the governed Billing V3 diagnostic pack", () => {
+		const diagnostics = PRODUCT_METRIC_SPECS.find(
+			(spec) => spec.questionNumber === 7012,
+		);
+
+		expect(diagnostics?.sourceExternalId).toBe("cron:billing-v3:diagnostics");
+		expect(diagnostics?.businessDefinition).toMatchObject({
+			entity: "billing_v3_experiment_arm",
+		});
+		expect(diagnostics?.pendingChecks?.map((check) => check.name)).toEqual([
+			"assignment_spine_parity",
+			"tier_mapping",
+			"topup_and_collection_reconciliation",
+			"cancellation_population",
+			"renewal_maturity",
+			"cancellation_reason_coverage",
+			"customer_text_boundary",
+			"oldest_complete_watermark",
+		]);
+		expect(preferredAtlasQuestionNumber("cron:billing-v3:diagnostics")).toBe(
+			7012,
+		);
+	});
+
 	test("records the confirmed Product KPI contract", () => {
 		const professional = PRODUCT_METRIC_SPECS.find(
 			(spec) => spec.questionNumber === 15,

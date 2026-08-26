@@ -54,6 +54,20 @@ export class SalesService {
 			const registry = await activePilotRegistry(this.db);
 			const adoptionQuery = buildPilotAdoptionQuery(registry);
 			let result = emptyPilotAdoptionResult();
+			let eligibility = {
+				applied: true,
+				capturedAt: new Date().toISOString(),
+				contentHash: hash({ sourceRows: 0, returnedRows: 0 }),
+				excludedUsers: 0,
+				excludedOrganizations: 0,
+				excludedCustomers: 0,
+				complete: true,
+				sourceRows: 0,
+				returnedRows: 0,
+				scope: "ALL_IDENTITIES" as const,
+				policy: "PRODUCT_ACTIVITY" as const,
+				enforcement: "POSTGRES_LIVE_JOIN" as const,
+			};
 			if (adoptionQuery) {
 				const config = metabaseConfig();
 				if (!config) throw new Error("Metabase is not configured.");
@@ -62,20 +76,60 @@ export class SalesService {
 					queryText: adoptionQuery,
 					databaseExternalId: "34",
 				});
+				const first = Object.fromEntries(
+					raw.columns.map((column, index) => [
+						column.name,
+						raw.rows[0]?.[index] ?? null,
+					]),
+				);
+				const sourceRows = Number(first._eligibility_source_users ?? 0);
+				const returnedRows = Number(first._eligibility_returned_users ?? 0);
+				const excludedUsers = Number(first._eligibility_excluded_users ?? 0);
+				const excludedOrganizations = Number(
+					first._eligibility_excluded_organizations ?? 0,
+				);
+				const evidence = {
+					sourceRows,
+					returnedRows,
+					excludedUsers,
+					excludedOrganizations,
+				};
+				eligibility = {
+					...eligibility,
+					capturedAt: new Date().toISOString(),
+					contentHash: hash(evidence),
+					excludedUsers,
+					excludedOrganizations,
+					excludedCustomers: excludedOrganizations,
+					complete:
+						Object.values(evidence).every(
+							(value) => Number.isFinite(value) && value >= 0,
+						) && returnedRows <= sourceRows,
+					sourceRows,
+					returnedRows,
+				};
+				const publicIndexes = raw.columns.flatMap((column, index) =>
+					column.name.startsWith("_eligibility_") ? [] : [index],
+				);
 				result = {
-					columns: raw.columns.map((column) => ({
-						name: column.name,
-						displayName: column.displayName ?? column.name,
-						baseType: column.baseType ?? "type/Text",
-					})),
+					columns: publicIndexes.map((index) => {
+						const column = raw.columns[index];
+						if (!column) throw new Error("Pilot adoption column is missing.");
+						return {
+							name: column.name,
+							displayName: column.displayName ?? column.name,
+							baseType: column.baseType ?? "type/Text",
+						};
+					}),
 					rows: raw.rows.map((row) =>
-						row.map((value) =>
-							value === null ||
-							typeof value === "string" ||
-							typeof value === "number"
+						publicIndexes.map((index) => {
+							const value = row[index] ?? null;
+							return value === null ||
+								typeof value === "string" ||
+								typeof value === "number"
 								? value
-								: String(value),
-						),
+								: String(value);
+						}),
 					),
 				};
 			}
@@ -89,6 +143,7 @@ export class SalesService {
 					registryCount: registry.entries.length,
 					dataThrough: registry.dataThrough,
 				}),
+				eligibility,
 			};
 		}
 		const result = await executeHubspotSalesQuery(this.db, query);
@@ -100,7 +155,7 @@ export class SalesService {
 					: parsedQuery.report === "enterprise-bookings"
 						? enterpriseBookingsVerificationChecks(result, parsedQuery)
 						: [];
-		return { result, parsedQuery, verificationChecks };
+		return { result, parsedQuery, verificationChecks, eligibility: undefined };
 	}
 
 	async syncDashboard(number = 4) {
@@ -176,7 +231,7 @@ export class SalesService {
 			}
 			try {
 				const execution = await this.execute(version.queryText);
-				const { result, verificationChecks } = execution;
+				const { result, verificationChecks, eligibility } = execution;
 				const payload = { columns: result.columns, rows: result.rows };
 				const contentHash = hash(payload);
 				const externalId =
@@ -206,6 +261,7 @@ export class SalesService {
 					syncRunId: run.id,
 					capturedAt,
 					verificationChecks,
+					eligibility,
 				});
 				await this.db.question.update({
 					where: { id: question.id },

@@ -26,33 +26,38 @@ export function buildPilotAdoptionQuery(registry: ActivePilotRegistry): string {
   values
     ${values}
 ),
-proof_users as (
-  select distinct r.ordinal, uo.organization_id
+candidate_orgs as (
+  select distinct r.ordinal, uo.organization_id, u.id as proof_user_id
   from registry r
   join auth.users u
     on r.domain is not null
    and split_part(lower(u.email::text), '@', 2) = r.domain
   join public.user_organizations uo on uo.user_id = u.id
+  where u.email is not null
+),
+matched_orgs as (
+  select distinct co.ordinal, co.organization_id
+  from candidate_orgs co
+  join auth.users u on u.id = co.proof_user_id
   where coalesce(u.banned, false) = false
     and coalesce(u.disabled, false) = false
     and coalesce(u.is_anonymous, false) = false
-    and u.email is not null
     and split_part(lower(u.email::text), '@', 2) not in ('sync.so', 'sync.labs', 'synclabs.so')
 ),
-matched_orgs as (
-  select distinct ordinal, organization_id
-  from proof_users
-),
-clean_members as (
-  select distinct mo.ordinal, u.id as user_id, u.last_seen
+all_members as (
+  select distinct mo.ordinal, u.id as user_id, u.last_seen, u.email, u.banned, u.disabled, u.is_anonymous
   from matched_orgs mo
   join public.user_organizations uo on uo.organization_id = mo.organization_id
   join auth.users u on u.id = uo.user_id
-  where coalesce(u.banned, false) = false
-    and coalesce(u.disabled, false) = false
-    and coalesce(u.is_anonymous, false) = false
-    and u.email is not null
-    and split_part(lower(u.email::text), '@', 2) not in ('sync.so', 'sync.labs', 'synclabs.so')
+),
+clean_members as (
+  select ordinal, user_id, last_seen
+  from all_members
+  where coalesce(banned, false) = false
+    and coalesce(disabled, false) = false
+    and coalesce(is_anonymous, false) = false
+    and email is not null
+    and split_part(lower(email::text), '@', 2) not in ('sync.so', 'sync.labs', 'synclabs.so')
 ),
 user_summary as (
   select
@@ -122,6 +127,15 @@ workspace_summary as (
   select ordinal, count(*)::int as matched_workspaces
   from matched_orgs
   group by ordinal
+),
+eligibility_summary as (
+  select
+    (select count(distinct user_id)::int from all_members) as source_users,
+    (select count(distinct user_id)::int from clean_members) as returned_users,
+    (select count(distinct user_id)::int from all_members) -
+      (select count(distinct user_id)::int from clean_members) as excluded_users,
+    (select count(distinct organization_id)::int from candidate_orgs) -
+      (select count(distinct organization_id)::int from matched_orgs) as excluded_organizations
 )
 select
   r.account,
@@ -142,8 +156,13 @@ select
   coalesce(ms.model_usage, '') as model_usage,
   coalesce(ss.surface_usage, '') as surface_usage,
   greatest(us.latest_user_activity, gs.latest_generation_activity) as latest_activity_at,
-  ${dataThrough} as data_through
+  ${dataThrough} as data_through,
+  es.source_users as _eligibility_source_users,
+  es.returned_users as _eligibility_returned_users,
+  es.excluded_users as _eligibility_excluded_users,
+  es.excluded_organizations as _eligibility_excluded_organizations
 from registry r
+cross join eligibility_summary es
 left join workspace_summary ws on ws.ordinal = r.ordinal
 left join user_summary us on us.ordinal = r.ordinal
 left join pending_invite_summary pi on pi.ordinal = r.ordinal

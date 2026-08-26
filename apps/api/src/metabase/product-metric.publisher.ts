@@ -423,6 +423,43 @@ const ENTERPRISE_BOOKING_CHECKS = [
 	},
 ];
 
+const Q3_LIFECYCLE_CHECKS = [
+	{
+		name: "inbound_form_parity",
+		reason:
+			"Enterprise inbound must use the deidentified Rudy Slack source-thread aggregate.",
+	},
+	{
+		name: "lifecycle_stage_mapping",
+		reason:
+			"MQL, PQL, and SQL must use the approved HubSpot lifecycle-stage transitions.",
+	},
+	{
+		name: "signed_contract_boundary",
+		reason:
+			"Parsed commercial documents must remain separate from signature-verified SOWs.",
+	},
+	{
+		name: "logo_classification",
+		reason:
+			"Every positive closed-won Enterprise deal must map to new business, existing business, or unmapped.",
+	},
+	{
+		name: "unmapped_deal_visibility",
+		reason: "Unknown Enterprise deal-type classifications must remain visible.",
+	},
+	{
+		name: "sensitive_detail_boundary",
+		reason:
+			"The governed result must not expose contact, company, account, or deal identities.",
+	},
+	{
+		name: "oldest_complete_watermark",
+		reason:
+			"Every row must share the exact HubSpot, Rudy inbound, and contract-source UTC boundary.",
+	},
+];
+
 const HUBSPOT_REPORT_SPECS: ProductMetricSpec[] = [
 	{
 		questionNumber: 7001,
@@ -588,6 +625,61 @@ const HUBSPOT_REPORT_SPECS: ProductMetricSpec[] = [
 		pendingChecks: ENTERPRISE_BOOKING_CHECKS,
 		ownerTeam: "Sales",
 		createdBy: "atlas-sales-registry",
+		cadenceMinutes: 6 * 60,
+	},
+	{
+		questionNumber: 7011,
+		sourceExternalId: "cron:q3-gtm:lifecycle-funnel",
+		key: "sales.q3_enterprise_lifecycle_funnel",
+		name: "Q3 enterprise inbound and lifecycle funnel",
+		description:
+			"Q3 enterprise inbound, lifecycle-stage transitions, positive closed-won Enterprise deals, deal-type logo classification, and parsed commercial contract evidence by UTC reporting period.",
+		grain: FactGrain.WEEK,
+		source: {
+			key: "atlas:q3-gtm-composite",
+			kind: DataSourceKind.ATLAS,
+			label: "Governed Q3 GTM evidence",
+		},
+		eventTimeField: "week_start",
+		businessDefinition: {
+			entity: "q3_enterprise_lifecycle_event_week",
+			periodAssignment:
+				"source thread, property transition, deal close, or explicit contract effective or service-start date in the half-open 2026 Q3 UTC window",
+			enterpriseInbound:
+				"one Rudy Slack inbound-sales-alert source thread containing the exact NEW INBOUND FORM SUBMISSION marker, published to Atlas only as weekly aggregate counts",
+			mql: "a HubSpot contact whose hs_v2_date_entered_marketingqualifiedlead timestamp is in the period",
+			pql: "a HubSpot contact whose hs_v2_date_entered_1512748791 timestamp is in the period",
+			sql: "a HubSpot contact whose hs_v2_date_entered_salesqualifiedlead timestamp is in the period",
+			crmPaidClosedWon:
+				"a positive-amount closed-won deal in the exact Sync Enterprise pipeline",
+			logoClassification:
+				"newbusiness is net-new, existingbusiness is renewal, and every other deal type remains unmapped",
+			contractEvidence:
+				"parsed SOW and order-form documents with an explicit effective or service-start date and a positive commercial term",
+			signatureBoundary:
+				"signed_paid_sows remains unavailable because the contract parser does not capture signature evidence",
+			privacyPolicy:
+				"publish only weekly aggregate counts and watermarks, without contact, company, deal, contract, or product identities",
+		},
+		computation: {
+			aggregate: "weekly_q3_lifecycle_and_commercial_evidence_counts",
+			outputs: [
+				"enterprise_inbound",
+				"mql",
+				"pql",
+				"sql",
+				"crm_paid_closed_won",
+				"paid_sow_documents",
+				"paid_order_form_documents",
+				"net_new_logos",
+				"renewals",
+				"unmapped_deals",
+			],
+		},
+		requiresCrossSourceEligibility: false,
+		pendingChecks: Q3_LIFECYCLE_CHECKS,
+		ownerTeam: "Sales",
+		createdBy: "atlas-q3-gtm-registry",
 		cadenceMinutes: 6 * 60,
 	},
 ];

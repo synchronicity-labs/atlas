@@ -250,6 +250,32 @@ describe("product feedback metric registry", () => {
 		).toBe(7014);
 	});
 
+	test("registers the governed Q3 enterprise lifecycle contract", () => {
+		const q3 = PRODUCT_METRIC_SPECS.find(
+			(spec) => spec.questionNumber === 7011,
+		);
+
+		expect(q3?.sourceExternalId).toBe("cron:q3-gtm:lifecycle-funnel");
+		expect(q3?.source.key).toBe("atlas:q3-gtm-composite");
+		expect(q3?.businessDefinition).toMatchObject({
+			entity: "q3_enterprise_lifecycle_event_week",
+			signatureBoundary:
+				"signed_paid_sows remains unavailable because the contract parser does not capture signature evidence",
+		});
+		expect(q3?.pendingChecks?.map((check) => check.name)).toEqual([
+			"inbound_form_parity",
+			"lifecycle_stage_mapping",
+			"signed_contract_boundary",
+			"logo_classification",
+			"unmapped_deal_visibility",
+			"sensitive_detail_boundary",
+			"oldest_complete_watermark",
+		]);
+		expect(preferredAtlasQuestionNumber("cron:q3-gtm:lifecycle-funnel")).toBe(
+			7011,
+		);
+	});
+
 	test("registers the governed Lipsync-attributed product funnel", () => {
 		const lipsync = PRODUCT_METRIC_SPECS.find(
 			(spec) => spec.questionNumber === 7004,

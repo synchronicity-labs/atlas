@@ -20,6 +20,7 @@ import {
 } from "./pilot-adoption";
 import { pilotAdoptionVerificationChecks } from "./pilot-adoption-verification";
 import { pilotSummaryVerificationChecks } from "./pilot-verification";
+import { q3LifecycleVerificationChecks } from "./q3-lifecycle-verification";
 
 const SOURCE_KEY = "hubspot:crm";
 
@@ -155,7 +156,9 @@ export class SalesService {
 					? studioBookingsVerificationChecks(result, parsedQuery)
 					: parsedQuery.report === "enterprise-bookings"
 						? enterpriseBookingsVerificationChecks(result, parsedQuery)
-						: [];
+						: parsedQuery.report === "q3-lifecycle-funnel"
+							? q3LifecycleVerificationChecks(result, parsedQuery)
+							: [];
 		return { result, parsedQuery, verificationChecks, eligibility: undefined };
 	}
 
@@ -202,11 +205,15 @@ export class SalesService {
 			...new Map(
 				dashboard.cards.map((card) => [card.question.id, card.question]),
 			).values(),
-		].filter(
-			(question) =>
-				question.sourceId === source.id &&
-				question.versions[0]?.queryLanguage === "API",
-		);
+		].filter((question) => {
+			const isHubSpotQuestion = question.sourceId === source.id;
+			const isQ3Composite =
+				question.sourceExternalId === "cron:q3-gtm:lifecycle-funnel";
+			return (
+				(isHubSpotQuestion || isQ3Composite) &&
+				question.versions[0]?.queryLanguage === "API"
+			);
+		});
 		const period = new Date().toISOString().slice(0, 7);
 		const run = await this.db.syncRun.create({
 			data: {

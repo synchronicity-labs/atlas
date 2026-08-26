@@ -1,5 +1,8 @@
 import type { Db } from "./client";
-import { ExternalRecordKind } from "./generated/prisma/enums";
+import {
+	ContractParseStatus,
+	ExternalRecordKind,
+} from "./generated/prisma/enums";
 
 export type HubspotSalesQuery = {
 	report:
@@ -23,7 +26,8 @@ export type HubspotSalesQuery = {
 		| "active-pilot-summary"
 		| "active-pilot-adoption"
 		| "studio-bookings"
-		| "enterprise-bookings";
+		| "enterprise-bookings"
+		| "q3-lifecycle-funnel";
 	months: number;
 	pipelines: string[];
 };
@@ -54,6 +58,32 @@ type DealRecord = {
 	closeAt: Date | null;
 	daysToClose: number | null;
 	stageHistory: Array<{ stageId: string; changedAt: Date }>;
+	dealType: string;
+};
+
+export type Q3LifecycleStageRow = {
+	weekStart: Date;
+	periodEnd: Date;
+	mql: number;
+	pql: number;
+	sql: number;
+};
+
+export type Q3InboundEvidenceRow = {
+	weekStart: Date;
+	periodEnd: Date;
+	enterpriseInbound: number;
+};
+
+export type Q3LifecycleDeal = Pick<
+	DealRecord,
+	"id" | "pipelineId" | "isWon" | "closeAt" | "amount" | "dealType"
+>;
+
+export type Q3ContractEvidence = {
+	documentType: string;
+	evidenceDate: Date | null;
+	commercial: boolean;
 };
 
 type PipelineRecord = {
@@ -158,6 +188,7 @@ export function parseHubspotSalesQuery(value: unknown): HubspotSalesQuery {
 		"active-pilot-adoption",
 		"studio-bookings",
 		"enterprise-bookings",
+		"q3-lifecycle-funnel",
 	]);
 	if (!supported.has(report))
 		throw new Error("Unsupported HubSpot sales report.");
@@ -242,6 +273,7 @@ function parseDeal(payload: unknown, sourceCreatedAt: Date | null): DealRecord {
 				? null
 				: numberValue(properties.days_to_close),
 		stageHistory,
+		dealType: stringValue(properties.dealtype),
 	};
 }
 
@@ -592,6 +624,260 @@ export function buildEnterpriseBookings(
 	};
 }
 
+const Q3_START = new Date("2026-07-01T00:00:00.000Z");
+const Q3_END = new Date("2026-10-01T00:00:00.000Z");
+const Q3_ENTERPRISE_PIPELINE = "989457121";
+
+type Q3Bucket = {
+	start: Date;
+	end: Date;
+	enterpriseInbound: number;
+	mql: number;
+	pql: number;
+	sql: number;
+	crmPaidClosedWon: number;
+	paidSowDocuments: number;
+	paidOrderFormDocuments: number;
+	netNewLogos: number;
+	renewals: number;
+	unmappedDeals: number;
+};
+
+function q3Buckets(dataThrough: Date): Q3Bucket[] {
+	const end = new Date(
+		Math.min(
+			Math.max(dataThrough.getTime(), Q3_START.getTime()),
+			Q3_END.getTime(),
+		),
+	);
+	const starts = [new Date(Q3_START)];
+	const firstMonday = new Date(Q3_START);
+	firstMonday.setUTCDate(
+		firstMonday.getUTCDate() + ((8 - firstMonday.getUTCDay()) % 7 || 7),
+	);
+	for (
+		let current = firstMonday;
+		current < end;
+		current = new Date(current.getTime() + 7 * 24 * 60 * 60 * 1000)
+	) {
+		starts.push(new Date(current));
+	}
+	return starts.map((start, index) => ({
+		start,
+		end: starts[index + 1] ?? end,
+		enterpriseInbound: 0,
+		mql: 0,
+		pql: 0,
+		sql: 0,
+		crmPaidClosedWon: 0,
+		paidSowDocuments: 0,
+		paidOrderFormDocuments: 0,
+		netNewLogos: 0,
+		renewals: 0,
+		unmappedDeals: 0,
+	}));
+}
+
+function q3BucketFor(buckets: Q3Bucket[], value: Date): Q3Bucket | null {
+	return (
+		buckets.find((bucket) => value >= bucket.start && value < bucket.end) ??
+		null
+	);
+}
+
+function q3Count(value: unknown, label: string): number {
+	if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {
+		throw new Error(`${label} must be a non-negative integer.`);
+	}
+	return value;
+}
+
+function q3Date(value: unknown, label: string): Date {
+	const parsed = dateValue(value);
+	if (!parsed) throw new Error(`${label} must be a valid timestamp.`);
+	return parsed;
+}
+
+function q3DataThrough(value: unknown): Date {
+	const parsed = q3Date(value, "Q3 dataThrough");
+	if (
+		parsed.getUTCHours() !== 0 ||
+		parsed.getUTCMinutes() !== 0 ||
+		parsed.getUTCSeconds() !== 0 ||
+		parsed.getUTCMilliseconds() !== 0 ||
+		parsed <= Q3_START ||
+		parsed > Q3_END ||
+		parsed > new Date()
+	) {
+		throw new Error("Q3 dataThrough must be a completed UTC day boundary.");
+	}
+	return parsed;
+}
+
+function parseQ3LifecycleSnapshot(payload: unknown): {
+	dataThrough: Date;
+	rows: Q3LifecycleStageRow[];
+} {
+	const value = record(payload);
+	if (stringValue(value.status) !== "live") {
+		throw new Error("The HubSpot Q3 lifecycle snapshot is unavailable.");
+	}
+	const dataThrough = q3DataThrough(value.dataThrough);
+	if (!Array.isArray(value.rows)) {
+		throw new Error("The HubSpot Q3 lifecycle snapshot has no rows.");
+	}
+	return {
+		dataThrough,
+		rows: value.rows.map((row, index) => {
+			const item = record(row);
+			return {
+				weekStart: q3Date(item.week_start, `Q3 lifecycle row ${index} start`),
+				periodEnd: q3Date(item.period_end, `Q3 lifecycle row ${index} end`),
+				mql: q3Count(item.mql, `Q3 lifecycle row ${index} MQL`),
+				pql: q3Count(item.pql, `Q3 lifecycle row ${index} PQL`),
+				sql: q3Count(item.sql, `Q3 lifecycle row ${index} SQL`),
+			};
+		}),
+	};
+}
+
+function parseQ3InboundSnapshot(input: {
+	dataThrough: Date;
+	sourceItemCount: number;
+	rows: unknown;
+}): Q3InboundEvidenceRow[] {
+	if (!Array.isArray(input.rows)) {
+		throw new Error("The Rudy Q3 inbound snapshot has no rows.");
+	}
+	const rows = input.rows.map((row, index) => {
+		const item = record(row);
+		return {
+			weekStart: q3Date(item.weekStart, `Q3 inbound row ${index} start`),
+			periodEnd: q3Date(item.periodEnd, `Q3 inbound row ${index} end`),
+			enterpriseInbound: q3Count(
+				item.enterpriseInbound,
+				`Q3 inbound row ${index} count`,
+			),
+		};
+	});
+	const reconciled = rows.reduce(
+		(total, row) => total + row.enterpriseInbound,
+		0,
+	);
+	if (
+		input.dataThrough.getTime() <= Q3_START.getTime() ||
+		reconciled !== q3Count(input.sourceItemCount, "Q3 inbound source count")
+	) {
+		throw new Error("The Rudy Q3 inbound snapshot does not reconcile.");
+	}
+	return rows;
+}
+
+export function buildQ3LifecycleFunnel(input: {
+	dataThrough: Date;
+	lifecycle: Q3LifecycleStageRow[];
+	inbound: Q3InboundEvidenceRow[];
+	deals: Q3LifecycleDeal[];
+	contracts: Q3ContractEvidence[];
+}): HubspotSalesResult {
+	const buckets = q3Buckets(input.dataThrough);
+	const boundedDataThrough = new Date(
+		Math.min(
+			Math.max(input.dataThrough.getTime(), Q3_START.getTime()),
+			Q3_END.getTime(),
+		),
+	);
+	if (
+		input.lifecycle.length !== buckets.length ||
+		input.inbound.length !== buckets.length
+	) {
+		throw new Error(
+			"Q3 lifecycle and inbound evidence must cover every period.",
+		);
+	}
+	for (const [index, bucket] of buckets.entries()) {
+		const lifecycle = input.lifecycle[index];
+		const inbound = input.inbound[index];
+		if (
+			!lifecycle ||
+			!inbound ||
+			lifecycle.weekStart.getTime() !== bucket.start.getTime() ||
+			inbound.weekStart.getTime() !== bucket.start.getTime() ||
+			lifecycle.periodEnd.getTime() !== bucket.end.getTime() ||
+			inbound.periodEnd.getTime() !== bucket.end.getTime()
+		) {
+			throw new Error("Q3 lifecycle and inbound period boundaries must match.");
+		}
+		bucket.enterpriseInbound = inbound.enterpriseInbound;
+		bucket.mql = lifecycle.mql;
+		bucket.pql = lifecycle.pql;
+		bucket.sql = lifecycle.sql;
+	}
+	for (const deal of input.deals) {
+		if (
+			deal.pipelineId !== Q3_ENTERPRISE_PIPELINE ||
+			!deal.isWon ||
+			!deal.closeAt ||
+			deal.amount <= 0
+		) {
+			continue;
+		}
+		const bucket = q3BucketFor(buckets, deal.closeAt);
+		if (!bucket) continue;
+		bucket.crmPaidClosedWon += 1;
+		if (deal.dealType === "newbusiness") bucket.netNewLogos += 1;
+		else if (deal.dealType === "existingbusiness") bucket.renewals += 1;
+		else bucket.unmappedDeals += 1;
+	}
+	for (const contract of input.contracts) {
+		if (!contract.commercial || !contract.evidenceDate) continue;
+		const bucket = q3BucketFor(buckets, contract.evidenceDate);
+		if (!bucket) continue;
+		if (contract.documentType === "SOW") bucket.paidSowDocuments += 1;
+		if (contract.documentType === "ORDER_FORM") {
+			bucket.paidOrderFormDocuments += 1;
+		}
+	}
+	return {
+		columns: [
+			column("week_start", "Week start", "type/DateTime"),
+			column("period_end", "Period end", "type/DateTime"),
+			column("enterprise_inbound", "Enterprise inbound", "type/Integer"),
+			column("mql", "MQL", "type/Integer"),
+			column("pql", "PQL", "type/Integer"),
+			column("sql", "SQL", "type/Integer"),
+			column("crm_paid_closed_won", "Paid closed won", "type/Integer"),
+			column("paid_sow_documents", "Paid SOW documents", "type/Integer"),
+			column(
+				"paid_order_form_documents",
+				"Paid order form documents",
+				"type/Integer",
+			),
+			column("signed_paid_sows", "Signed paid SOWs", "type/Integer"),
+			column("net_new_logos", "Net new logos", "type/Integer"),
+			column("renewals", "Renewals", "type/Integer"),
+			column("unmapped_deals", "Unmapped deals", "type/Integer"),
+			column("data_through", "Data through", "type/DateTime"),
+		],
+		rows: buckets.map((bucket) => [
+			bucket.start.toISOString(),
+			bucket.end.toISOString(),
+			bucket.enterpriseInbound,
+			bucket.mql,
+			bucket.pql,
+			bucket.sql,
+			bucket.crmPaidClosedWon,
+			bucket.paidSowDocuments,
+			bucket.paidOrderFormDocuments,
+			null,
+			bucket.netNewLogos,
+			bucket.renewals,
+			bucket.unmappedDeals,
+			boundedDataThrough.toISOString(),
+		]),
+	};
+}
+
 function metricRows(payload: unknown): Array<{
 	key: string;
 	label: string;
@@ -652,6 +938,100 @@ export async function executeHubspotSalesQuery(
 		select: { id: true, lastSyncAt: true },
 	});
 	if (!source) throw new Error("HubSpot CRM has not been ingested yet.");
+	if (query.report === "q3-lifecycle-funnel") {
+		const [contractSource, lifecycleRecord] = await Promise.all([
+			db.dataSource.findUnique({
+				where: { key: "google-drive:customer-contracts" },
+				select: { id: true, lastSyncAt: true },
+			}),
+			db.sourceRecord.findUnique({
+				where: {
+					sourceId_kind_externalId: {
+						sourceId: source.id,
+						kind: ExternalRecordKind.ACTIVITY,
+						externalId: "report:q3-lifecycle-stage-transitions",
+					},
+				},
+				select: { payload: true },
+			}),
+		]);
+		if (!contractSource) {
+			throw new Error("Customer contract evidence has not been ingested yet.");
+		}
+		if (!lifecycleRecord) {
+			throw new Error("The HubSpot Q3 lifecycle snapshot is missing.");
+		}
+		const lifecycle = parseQ3LifecycleSnapshot(lifecycleRecord.payload);
+		if (
+			!source.lastSyncAt ||
+			source.lastSyncAt < lifecycle.dataThrough ||
+			!contractSource.lastSyncAt ||
+			contractSource.lastSyncAt < lifecycle.dataThrough
+		) {
+			throw new Error(
+				"HubSpot and contract evidence must be complete through the Q3 snapshot boundary.",
+			);
+		}
+		const [inboundSnapshot, dealRows, contractRows] = await Promise.all([
+			db.q3InboundSnapshot.findFirst({
+				where: {
+					quarterStart: Q3_START,
+					dataThrough: lifecycle.dataThrough,
+				},
+				orderBy: { capturedAt: "desc" },
+				select: { dataThrough: true, sourceItemCount: true, rows: true },
+			}),
+			db.sourceRecord.findMany({
+				where: { sourceId: source.id, kind: ExternalRecordKind.DEAL },
+				select: { payload: true, sourceCreatedAt: true },
+			}),
+			db.contractDocument.findMany({
+				where: {
+					parseStatus: ContractParseStatus.PARSED,
+					sourceRecord: {
+						sourceId: contractSource.id,
+						sourceDeletedAt: null,
+					},
+				},
+				select: { parsed: true },
+			}),
+		]);
+		if (!inboundSnapshot) {
+			throw new Error(
+				"The Rudy Q3 inbound snapshot does not match the HubSpot UTC boundary.",
+			);
+		}
+		return buildQ3LifecycleFunnel({
+			dataThrough: lifecycle.dataThrough,
+			lifecycle: lifecycle.rows,
+			inbound: parseQ3InboundSnapshot(inboundSnapshot),
+			deals: dealRows
+				.map((row) => parseDeal(row.payload, row.sourceCreatedAt))
+				.filter((deal) => pipelineFilter(deal, query)),
+			contracts: contractRows.map((row) => {
+				const parsed = record(row.parsed);
+				const terms = Array.isArray(parsed.commercialTerms)
+					? parsed.commercialTerms
+					: [];
+				return {
+					documentType: stringValue(parsed.documentType),
+					evidenceDate:
+						dateValue(parsed.effectiveDate) ??
+						dateValue(parsed.serviceStartDate),
+					commercial:
+						numberValue(parsed.contractValueAmountMinor) > 0 ||
+						numberValue(parsed.annualCommitmentAmountMinor) > 0 ||
+						terms.some((term) => {
+							const value = record(term);
+							return (
+								numberValue(value.amountMinor) > 0 ||
+								numberValue(value.amountMillicents) > 0
+							);
+						}),
+				};
+			}),
+		});
+	}
 	const [dealRows, pipelineRows, ownerRows, companyRows, activityRows] =
 		await Promise.all([
 			db.sourceRecord.findMany({

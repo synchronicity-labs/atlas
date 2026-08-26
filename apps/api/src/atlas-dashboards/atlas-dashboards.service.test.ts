@@ -286,4 +286,44 @@ describe("Atlas dashboard refresh", () => {
 			errors: [],
 		});
 	});
+
+	test("routes Q3 GTM evidence through the governed sales reader", async () => {
+		const findUnique = mock().mockResolvedValue({
+			cards: [
+				{
+					question: {
+						id: "q3-gtm",
+						number: 7011,
+						connector: DataSourceKind.ATLAS,
+						sourceId: "q3-gtm-source",
+						source: { key: "atlas:q3-gtm-composite" },
+					},
+				},
+			],
+		});
+		const salesSync = mock().mockResolvedValue({
+			cardsProcessed: 1,
+			snapshotsCreated: 1,
+			errors: [],
+		});
+		const service = new AtlasDashboardsService(
+			{ dashboard: { findUnique } } as unknown as Db,
+			{ syncDashboard: mock() } as never,
+			{ syncAtlasDashboard: mock() } as never,
+			{ syncDashboard: mock() } as never,
+			{ syncDashboard: mock() } as never,
+			{ syncDashboard: salesSync } as never,
+			{ syncDashboard: mock() } as never,
+		);
+
+		const result = await service.refresh(4, "native");
+
+		expect(salesSync).toHaveBeenCalledWith(4);
+		expect(result).toMatchObject({
+			cardsProcessed: 1,
+			snapshotsCreated: 1,
+			completed: true,
+			errors: [],
+		});
+	});
 });

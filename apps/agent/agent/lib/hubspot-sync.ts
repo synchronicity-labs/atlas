@@ -121,7 +121,7 @@ type HubspotPage = {
 
 type HubspotSearchFilter = {
 	propertyName: string;
-	operator: "BETWEEN" | "EQ";
+	operator: "BETWEEN" | "EQ" | "GTE" | "LT";
 	value: string;
 	highValue?: string;
 };
@@ -845,6 +845,17 @@ function between(
 	};
 }
 
+function halfOpen(
+	propertyName: string,
+	start: Date,
+	end: Date,
+): HubspotSearchFilter[] {
+	return [
+		{ propertyName, operator: "GTE", value: String(start.getTime()) },
+		{ propertyName, operator: "LT", value: String(end.getTime()) },
+	];
+}
+
 function equals(propertyName: string, value: string): HubspotSearchFilter {
 	return { propertyName, operator: "EQ", value };
 }
@@ -853,6 +864,90 @@ function shiftUtcYear(value: Date, years: number): Date {
 	const result = new Date(value);
 	result.setUTCFullYear(result.getUTCFullYear() + years);
 	return result;
+}
+
+const Q3_START = new Date("2026-07-01T00:00:00.000Z");
+const Q3_END = new Date("2026-10-01T00:00:00.000Z");
+const Q3_LIFECYCLE_PROPERTIES = {
+	mql: "hs_v2_date_entered_marketingqualifiedlead",
+	pql: "hs_v2_date_entered_1512748791",
+	sql: "hs_v2_date_entered_salesqualifiedlead",
+};
+
+function q3Periods(dataThrough: Date): Array<{ start: Date; end: Date }> {
+	const end = new Date(
+		Math.min(
+			Math.max(dataThrough.getTime(), Q3_START.getTime()),
+			Q3_END.getTime(),
+		),
+	);
+	const starts = [new Date(Q3_START)];
+	const firstMonday = new Date(Q3_START);
+	firstMonday.setUTCDate(
+		firstMonday.getUTCDate() + ((8 - firstMonday.getUTCDay()) % 7 || 7),
+	);
+	for (
+		let current = firstMonday;
+		current < end;
+		current = new Date(current.getTime() + 7 * 24 * 60 * 60 * 1000)
+	) {
+		starts.push(new Date(current));
+	}
+	return starts.map((start, index) => ({
+		start,
+		end: starts[index + 1] ?? end,
+	}));
+}
+
+async function q3LifecycleStageMetrics(
+	client: HubspotClient,
+	capturedAt: Date,
+) {
+	const dataThrough = new Date(
+		Date.UTC(
+			capturedAt.getUTCFullYear(),
+			capturedAt.getUTCMonth(),
+			capturedAt.getUTCDate(),
+		),
+	);
+	const rows = [];
+	const errors = new Set<string>();
+	for (const period of q3Periods(dataThrough)) {
+		const [mql, pql, sql] = await Promise.all([
+			totalOrUnavailable(
+				client,
+				"contacts",
+				halfOpen(Q3_LIFECYCLE_PROPERTIES.mql, period.start, period.end),
+			),
+			totalOrUnavailable(
+				client,
+				"contacts",
+				halfOpen(Q3_LIFECYCLE_PROPERTIES.pql, period.start, period.end),
+			),
+			totalOrUnavailable(
+				client,
+				"contacts",
+				halfOpen(Q3_LIFECYCLE_PROPERTIES.sql, period.start, period.end),
+			),
+		]);
+		for (const result of [mql, pql, sql]) {
+			if (result.error) errors.add(result.error);
+		}
+		rows.push({
+			week_start: period.start.toISOString(),
+			period_end: period.end.toISOString(),
+			mql: mql.value,
+			pql: pql.value,
+			sql: sql.value,
+		});
+	}
+	return {
+		status: errors.size === 0 ? "live" : "unavailable",
+		errors: [...errors],
+		capturedAt: capturedAt.toISOString(),
+		dataThrough: dataThrough.toISOString(),
+		rows,
+	};
 }
 
 function changePercent(current: number | null, previous: number | null) {
@@ -985,6 +1080,17 @@ async function syncReportMetrics(sourceId: string, client: HubspotClient) {
 	let snapshots = 0;
 	try {
 		const end = new Date();
+		const q3Lifecycle = await q3LifecycleStageMetrics(client, end);
+		const q3Record = await persistSourceRecord({
+			sourceId,
+			kind: ExternalRecordKind.ACTIVITY,
+			externalId: "report:q3-lifecycle-stage-transitions",
+			payload: q3Lifecycle,
+			sourceCreatedAt: end,
+			sourceUpdatedAt: end,
+		});
+		records += 1;
+		snapshots += q3Record.snapshotCreated;
 		const currentStart = new Date(end.getTime() - 30 * 24 * 60 * 60 * 1000);
 		const previousStart = new Date(
 			currentStart.getTime() - 30 * 24 * 60 * 60 * 1000,
@@ -1162,6 +1268,7 @@ async function syncReportMetrics(sourceId: string, client: HubspotClient) {
 				windowStart: currentStart.toISOString(),
 				windowEnd: end.toISOString(),
 				leads: leads.status,
+				q3Lifecycle: q3Lifecycle.status,
 			},
 			freshnessMs: FRESHNESS_MS,
 		});

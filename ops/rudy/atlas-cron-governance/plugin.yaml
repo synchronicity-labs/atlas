@@ -1,0 +1,8 @@
+name: atlas-cron-governance
+version: "1.0.0"
+description: "Require a live Atlas planning pass before Rudy creates a recurring cron and allow draft-only question proposals through a scoped broker."
+author: "sync. labs"
+provides_tools:
+  - atlas_cron_plan
+hooks:
+  - pre_tool_call

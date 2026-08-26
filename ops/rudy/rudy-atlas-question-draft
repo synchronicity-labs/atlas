@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+umask 077
+
+if [[ $EUID -ne 0 || $# -ne 0 ]]; then
+  echo "usage: sudo rudy-atlas-question-draft" >&2
+  exit 64
+fi
+
+exec /usr/local/sbin/rudy-doppler-host-chain-exec \
+  prd_atlas_authoring:ATLAS_API_URL,ATLAS_AUTHORING_SECRET -- \
+  /usr/bin/env HOME=/root \
+  /usr/bin/python3 /usr/local/lib/rudy-atlas-author.py

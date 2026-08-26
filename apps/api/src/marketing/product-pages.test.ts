@@ -74,15 +74,20 @@ describe("product pages weekly report", () => {
 		);
 	});
 
-	test("does not credit a subscription that predates the attributed signup", async () => {
+	test("does not credit an existing subscription that predates the attributed signup", async () => {
+		let subscriptionQuery = "";
 		const metabase = {
-			preview: async (input: { databaseExternalId: string }) =>
-				input.databaseExternalId === "34"
-					? attribution([["org-1"]])
-					: result(
-							["organization_id", "subscription_id", "first_paid_at"],
-							[["org-1", "sub-1", "2026-08-17T00:00:00.000Z"]],
-						),
+			preview: async (input: {
+				databaseExternalId: string;
+				queryText: string;
+			}) => {
+				if (input.databaseExternalId === "34") return attribution([["org-1"]]);
+				subscriptionQuery = input.queryText;
+				return result(
+					["organization_id", "subscription_id", "first_paid_at"],
+					[["org-1", "sub-1", "2026-08-17T00:00:00.000Z"]],
+				);
+			},
 		} as unknown as MetabaseClient;
 
 		const report = await build(metabase);
@@ -91,6 +96,7 @@ describe("product pages weekly report", () => {
 		);
 		expect(row?.subscriptions).toBe(0);
 		expect(row?.paid_organizations).toBe(0);
+		expect(subscriptionQuery).toContain("min(createdAt) as first_paid_at");
 	});
 });
 

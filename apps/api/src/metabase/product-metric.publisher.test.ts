@@ -154,7 +154,7 @@ describe("product feedback metric registry", () => {
 			entity: "product_page_week",
 			periodAssignment: "complete Monday-Sunday UTC week",
 			paidOrganizations:
-				"first-touch organizations with at least one positive paid subscription invoice at or after the attributed signup and before the week ends",
+				"first-touch organizations with at least one subscription whose first positive paid invoice occurs at or after the attributed signup and before the week ends",
 		});
 		expect(productPages?.requiresCrossSourceEligibility).toBe(false);
 		expect(productPages?.pendingChecks?.map((check) => check.name)).toEqual([

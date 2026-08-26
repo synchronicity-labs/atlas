@@ -79,7 +79,10 @@ export class AtlasDashboardsService {
 		}> = [];
 		const sourceSyncs: Array<Promise<(typeof results)[number]>> = [];
 		if (mode !== "metabase") {
-			if (sourceKeys.has("hubspot:crm")) {
+			if (
+				sourceKeys.has("hubspot:crm") ||
+				sourceKeys.has("atlas:q3-gtm-composite")
+			) {
 				sourceSyncs.push(this.sales.syncDashboard(number));
 			}
 			if (sourceKeys.has("atlas:economics")) {

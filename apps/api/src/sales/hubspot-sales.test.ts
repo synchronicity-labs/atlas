@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
 	buildActivePilotSummary,
 	buildEnterpriseBookings,
+	buildQ3LifecycleFunnel,
 	buildStudioBookings,
 	resolvePilotCompany,
 } from "@crm/db/hubspot-sales";
@@ -196,5 +197,82 @@ describe("HubSpot bookings reports", () => {
 				"2026-08-26T11:45:00.000Z",
 			],
 		]);
+	});
+});
+
+describe("Q3 enterprise lifecycle funnel", () => {
+	test("uses exact lifecycle transitions and keeps signature evidence unavailable", () => {
+		const result = buildQ3LifecycleFunnel({
+			dataThrough: new Date("2026-07-13T00:00:00.000Z"),
+			lifecycle: [
+				{
+					weekStart: new Date("2026-07-01T00:00:00.000Z"),
+					periodEnd: new Date("2026-07-06T00:00:00.000Z"),
+					mql: 1,
+					pql: 0,
+					sql: 0,
+				},
+				{
+					weekStart: new Date("2026-07-06T00:00:00.000Z"),
+					periodEnd: new Date("2026-07-13T00:00:00.000Z"),
+					mql: 0,
+					pql: 1,
+					sql: 1,
+				},
+			],
+			inbound: [
+				{
+					weekStart: new Date("2026-07-01T00:00:00.000Z"),
+					periodEnd: new Date("2026-07-06T00:00:00.000Z"),
+					enterpriseInbound: 1,
+				},
+				{
+					weekStart: new Date("2026-07-06T00:00:00.000Z"),
+					periodEnd: new Date("2026-07-13T00:00:00.000Z"),
+					enterpriseInbound: 2,
+				},
+			],
+			deals: ["newbusiness", "existingbusiness", "direct"].map(
+				(dealType, index) => ({
+					id: String(index),
+					pipelineId: "989457121",
+					isWon: true,
+					closeAt: new Date("2026-07-10T10:00:00.000Z"),
+					amount: 1000,
+					dealType,
+				}),
+			),
+			contracts: [
+				{
+					documentType: "SOW",
+					evidenceDate: new Date("2026-07-10T00:00:00.000Z"),
+					commercial: true,
+				},
+				{
+					documentType: "ORDER_FORM",
+					evidenceDate: new Date("2026-07-10T00:00:00.000Z"),
+					commercial: true,
+				},
+			],
+		});
+		const records = result.rows.map((row) =>
+			Object.fromEntries(
+				result.columns.map((column, index) => [column.name, row[index]]),
+			),
+		);
+		const totals = (column: string) =>
+			records.reduce((sum, row) => sum + Number(row[column] ?? 0), 0);
+
+		expect(totals("enterprise_inbound")).toBe(3);
+		expect(totals("mql")).toBe(1);
+		expect(totals("pql")).toBe(1);
+		expect(totals("sql")).toBe(1);
+		expect(totals("crm_paid_closed_won")).toBe(3);
+		expect(totals("net_new_logos")).toBe(1);
+		expect(totals("renewals")).toBe(1);
+		expect(totals("unmapped_deals")).toBe(1);
+		expect(totals("paid_sow_documents")).toBe(1);
+		expect(totals("paid_order_form_documents")).toBe(1);
+		expect(records.every((row) => row.signed_paid_sows === null)).toBe(true);
 	});
 });

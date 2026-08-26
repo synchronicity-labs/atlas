@@ -12,35 +12,81 @@ export type CatalogQuestionSpec = {
 	provisionalDefinition: string;
 };
 
-const PAID_LOGO_RETENTION = `with paid_org_months as (
-  select
-    toStartOfMonth(toTimeZone("createdAt", 'UTC')) as month,
-    "organizationId" as organization_id
+const PAID_LOGO_RETENTION = `with
+paid_subscription_ids as (
+  select distinct "subscriptionId" as subscription_id
   from sync_prod.sync_stripe_invoices_paid
-  where "createdAt" >= addMonths(toStartOfMonth(toTimeZone(now(), 'UTC')), -7)
-    and "createdAt" < toStartOfMonth(toTimeZone(now(), 'UTC'))
-    and "organizationId" != ''
+  where "subscriptionId" is not null
+    and "subscriptionId" != ''
     and "amountPaid" > 0
-  group by month, organization_id
-), retention as (
+),
+subscription_states as (
   select
-    current.month as starting_month,
-    count() as starting_paid_organizations,
-    countIf(next.organization_id != '') as retained_paid_organizations
-  from paid_org_months current
-  left join paid_org_months next
-    on next.organization_id = current.organization_id
-    and next.month = addMonths(current.month, 1)
-  where current.month < (select max(month) from paid_org_months)
-  group by current.month
+    subscriptions.id as subscription_id,
+    argMax(
+      subscriptions."organizationId",
+      tuple(subscriptions."createdAt", subscriptions."currentPeriodStart", subscriptions."currentPeriodEnd")
+    ) as organization_id,
+    min(subscriptions."createdAt") as created_at,
+    max(subscriptions."canceledAt") as canceled_at,
+    argMax(
+      lower(coalesce(subscriptions."orgPlan", 'unknown')),
+      tuple(subscriptions."createdAt", subscriptions."currentPeriodStart", subscriptions."currentPeriodEnd")
+    ) as tier
+  from sync_prod.sync_stripe_subscriptions subscriptions
+  inner join paid_subscription_ids paid
+    on paid.subscription_id = subscriptions.id
+  where subscriptions."organizationId" is not null
+    and subscriptions."organizationId" != ''
+  group by subscriptions.id
+),
+months as (
+  select
+    addMonths(toStartOfMonth(toTimeZone(now(), 'UTC')), -number) as period_start,
+    addMonths(period_start, 1) as period_end
+  from numbers(8)
+),
+organization_months as (
+  select
+    months.period_start,
+    months.period_end,
+    subscriptions.organization_id,
+    argMaxIf(
+      subscriptions.tier,
+      subscriptions.created_at,
+      subscriptions.created_at < months.period_start
+        and (isNull(subscriptions.canceled_at) or subscriptions.canceled_at >= months.period_start)
+    ) as tier,
+    countIf(
+      subscriptions.created_at < months.period_start
+        and (isNull(subscriptions.canceled_at) or subscriptions.canceled_at >= months.period_start)
+    ) > 0 as active_at_start,
+    countIf(
+      subscriptions.created_at < months.period_end
+        and (isNull(subscriptions.canceled_at) or subscriptions.canceled_at >= months.period_end)
+    ) > 0 as active_at_end,
+    countIf(
+      subscriptions.canceled_at >= months.period_start
+        and subscriptions.canceled_at < months.period_end
+    ) > 0 as canceled_in_month
+  from months
+  cross join subscription_states subscriptions
+  group by months.period_start, months.period_end, subscriptions.organization_id
 )
 select
-  starting_month,
-  starting_paid_organizations,
-  retained_paid_organizations,
-  round(100.0 * retained_paid_organizations / nullIf(starting_paid_organizations, 0), 2) as gross_logo_retention_pct
-from retention
-order by starting_month`;
+  period_start,
+  if(tier = '', 'unknown', tier) as tier,
+  countIf(active_at_start) as starting_paid_organizations,
+  countIf(active_at_start and canceled_in_month and not active_at_end) as churned_paid_organizations,
+  starting_paid_organizations - churned_paid_organizations as retained_paid_organizations,
+  round(100.0 * churned_paid_organizations / nullIf(starting_paid_organizations, 0), 2) as logo_churn_pct,
+  round(100.0 * retained_paid_organizations / nullIf(starting_paid_organizations, 0), 2) as gross_logo_retention_pct,
+  period_end <= toStartOfMonth(toTimeZone(now(), 'UTC')) as is_complete_month
+from organization_months
+where active_at_start
+  and tier in ('hobbyist', 'creator', 'growth', 'scale')
+group by period_start, period_end, tier
+order by period_start, tier`;
 
 const REVENUE_CONCENTRATION = `with monthly_org_usage as (
   select
@@ -148,7 +194,7 @@ export function catalogQuestionSpec(
 				display: "line",
 				visualization: {},
 				provisionalDefinition:
-					"Provisional: the share of organizations with paid invoices in one complete UTC month that also have paid invoices in the next month.",
+					"Approved: the share of organizations with a paid Stripe subscription active at the start of a UTC month that did not fully cancel during that month. A cancellation counts only when the last paid subscription has a Stripe cancellation timestamp in the month and no paid subscription remains active at month end. Canceling and resubscribing in the same month does not count as churn.",
 			};
 		case "sows/ msa's signed":
 			return {

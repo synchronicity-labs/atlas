@@ -24,7 +24,6 @@ function candidate(title: string): CatalogCandidate {
 
 describe("metric catalog question specs", () => {
 	test.each([
-		"Gross Logo Retention",
 		"SOWs/ MSA's signed",
 		"gross margin",
 		"revenue concentration",
@@ -37,20 +36,26 @@ describe("metric catalog question specs", () => {
 		expect(spec?.provisionalDefinition).toStartWith("Provisional:");
 	});
 
+	test("publishes the approved Stripe cancellation definition for gross logo retention", () => {
+		const spec = catalogQuestionSpec(candidate("Gross Logo Retention"));
+
+		expect(spec?.provisionalDefinition).toStartWith("Approved:");
+		expect(spec?.queryText).toContain("sync_stripe_subscriptions");
+		expect(spec?.queryText).toContain('subscriptions."canceledAt"');
+		expect(spec?.queryText).toContain(
+			"active_at_start and canceled_in_month and not active_at_end",
+		);
+		expect(spec?.queryText).toContain(
+			"tier in ('hobbyist', 'creator', 'growth', 'scale')",
+		);
+	});
+
 	test("does not replace the governed partner reconciliation with a HubSpot estimate", () => {
 		const spec = catalogQuestionSpec(
 			candidate("Channel Partner Revenue by Partner"),
 		);
 
 		expect(spec).toBeNull();
-	});
-
-	test("does not publish retention for a cohort without a complete next month", () => {
-		const spec = catalogQuestionSpec(candidate("Gross Logo Retention"));
-
-		expect(spec?.queryText).toContain(
-			"where current.month < (select max(month) from paid_org_months)",
-		);
 	});
 
 	test("assigns Product activity to the month when a generation started", () => {

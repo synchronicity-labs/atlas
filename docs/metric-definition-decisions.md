@@ -213,6 +213,31 @@ For the current incomplete UTC month, V2 usage and V3 top-ups are paced from the
 shared data-through time. Complete months show actual values. V3 credit consumption is
 an operating usage measure, not a revenue component.
 
+## Customer economics decisions
+
+Matt confirmed the reporting rules used by the customer and data-room analyses. Atlas
+uses these rules for the Customer economics questions. A query is not marked verified
+until its result also matches an independent reference output.
+
+| Measure | Governed rule | Current trust state |
+| --- | --- | --- |
+| Paid invoice revenue | Sum paid Stripe invoices by invoice creation month. Subscription MRR, plan mix, concentration, and the data-room retention tables use this paid-invoice basis. Past-due subscriptions without a paid invoice contribute zero. | Verified for July 2026: `$733,883.46`, which rounds to Matt's `$733,883` reference. |
+| Logo churn | An organization churns in the UTC month of a Stripe subscription cancellation only when it has no paid subscription active at month end. A cancellation followed by a resubscription in the same month is not churn. | Query runs; historical plan-level results still need reference reconciliation. |
+| Governed NDR and GRR | Same-customer paid invoice revenue in the current month divided by the prior-month starting revenue. GRR caps each customer's retained revenue at its prior-month amount. | Query runs; reference reconciliation pending. |
+| Operating NDR and GRR | Subscription invoice revenue plus V2 usage accrued when the generation ends. | Supporting operating view only. It is not the governed paid-invoice result. |
+| Revenue cohorts | Month zero is the first month with positive paid-invoice revenue or any successful Stripe charge, whichever is earlier. Retention and realized LTV then use paid invoices. | Query runs; reference reconciliation pending. |
+| Usage-active subscriber | A customer with an active paid subscription at month end and at least one completed generation in that month. | Query runs; reference reconciliation pending. |
+| Realized LTV and CAC target | Realized lifetime value is cumulative paid-invoice revenue for the selected first-pay cohort. The current gross-margin assumptions are Hobbyist 83%, Creator 81%, Growth 72%, and Scale 66%. The CAC target is gross-margin-adjusted LTV divided by 3. | The 3:1 target and tier margins are assumptions, not approved company policy. Matt still needs to update the Andromeda cost allocation. |
+| Win-back | A customer with positive paid-invoice revenue after at least one complete UTC month with no paid-invoice revenue. | Query runs; reference reconciliation pending. |
+| Invoice-line allocation | Allocate discounts, credits, and customer balance to invoice lines with the deterministic rule from Matt's panel. | Reporting definition, not an estimate. |
+| Country | Use the latest non-empty billing country from successful Stripe charges. Fall back to invoice billing or shipping country. Apply the latest country to all historical months. | Reconciling. Do not mark verified until 2026 YTD reproduces US `$2,569,160`, UA `$466,186`, and HK `$281,167`. |
+| Customer population | Use distinct organization IDs in the delivered panel. | Reconciling. Matt's panel has `38,248` organizations, while Rudy reported `48,190` customer IDs. Rudy must explain the customer-to-organization collapse before publication. |
+
+Standalone top-up charges are excluded from the governed paid-invoice retention and LTV
+tables. They remain visible in the collections funnel. The separate operating view can
+show accrued V2 usage, but it must use a different label and cannot replace the paid-
+invoice definition.
+
 ## Productions definitions
 
 Muhammad Hadi Yusufali approved the business definitions in

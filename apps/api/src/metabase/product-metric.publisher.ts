@@ -3489,10 +3489,113 @@ export const REVENUE_METRIC_SPECS: ProductMetricSpec[] = [
 	},
 ];
 
+export const CUSTOMER_ECONOMICS_METRIC_SPECS: ProductMetricSpec[] = [
+	{
+		questionNumber: 7400,
+		sourceExternalId: "customer-economics:paid-invoice-revenue",
+		key: "company.customer_economics_paid_invoice_revenue",
+		name: "Paid invoice revenue by invoice month",
+		description:
+			"Paid Stripe invoice value assigned to the UTC month when the invoice was created.",
+		grain: FactGrain.MONTH,
+		source: {
+			key: "tinybird:customer-economics",
+			kind: DataSourceKind.TINYBIRD,
+			label: "Metabase customer economics model",
+		},
+		eventTimeField: "invoice.createdAt",
+		businessDefinition: {
+			revenueBasis: "paid_invoice_amount",
+			periodAssignment: "invoice_created_month_utc",
+		},
+		computation: {
+			aggregate: "monthly_sum",
+			output: "paid_invoice_revenue_usd",
+		},
+		requiresCrossSourceEligibility: false,
+		ownerTeam: "Company",
+		createdBy: "atlas-customer-economics-registry",
+	},
+	...[
+		{
+			questionNumber: 6027,
+			sourceExternalId: "customer-economics:gross-logo-retention",
+			key: "company.customer_economics_gross_logo_retention",
+			name: "Gross logo retention by plan",
+			check: "matt_panel_logo_churn_match",
+			reason:
+				"Compare Atlas cancellation-based churn with Matt's reference panel.",
+		},
+		{
+			questionNumber: 7401,
+			sourceExternalId: "customer-economics:revenue-retention",
+			key: "company.customer_economics_paid_invoice_retention",
+			name: "Paid invoice revenue retention by plan",
+			check: "matt_panel_paid_invoice_retention_match",
+			reason: "Compare paid-invoice NDR and GRR with Matt's reference panel.",
+		},
+		{
+			questionNumber: 7402,
+			sourceExternalId: "customer-economics:cohort-retention",
+			key: "company.customer_economics_cohort_retention",
+			name: "Paid invoice cohort revenue retention",
+			check: "matt_panel_cohort_retention_match",
+			reason: "Compare cohort retention with Matt's reference panel.",
+		},
+		{
+			questionNumber: 7403,
+			sourceExternalId: "customer-economics:usage-active",
+			key: "company.customer_economics_usage_active",
+			name: "Usage-active subscribers by plan",
+			check: "matt_panel_usage_active_match",
+			reason: "Compare usage-active rates with Matt's July reference panel.",
+		},
+		{
+			questionNumber: 7404,
+			sourceExternalId: "customer-economics:realized-ltv",
+			key: "company.customer_economics_realized_ltv",
+			name: "Realized lifetime value and customer acquisition cost target",
+			check: "matt_panel_ltv_match",
+			reason:
+				"Compare realized lifetime value after Matt updates the Andromeda cost allocation.",
+		},
+		{
+			questionNumber: 7405,
+			sourceExternalId: "customer-economics:winbacks",
+			key: "company.customer_economics_paid_winbacks",
+			name: "Paid customer win-backs by plan",
+			check: "approved_winback_definition",
+			reason: "The metric owner must approve the paid win-back definition.",
+		},
+	].map(
+		(spec): ProductMetricSpec => ({
+			questionNumber: spec.questionNumber,
+			sourceExternalId: spec.sourceExternalId,
+			key: spec.key,
+			name: spec.name,
+			description: spec.reason,
+			grain: FactGrain.MONTH,
+			source: {
+				key: "tinybird:customer-economics",
+				kind: DataSourceKind.TINYBIRD,
+				label: "Metabase customer economics model",
+			},
+			eventTimeField: "month_utc",
+			businessDefinition: { methodology: "matt_customer_panel" },
+			computation: { aggregate: "customer_economics" },
+			requiresCrossSourceEligibility: false,
+			pendingChecks: [{ name: spec.check, reason: spec.reason }],
+			ownerTeam: "Company",
+			createdBy: "atlas-customer-economics-registry",
+		}),
+	),
+];
+
 const ALL_METRIC_SPECS = [
 	...PRODUCT_METRIC_SPECS,
 	...REVENUE_CLOSE_METRIC_SPECS,
 	...REVENUE_METRIC_SPECS,
+	...CUSTOMER_ECONOMICS_METRIC_SPECS,
 ];
 const specsByQuestion = new Map(
 	ALL_METRIC_SPECS.map((spec) => [spec.questionNumber, spec]),

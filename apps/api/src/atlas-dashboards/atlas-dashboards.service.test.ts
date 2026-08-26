@@ -246,4 +246,44 @@ describe("Atlas dashboard refresh", () => {
 			errors: [],
 		});
 	});
+
+	test("routes model feedback through the governed composite reader", async () => {
+		const findUnique = mock().mockResolvedValue({
+			cards: [
+				{
+					question: {
+						id: "model-feedback",
+						number: 7014,
+						connector: DataSourceKind.ATLAS,
+						sourceId: "model-feedback-source",
+						source: { key: "atlas:model-feedback-composite" },
+					},
+				},
+			],
+		});
+		const marketingSync = mock().mockResolvedValue({
+			cardsProcessed: 1,
+			snapshotsCreated: 1,
+			errors: [],
+		});
+		const service = new AtlasDashboardsService(
+			{ dashboard: { findUnique } } as unknown as Db,
+			{ syncDashboard: mock() } as never,
+			{ syncAtlasDashboard: mock() } as never,
+			{ syncDashboard: mock() } as never,
+			{ syncDashboard: marketingSync } as never,
+			{ syncDashboard: mock() } as never,
+			{ syncDashboard: mock() } as never,
+		);
+
+		const result = await service.refresh(1, "native");
+
+		expect(marketingSync).toHaveBeenCalledWith(1);
+		expect(result).toMatchObject({
+			cardsProcessed: 1,
+			snapshotsCreated: 1,
+			completed: true,
+			errors: [],
+		});
+	});
 });

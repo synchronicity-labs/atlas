@@ -1588,6 +1588,81 @@ export const PRODUCT_METRIC_SPECS: ProductMetricSpec[] = [
 		cadenceMinutes: 8 * 60,
 	},
 	{
+		questionNumber: 7014,
+		sourceExternalId: "cron:model-feedback:weekly-coverage",
+		key: "product.model_feedback_weekly_coverage",
+		name: "Model feedback and support quality coverage",
+		description:
+			"One complete UTC week of product feedback coverage by model plus deidentified support-negative theme counts from gBrain.",
+		grain: FactGrain.WEEK,
+		source: {
+			key: "atlas:model-feedback-composite",
+			kind: DataSourceKind.ATLAS,
+			label: "Product feedback and deidentified gBrain evidence",
+		},
+		eventTimeField: "week_start",
+		businessDefinition: {
+			entity: "model_feedback_surface_week",
+			population:
+				"completed generations from external non-anonymous, non-disabled, non-banned users, with internal sync.so and sync.labs users excluded",
+			periodAssignment:
+				"generation finished_at in the previous complete Monday-Sunday UTC week",
+			productFeedback:
+				"thumb up and down events plus star scores, where four or five stars are positive and lower scores are negative",
+			coverage:
+				"distinct completed generations with at least one approved feedback event divided by completed generations",
+			supportEvidence:
+				"deduplicated customer-originated Pylon and support Slack items classified on Rudy into approved model and theme count aggregates",
+			separationPolicy:
+				"support-negative counts remain separate from the product feedback denominator and never change the product negative rate",
+			privacyPolicy:
+				"Atlas receives only week, model, approved support theme, and count aggregates; no customer text, URLs, slugs, ticket IDs, or identities",
+		},
+		computation: {
+			aggregate: "weekly_product_feedback_and_support_theme_counts",
+			outputs: [
+				"completed_generations",
+				"rated_generations",
+				"feedback_events",
+				"positive_feedback",
+				"negative_feedback",
+				"negative_rate_pct",
+				"coverage_pct",
+				"support_negative_tickets",
+			],
+		},
+		requiresCrossSourceEligibility: false,
+		pendingChecks: [
+			{
+				name: "feedback_denominator_parity",
+				reason:
+					"Positive and negative events must reconcile, and rated generations must remain a subset of completed generations.",
+			},
+			{
+				name: "model_mapping",
+				reason: "The result must contain the exact approved model registry.",
+			},
+			{
+				name: "support_evidence_join",
+				reason:
+					"Support evidence must come from one exact-week aggregate with unique model and theme keys.",
+			},
+			{
+				name: "customer_text_boundary",
+				reason:
+					"The result must exclude customer text, identities, URLs, slugs, and ticket identifiers.",
+			},
+			{
+				name: "oldest_complete_watermark",
+				reason:
+					"Product feedback and gBrain evidence must share one complete UTC week.",
+			},
+		],
+		ownerTeam: "Product",
+		createdBy: "atlas-model-feedback-registry",
+		cadenceMinutes: 8 * 60,
+	},
+	{
 		questionNumber: 7002,
 		sourceExternalId: "cron:studio:period-kpis",
 		key: "product.studio_weekly_delivery_logo_movement",

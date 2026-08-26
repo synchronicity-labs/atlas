@@ -345,7 +345,7 @@ nothing, and Calendar reads from `now` onwards.
 | --- | --- | --- |
 | `CRON_SECRET` | in deployed environments | Bearer guard on Google, Metabase, marketing, abuse, Modal import, and economics sync routes. Vercel sends it automatically as `Authorization: Bearer $CRON_SECRET`. Minimum 16 characters; every route **fails closed** if unset. |
 | `ATLAS_QUERY_SECRET` | when an internal agent reads Atlas | Read-only bearer credential for `/internal/atlas/catalog` and `/internal/atlas/questions/:number`. It cannot invoke sync routes or mutate data and **fails closed** if unset. |
-| `ATLAS_AUTHORING_SECRET` | when trusted automation proposes missing Atlas metrics | Dedicated bearer credential for `POST /internal/atlas/authoring/questions`. It can create only idempotent draft reconciliation questions. Keep it outside the agent process and call it through a narrow broker. Minimum 32 characters; the route **fails closed** if unset. |
+| `ATLAS_AUTHORING_SECRET` | when trusted automation proposes missing Atlas metrics | Dedicated bearer credential for `/internal/atlas/authoring/questions`. It can create idempotent drafts and request publication of a reviewed server-owned recipe. It cannot submit query text or set trust state. Keep it outside the agent process and call it through a narrow broker. Minimum 32 characters; the routes **fail closed** if unset. |
 | `RUDY_API_URL` | when Atlas chat uses the shared Rudy | Server-only URL for Rudy's Hermes session API. Use a Tailnet endpoint in a deployed environment or a loopback SSH tunnel for local development. |
 | `RUDY_API_KEY` | with `RUDY_API_URL` | Strong bearer credential shared only by Atlas's API process and Rudy's Hermes gateway. It never reaches browser code. |
 

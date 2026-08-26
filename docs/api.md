@@ -82,9 +82,16 @@ Trusted automation can propose a missing metric through
 `POST /internal/atlas/authoring/questions`, protected by the separate
 `ATLAS_AUTHORING_SECRET`. The route creates only an idempotent `DRAFT` /
 `RECONCILIATION` question with a business definition, decision use, source hints,
-dimensions, and acceptance checks. It cannot activate, certify, verify, refresh,
-or edit an existing question. A report cron must wait until the normal Atlas review
-and verification flow makes the question certified, verified, and fresh.
+dimensions, and acceptance checks.
+
+`POST /internal/atlas/authoring/questions/:number/publish` can materialize a
+reviewed server-owned recipe for that exact draft. The request contains only the
+draft request key, expected draft version, recipe key, and recipe version. It
+cannot contain query text or requested trust state. Atlas executes the recipe,
+persists its immutable result, runs every recipe check, and activates the question
+only when the metric is certified, verified, and fresh. A failed check leaves the
+question blocked and retryable. The same bearer credential protects both routes,
+but it stays in the narrow root-owned broker and outside the agent process.
 
 ## Atlas is a first-party Rudy client
 

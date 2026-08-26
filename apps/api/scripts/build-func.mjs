@@ -220,6 +220,10 @@ writeFileSync(
 				path: "/internal/sync/atlas/11/native",
 				schedule: "29 */8 * * *",
 			},
+			{
+				path: "/internal/sync/atlas/13/native",
+				schedule: "33 */8 * * *",
+			},
 		],
 	}),
 );

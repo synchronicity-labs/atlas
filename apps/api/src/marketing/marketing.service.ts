@@ -30,6 +30,10 @@ import {
 	apiReliabilityWeeklyReport,
 } from "./api-reliability";
 import { BetterStackClient, betterStackConfig } from "./betterstack.client";
+import {
+	cancellationFeedbackIncentiveVerificationChecks,
+	cancellationFeedbackIncentiveWeeklyReport,
+} from "./cancellation-feedback-incentive";
 import { exitSurveyVerificationChecks } from "./exit-survey-verification";
 import { GbrainEvidenceService } from "./gbrain-evidence.service";
 import { geoConversionVerificationChecks } from "./geo-conversion-verification";
@@ -91,8 +95,9 @@ export function requiresProductUserEligibility(
 	query: ReturnType<typeof marketingQuery.parse>,
 ): boolean {
 	return (
-		query.source === "posthog" &&
-		query.personPolicy === "exclude_banned_product_users"
+		(query.source === "posthog" &&
+			query.personPolicy === "exclude_banned_product_users") ||
+		query.source === "automated_report"
 	);
 }
 
@@ -157,6 +162,11 @@ function sourceVerificationChecks(
 		query.source === "posthog"
 	)
 		return abuseRingVerificationChecks(result, query.query);
+	if (
+		sourceExternalId === "rudy-cron:weekly-cancellation-feedback-incentive" &&
+		query.source === "automated_report"
+	)
+		return cancellationFeedbackIncentiveVerificationChecks(result, query);
 	return undefined;
 }
 
@@ -206,6 +216,7 @@ export class MarketingService {
 		return this.execute(
 			new MarketingClient(marketingConfig()),
 			this.withProductUserEligibility(query, eligibility.predicate),
+			eligibility.predicate,
 		);
 	}
 
@@ -316,6 +327,7 @@ export class MarketingService {
 									eligibility.predicate,
 								)
 							: parsedQuery,
+						eligibility?.predicate,
 					);
 					const verificationChecks = sourceVerificationChecks(
 						question.sourceExternalId,
@@ -440,13 +452,15 @@ export class MarketingService {
 	private async execute(
 		client: MarketingClient,
 		query: ReturnType<typeof marketingQuery.parse>,
+		productUserPredicate?: string,
 	): Promise<MarketingResult> {
 		if (
 			query.source !== "adobe_plugin" &&
 			query.source !== "product_pages" &&
 			query.source !== "api_adoption" &&
 			query.source !== "api_reliability" &&
-			query.source !== "model_feedback"
+			query.source !== "model_feedback" &&
+			query.source !== "automated_report"
 		) {
 			return client.execute(query);
 		}
@@ -461,6 +475,19 @@ export class MarketingService {
 		const config = metabaseConfig();
 		if (!config) throw new Error("Metabase is not configured.");
 		const metabase = new MetabaseClient(config);
+		if (query.source === "automated_report") {
+			if (!productUserPredicate) {
+				throw new Error(
+					"Automated Product reports require governed eligibility.",
+				);
+			}
+			return cancellationFeedbackIncentiveWeeklyReport({
+				query,
+				marketing: client,
+				metabase,
+				productUserPredicate,
+			});
+		}
 		return query.source === "model_feedback"
 			? modelFeedbackWeeklyReport({
 					query,

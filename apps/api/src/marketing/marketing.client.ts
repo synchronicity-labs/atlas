@@ -99,7 +99,8 @@ export class MarketingClient {
 			query.source === "product_pages" ||
 			query.source === "api_adoption" ||
 			query.source === "api_reliability" ||
-			query.source === "model_feedback"
+			query.source === "model_feedback" ||
+			query.source === "automated_report"
 		) {
 			throw new Error(
 				"Composite reports require the configured source adapter.",

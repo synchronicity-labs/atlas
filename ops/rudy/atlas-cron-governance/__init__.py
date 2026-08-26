@@ -17,19 +17,28 @@ AUTHORING_BROKER = "/usr/local/sbin/rudy-atlas-question-draft"
 ATLAS_SKILL = "atlas-company-intelligence"
 _PLANS: dict[str, dict[str, Any]] = {}
 _LOCK = threading.Lock()
+RECIPES_BY_REQUEST = {
+    "weekly-cancellation-feedback-incentive": {
+        "key": "product.cancellation-feedback-incentive-weekly",
+        "version": 1,
+    }
+}
 
 SCHEMA = {
     "name": "atlas_cron_plan",
     "description": (
         "Mandatory Atlas preflight for every new recurring Rudy cron. Search the "
-        "governed catalog before creating a cron. Use create_draft only when an "
-        "analytics report has no logical certified question. Drafts cannot run in "
-        "crons until Atlas certifies and verifies them."
+        "governed catalog before creating a cron. Use create_draft when an analytics "
+        "report has no logical certified question. Atlas will publish a matching "
+        "reviewed recipe automatically. Use publish_draft to retry a reviewed draft."
     ),
     "parameters": {
         "type": "object",
         "properties": {
-            "action": {"type": "string", "enum": ["search", "create_draft"]},
+            "action": {
+                "type": "string",
+                "enum": ["search", "create_draft", "publish_draft"],
+            },
             "query": {
                 "type": "string",
                 "description": "Plain-language purpose and output of the requested cron.",
@@ -46,6 +55,10 @@ SCHEMA = {
             "dimensions": {"type": "array", "items": {"type": "string"}},
             "source_hints": {"type": "array", "items": {"type": "string"}},
             "acceptance_checks": {"type": "array", "items": {"type": "string"}},
+            "question_number": {"type": "integer", "minimum": 1},
+            "expected_draft_version": {"type": "integer", "minimum": 1},
+            "recipe_key": {"type": "string"},
+            "recipe_version": {"type": "integer", "minimum": 1},
         },
         "required": ["action"],
     },
@@ -199,18 +212,23 @@ def _create_draft(args: dict[str, Any], key: str) -> str:
         "sourceHints": args.get("source_hints") or [],
         "acceptanceChecks": args.get("acceptance_checks") or [],
     }
-    process = subprocess.run(
-        ["sudo", "-n", AUTHORING_BROKER],
-        input=json.dumps(mapping, separators=(",", ":")),
-        text=True,
-        capture_output=True,
-        timeout=60,
-        check=False,
-    )
-    if process.returncode != 0:
-        detail = (process.stdout or process.stderr or "broker failed").strip()[:1_000]
-        return json.dumps({"error": detail})
-    result = json.loads(process.stdout)
+    result = _broker(mapping)
+    request_key = str(args.get("request_key") or "")
+    recipe = RECIPES_BY_REQUEST.get(request_key)
+    if recipe:
+        question = result.get("question") or {}
+        question_number = int(question.get("number") or 0)
+        if question_number > 0:
+            return _publish_draft(
+                {
+                    "request_key": request_key,
+                    "question_number": question_number,
+                    "expected_draft_version": 1,
+                    "recipe_key": recipe["key"],
+                    "recipe_version": recipe["version"],
+                },
+                key,
+            )
     token = _store_plan(
         key,
         {
@@ -221,6 +239,74 @@ def _create_draft(args: dict[str, Any], key: str) -> str:
     )
     result["planToken"] = token
     result["cronBlocked"] = True
+    result["availableRecipes"] = []
+    return json.dumps(result, separators=(",", ":"))
+
+
+def _broker(mapping: dict[str, Any]) -> dict[str, Any]:
+    timeout = 240 if mapping.get("operation") == "publish" else 60
+    process = subprocess.run(
+        ["sudo", "-n", AUTHORING_BROKER],
+        input=json.dumps(mapping, separators=(",", ":")),
+        text=True,
+        capture_output=True,
+        timeout=timeout,
+        check=False,
+    )
+    if process.returncode != 0:
+        detail = (process.stdout or process.stderr or "broker failed").strip()[:1_000]
+        raise RuntimeError(detail)
+    result = json.loads(process.stdout)
+    if not isinstance(result, dict):
+        raise RuntimeError("Atlas authoring broker returned an invalid response")
+    return result
+
+
+def _publish_draft(args: dict[str, Any], key: str) -> str:
+    request_key = str(args.get("request_key") or "").strip()
+    question_number = int(args.get("question_number") or 0)
+    expected_version = int(args.get("expected_draft_version") or 0)
+    recipe_key = str(args.get("recipe_key") or "").strip()
+    recipe_version = int(args.get("recipe_version") or 0)
+    approved = RECIPES_BY_REQUEST.get(request_key)
+    if (
+        question_number < 1
+        or expected_version < 1
+        or not approved
+        or recipe_key != approved["key"]
+        or recipe_version != approved["version"]
+    ):
+        return json.dumps({"error": "Atlas publication recipe is not approved"})
+    result = _broker(
+        {
+            "operation": "publish",
+            "questionNumber": question_number,
+            "requestKey": request_key,
+            "expectedDraftVersion": expected_version,
+            "recipe": {"key": recipe_key, "version": recipe_version},
+        }
+    )
+    if not result.get("cronEligible"):
+        token = _store_plan(
+            key,
+            {"mode": "draft", "query": request_key, "eligible_numbers": []},
+        )
+        result["planToken"] = token
+        result["cronBlocked"] = True
+        return json.dumps(result, separators=(",", ":"))
+    token = _store_plan(
+        key,
+        {
+            "mode": "search",
+            "query": request_key,
+            "eligible_numbers": [question_number],
+        },
+    )
+    result["planToken"] = token
+    result["cronBlocked"] = False
+    result["instructions"] = {
+        "canonical": f"ATLAS_PLAN: token={token} canonical=Q{question_number}"
+    }
     return json.dumps(result, separators=(",", ":"))
 
 
@@ -231,6 +317,8 @@ def handle_plan(args: dict[str, Any], **kwargs: Any) -> str:
             return _search(args, key)
         if args.get("action") == "create_draft":
             return _create_draft(args, key)
+        if args.get("action") == "publish_draft":
+            return _publish_draft(args, key)
         return json.dumps({"error": "unknown action"})
     except Exception as error:
         return json.dumps({"error": f"Atlas cron planning failed: {error}"})

@@ -9,9 +9,9 @@ The gateway receives two read-only values through its scoped Doppler runtime:
 
 The values are managed in Doppler. They are not stored in this repository. Install `atlas-skill` under Rudy's Hermes skills directory.
 
-The client supports catalog search and immutable question reads. The optional `atlas-cron-governance` plugin makes an Atlas preflight mandatory before Rudy creates any recurring cron. It also exposes a draft-only question authoring tool.
+The client supports catalog search and immutable question reads. The optional `atlas-cron-governance` plugin makes an Atlas preflight mandatory before Rudy creates any recurring cron. It also exposes guarded question authoring.
 
-The authoring credential is isolated in the `rudy/prd_atlas_authoring` Doppler config. It is not loaded into the Hermes gateway. `/usr/local/sbin/rudy-atlas-question-draft` injects it only into the fixed root-owned broker. The broker can call only the draft question route. Atlas rejects attempts to set question status, purpose, certification, or trust state.
+The authoring credential is isolated in the `rudy/prd_atlas_authoring` Doppler config. It is not loaded into the Hermes gateway. `/usr/local/sbin/rudy-atlas-question-draft` injects it only into the fixed root-owned broker. The broker can create drafts and publish a reviewed recipe ID. It cannot submit query text or set question status, purpose, certification, or trust state. Atlas owns those actions and activates a question only after the recipe result passes every required check.
 
 Install the plugin under `/root/.hermes/plugins/atlas-cron-governance`, install the broker files under `/usr/local`, and add this exact sudo rule:
 

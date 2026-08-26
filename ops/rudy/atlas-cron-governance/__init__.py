@@ -310,6 +310,8 @@ def _on_pre_tool_call(
                 "action": "block",
                 "message": f"Attach the {ATLAS_SKILL} skill to the recurring report cron.",
             }
+    with _LOCK:
+        _PLANS.pop(key, None)
     return None
 
 

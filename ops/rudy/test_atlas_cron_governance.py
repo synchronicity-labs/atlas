@@ -52,6 +52,19 @@ class AtlasCronGovernanceTest(unittest.TestCase):
             session_id="s1",
         )
         self.assertIsNone(result)
+        self.assertNotIn("s1", MODULE._PLANS)
+
+        result = MODULE._on_pre_tool_call(
+            tool_name="cronjob",
+            args={
+                "action": "create",
+                "schedule": "0 9 * * 1",
+                "prompt": f"ATLAS_PLAN: token={token} canonical=Q15",
+                "skills": [MODULE.ATLAS_SKILL],
+            },
+            session_id="s1",
+        )
+        self.assertEqual(result["action"], "block")
 
     def test_draft_question_never_allows_cron(self):
         MODULE._store_plan(

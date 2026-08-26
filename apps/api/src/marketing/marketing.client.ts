@@ -97,7 +97,8 @@ export class MarketingClient {
 		if (
 			query.source === "adobe_plugin" ||
 			query.source === "product_pages" ||
-			query.source === "api_adoption"
+			query.source === "api_adoption" ||
+			query.source === "api_reliability"
 		) {
 			throw new Error(
 				"Composite reports require the configured source adapter.",

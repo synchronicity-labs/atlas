@@ -25,6 +25,11 @@ import {
 	apiAdoptionVerificationChecks,
 	apiAdoptionWeeklyReport,
 } from "./api-adoption";
+import {
+	apiReliabilityVerificationChecks,
+	apiReliabilityWeeklyReport,
+} from "./api-reliability";
+import { BetterStackClient, betterStackConfig } from "./betterstack.client";
 import { exitSurveyVerificationChecks } from "./exit-survey-verification";
 import { geoConversionVerificationChecks } from "./geo-conversion-verification";
 import { lipsyncFunnelVerificationChecks } from "./lipsync-funnel-verification";
@@ -77,6 +82,11 @@ function sourceVerificationChecks(
 		query.source === "api_adoption"
 	)
 		return apiAdoptionVerificationChecks(result, query);
+	if (
+		sourceExternalId === "cron:api-endpoints:reliability" &&
+		query.source === "api_reliability"
+	)
+		return apiReliabilityVerificationChecks(result, query);
 	if (
 		sourceExternalId === "cron:adobe-plugin:weekly-kpis" &&
 		query.source === "adobe_plugin"
@@ -384,9 +394,18 @@ export class MarketingService {
 		if (
 			query.source !== "adobe_plugin" &&
 			query.source !== "product_pages" &&
-			query.source !== "api_adoption"
+			query.source !== "api_adoption" &&
+			query.source !== "api_reliability"
 		) {
 			return client.execute(query);
+		}
+		if (query.source === "api_reliability") {
+			const config = betterStackConfig();
+			if (!config) throw new Error("BetterStack is not configured.");
+			return apiReliabilityWeeklyReport({
+				query,
+				betterstack: new BetterStackClient(config),
+			});
 		}
 		const config = metabaseConfig();
 		if (!config) throw new Error("Metabase is not configured.");

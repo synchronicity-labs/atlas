@@ -232,6 +232,22 @@ export class EnvironmentVariables {
 	@IsOptional()
 	@IsString()
 	HUBSPOT_PORTAL_ID?: string;
+
+	@IsOptional()
+	@IsString()
+	BETTERSTACK_TELEMETRY_API_KEY?: string;
+
+	@IsOptional()
+	@IsString()
+	BETTERSTACK_SQL_EU_HOST?: string;
+
+	@IsOptional()
+	@IsString()
+	BETTERSTACK_SQL_EU_USER?: string;
+
+	@IsOptional()
+	@IsString()
+	BETTERSTACK_SQL_EU_PASS?: string;
 }
 
 export function validateEnv(

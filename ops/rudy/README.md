@@ -2,14 +2,24 @@
 
 Rudy reads governed Atlas metrics through the production read-only API. The runtime uses the `atlas-company-intelligence` skill before raw source skills for known KPIs and recurring reports.
 
-The gateway receives two secrets through its systemd environment file:
+The gateway receives two read-only values through its scoped Doppler runtime:
 
 - `ATLAS_API_URL`
 - `ATLAS_QUERY_SECRET`
 
-The values are managed in the Atlas Doppler production config. They are not stored in this repository. Install `hermes-gateway-atlas.conf` as a systemd drop-in, install `atlas-skill` under Rudy's Hermes skills directory, and restart the gateway after rotating either value.
+The values are managed in Doppler. They are not stored in this repository. Install `atlas-skill` under Rudy's Hermes skills directory.
 
-The client supports catalog search and immutable question reads. It has no sync, preview, mutation, or save command.
+The client supports catalog search and immutable question reads. The optional `atlas-cron-governance` plugin makes an Atlas preflight mandatory before Rudy creates any recurring cron. It also exposes a draft-only question authoring tool.
+
+The authoring credential is isolated in the `rudy/prd_atlas_authoring` Doppler config. It is not loaded into the Hermes gateway. `/usr/local/sbin/rudy-atlas-question-draft` injects it only into the fixed root-owned broker. The broker can call only the draft question route. Atlas rejects attempts to set question status, purpose, certification, or trust state.
+
+Install the plugin under `/root/.hermes/plugins/atlas-cron-governance`, install the broker files under `/usr/local`, and add this exact sudo rule:
+
+```text
+rudy ALL=(root) NOPASSWD: /usr/local/sbin/rudy-atlas-question-draft
+```
+
+The plugin must be enabled and the gateway must be restarted once during an idle window. Existing cron execution is unchanged.
 
 ## Automated Monday Linear update
 

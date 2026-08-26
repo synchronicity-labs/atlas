@@ -78,6 +78,14 @@ routes. They do not execute arbitrary queries, refresh a connector, edit a quest
 or mutate CRM records. Rudy should use this surface first and reach through to a
 vendor only for an undefined metric or explicit reconciliation work.
 
+Trusted automation can propose a missing metric through
+`POST /internal/atlas/authoring/questions`, protected by the separate
+`ATLAS_AUTHORING_SECRET`. The route creates only an idempotent `DRAFT` /
+`RECONCILIATION` question with a business definition, decision use, source hints,
+dimensions, and acceptance checks. It cannot activate, certify, verify, refresh,
+or edit an existing question. A report cron must wait until the normal Atlas review
+and verification flow makes the question certified, verified, and fresh.
+
 ## Atlas is a first-party Rudy client
 
 The in-app Rudy drawer talks to Hermes's persisted session API through the Atlas

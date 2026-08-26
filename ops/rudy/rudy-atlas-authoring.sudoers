@@ -1,0 +1,1 @@
+rudy ALL=(root) NOPASSWD: /usr/local/sbin/rudy-atlas-question-draft

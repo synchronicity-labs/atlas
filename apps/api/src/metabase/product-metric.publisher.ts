@@ -1428,6 +1428,88 @@ export const PRODUCT_METRIC_SPECS: ProductMetricSpec[] = [
 		cadenceMinutes: 8 * 60,
 	},
 	{
+		questionNumber: 7008,
+		sourceExternalId: "cron:api-endpoints:adoption-revenue",
+		key: "product.api_endpoint_weekly_adoption",
+		name: "Public API adoption and accrued usage",
+		description:
+			"Two complete UTC weeks of public API TTS, API asset uploads, and generations from API-uploaded assets with resolved organizations and accrued usage value.",
+		grain: FactGrain.WEEK,
+		source: {
+			key: "atlas:api-adoption-composite",
+			kind: DataSourceKind.ATLAS,
+			label: "Product API keys, assets, generations, and TinyBird usage",
+		},
+		eventTimeField: "week_start",
+		businessDefinition: {
+			entity: "api_endpoint_week",
+			population:
+				"external non-anonymous API-key owners and direct product users, excluding internal users and banned users who never subscribed",
+			periodAssignment:
+				"TTS and asset uploads use their creation time; asset-backed generation adoption and accrued value use final completion time in complete Monday-Sunday UTC weeks",
+			publicApiTts: "sync_usage_integration_tts rows with a non-empty apiKeyId",
+			apiAssetUpload:
+				"non-deleted product assets created with a non-empty api_key_id",
+			apiAssetGeneration:
+				"final product generations joined to an API-uploaded asset or marked usedApiUploadedAsset, with TinyBird generation usage providing accrued value",
+			revenueBasis:
+				"usageCostMillicents or generationCostMillicents divided by 100000; this is accrued usage value, not Stripe cash, invoices, or subscription value",
+		},
+		computation: {
+			aggregate: "weekly_api_surface_adoption_and_accrued_usage",
+			outputs: [
+				"requests",
+				"successful_jobs",
+				"failed_jobs",
+				"active_organizations",
+				"active_api_keys",
+				"usage_amount",
+				"accrued_usage_usd",
+			],
+		},
+		requiresCrossSourceEligibility: false,
+		pendingChecks: [
+			{
+				name: "endpoint_registry_review",
+				reason:
+					"Both weeks must contain each approved public API adoption surface exactly once.",
+			},
+			{
+				name: "api_key_owner_join",
+				reason:
+					"Every activity row must resolve to one API-key owner or direct user without conflicts.",
+			},
+			{
+				name: "clean_organization_population",
+				reason:
+					"Internal, anonymous, and banned-never-subscribed principals must be excluded before aggregation.",
+			},
+			{
+				name: "usage_revenue_basis",
+				reason:
+					"Accrued usage value must stay separate from Stripe cash, invoices, and subscription value.",
+			},
+			{
+				name: "source_count_reconciliation",
+				reason:
+					"Requests must reconcile to successful and failed jobs with non-negative values.",
+			},
+			{
+				name: "sensitive_detail_boundary",
+				reason:
+					"The governed result must exclude user, API-key, organization, and email identifiers.",
+			},
+			{
+				name: "oldest_complete_watermark",
+				reason:
+					"Both complete weeks must share one explicit UTC data-through boundary.",
+			},
+		],
+		ownerTeam: "Product",
+		createdBy: "atlas-api-adoption-registry",
+		cadenceMinutes: 8 * 60,
+	},
+	{
 		questionNumber: 7002,
 		sourceExternalId: "cron:studio:period-kpis",
 		key: "product.studio_weekly_delivery_logo_movement",

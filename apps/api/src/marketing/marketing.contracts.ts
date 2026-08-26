@@ -96,6 +96,12 @@ export const productPagesQuery = z.object({
 	version: z.literal(1),
 });
 
+export const apiAdoptionQuery = z.object({
+	source: z.literal("api_adoption"),
+	report: z.literal("weekly-adoption"),
+	version: z.literal(1),
+});
+
 export const marketingQuery = z.discriminatedUnion("source", [
 	ga4Query,
 	searchConsoleQuery,
@@ -103,6 +109,7 @@ export const marketingQuery = z.discriminatedUnion("source", [
 	posthogInsightQuery,
 	adobePluginQuery,
 	productPagesQuery,
+	apiAdoptionQuery,
 ]);
 
 export type MarketingQuery = z.infer<typeof marketingQuery>;

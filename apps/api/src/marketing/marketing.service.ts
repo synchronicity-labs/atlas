@@ -87,6 +87,15 @@ export function groupMarketingQuestionsBySource<
 	return groups;
 }
 
+export function requiresProductUserEligibility(
+	query: ReturnType<typeof marketingQuery.parse>,
+): boolean {
+	return (
+		query.source === "posthog" &&
+		query.personPolicy === "exclude_banned_product_users"
+	);
+}
+
 function sourceVerificationChecks(
 	sourceExternalId: string | null,
 	query: ReturnType<typeof marketingQuery.parse>,
@@ -190,6 +199,9 @@ export class MarketingService {
 
 	async preview(queryText: string): Promise<MarketingResult> {
 		const query = this.parse(queryText);
+		if (!requiresProductUserEligibility(query)) {
+			return this.execute(new MarketingClient(marketingConfig()), query);
+		}
 		const eligibility = await this.productUserEligibility();
 		return this.execute(
 			new MarketingClient(marketingConfig()),
@@ -254,7 +266,6 @@ export class MarketingService {
 		const questionsBySource = groupMarketingQuestionsBySource(questions);
 		const period = month();
 		const client = new MarketingClient(marketingConfig());
-		const eligibility = await this.productUserEligibility();
 		let cardsProcessed = 0;
 		let snapshotsCreated = 0;
 		const errors: Array<{ number: number; message: string }> = [];
@@ -294,12 +305,17 @@ export class MarketingService {
 				}
 				try {
 					const parsedQuery = this.parse(version.queryText);
-					const appliesCleanUserPolicy =
-						parsedQuery.source === "posthog" &&
-						parsedQuery.personPolicy === "exclude_banned_product_users";
+					const eligibility = requiresProductUserEligibility(parsedQuery)
+						? await this.productUserEligibility()
+						: null;
 					const result = await this.execute(
 						client,
-						this.withProductUserEligibility(parsedQuery, eligibility.predicate),
+						eligibility
+							? this.withProductUserEligibility(
+									parsedQuery,
+									eligibility.predicate,
+								)
+							: parsedQuery,
 					);
 					const verificationChecks = sourceVerificationChecks(
 						question.sourceExternalId,
@@ -335,19 +351,21 @@ export class MarketingService {
 						result,
 						syncRunId: run.id,
 						capturedAt,
-						eligibility: {
-							applied: appliesCleanUserPolicy,
-							capturedAt: eligibility.capturedAt,
-							contentHash: eligibility.contentHash,
-							excludedUsers: eligibility.excludedExternalIds.length,
-							excludedOrganizations: 0,
-							excludedCustomers: 0,
-							complete: eligibility.complete,
-							sourceRows: eligibility.sourceRows,
-							returnedRows: eligibility.returnedRows,
-							scope: eligibility.scope,
-							policy: eligibility.policy,
-						},
+						eligibility: eligibility
+							? {
+									applied: true,
+									capturedAt: eligibility.capturedAt,
+									contentHash: eligibility.contentHash,
+									excludedUsers: eligibility.excludedExternalIds.length,
+									excludedOrganizations: 0,
+									excludedCustomers: 0,
+									complete: eligibility.complete,
+									sourceRows: eligibility.sourceRows,
+									returnedRows: eligibility.returnedRows,
+									scope: eligibility.scope,
+									policy: eligibility.policy,
+								}
+							: undefined,
 						verificationChecks,
 					});
 					await this.db.question.update({

@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
 	groupMarketingQuestionsBySource,
 	marketingAttemptVerificationRows,
+	requiresProductUserEligibility,
 } from "./marketing.service";
 
 describe("marketing metric attempts", () => {
@@ -46,5 +47,29 @@ describe("marketing source runs", () => {
 		expect(() =>
 			groupMarketingQuestionsBySource([{ number: 7014, sourceId: null }]),
 		).toThrow("Q7014 has no configured Atlas source");
+	});
+
+	test("does not gate independent composite sources on product eligibility", () => {
+		expect(
+			requiresProductUserEligibility({
+				source: "model_feedback",
+				report: "weekly-coverage",
+				version: 1,
+			}),
+		).toBe(false);
+		expect(
+			requiresProductUserEligibility({
+				source: "posthog",
+				personPolicy: "all_events",
+				query: "select 1",
+			}),
+		).toBe(false);
+		expect(
+			requiresProductUserEligibility({
+				source: "posthog",
+				personPolicy: "exclude_banned_product_users",
+				query: "select 1",
+			}),
+		).toBe(true);
 	});
 });

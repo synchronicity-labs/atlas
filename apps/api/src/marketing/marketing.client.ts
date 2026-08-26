@@ -94,9 +94,9 @@ export class MarketingClient {
 		if (query.source === "ga4") return this.ga4(query);
 		if (query.source === "search_console") return this.searchConsole(query);
 		if (query.source === "posthog_insight") return this.posthogInsight(query);
-		if (query.source === "adobe_plugin") {
+		if (query.source === "adobe_plugin" || query.source === "product_pages") {
 			throw new Error(
-				"Adobe plugin reports require the composite source adapter.",
+				"Composite reports require the configured source adapter.",
 			);
 		}
 		return this.posthog(query.query);
@@ -106,13 +106,27 @@ export class MarketingClient {
 		return this.posthogNative(query);
 	}
 
+	async ga4Range(
+		query: Extract<MarketingQuery, { source: "ga4" }>,
+		start: Date,
+		end: Date,
+	): Promise<MarketingResult> {
+		const inclusiveEnd = new Date(end);
+		inclusiveEnd.setUTCDate(inclusiveEnd.getUTCDate() - 1);
+		return this.ga4(query, {
+			startDate: isoDate(start),
+			endDate: isoDate(inclusiveEnd),
+		});
+	}
+
 	private async ga4(
 		query: Extract<MarketingQuery, { source: "ga4" }>,
+		range?: { startDate: string; endDate: string },
 	): Promise<MarketingResult> {
 		const token = await this.google.accessToken([
 			"https://www.googleapis.com/auth/analytics.readonly",
 		]);
-		const dateRanges = [dates(query.dateRange)];
+		const dateRanges = [range ?? dates(query.dateRange)];
 		const reports = await Promise.all(
 			query.properties.map(async (key) => {
 				const property = this.config.ga4[key];
@@ -129,6 +143,19 @@ export class MarketingClient {
 							dateRanges,
 							dimensions: query.dimensions.map((name) => ({ name })),
 							metrics: query.metrics.map((name) => ({ name })),
+							...(query.dimensionFilter
+								? {
+										dimensionFilter: {
+											filter: {
+												fieldName: query.dimensionFilter.fieldName,
+												inListFilter: {
+													values: query.dimensionFilter.values,
+													caseSensitive: query.dimensionFilter.caseSensitive,
+												},
+											},
+										},
+									}
+								: {}),
 							limit: String(query.limit),
 						}),
 					},

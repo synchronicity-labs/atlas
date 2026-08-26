@@ -1340,6 +1340,94 @@ export const PRODUCT_METRIC_SPECS: ProductMetricSpec[] = [
 		cadenceMinutes: 8 * 60,
 	},
 	{
+		questionNumber: 7005,
+		sourceExternalId: "cron:product-pages:weekly-funnel",
+		key: "marketing.product_pages_weekly_funnel",
+		name: "Product-page acquisition and paid conversion",
+		description:
+			"Complete UTC-week traffic and first-touch signup-to-paid conversion for the approved Sync product-page registry.",
+		grain: FactGrain.WEEK,
+		source: {
+			key: "atlas:product-pages-composite",
+			kind: DataSourceKind.ATLAS,
+			label: "GA4 product pages, product signups, and paid subscriptions",
+		},
+		eventTimeField: "period_start",
+		businessDefinition: {
+			entity: "product_page_week",
+			population:
+				"approved /product page registry, clean product signups, and positive paid subscription invoices",
+			periodAssignment: "complete Monday-Sunday UTC week",
+			traffic:
+				"GA4 Blog property exact page-path aggregate across canonical and trailing-slash paths",
+			firstTouch:
+				"the earliest recognized product-page claim per organization in the reporting week",
+			signups:
+				"all clean user signups with a recognized product-page attribution slug",
+			paidOrganizations:
+				"first-touch organizations with at least one positive paid subscription invoice in the same week",
+			paidConversion:
+				"paid organizations divided by first-touch attributed organizations; this is not sessions-to-paid conversion",
+			attributionCoverage:
+				"recognized product-page signup claims divided by all product-page signup claims",
+		},
+		computation: {
+			aggregate: "weekly_page_traffic_and_first_touch_paid_conversion",
+			outputs: [
+				"users",
+				"sessions",
+				"engagement_rate_pct",
+				"signups",
+				"attributed_organizations",
+				"paid_organizations",
+				"subscriptions",
+				"paid_conversion_pct",
+				"attribution_coverage_pct",
+			],
+		},
+		requiresCrossSourceEligibility: false,
+		pendingChecks: [
+			{
+				name: "page_registry_review",
+				reason:
+					"The report must contain every approved product page exactly once.",
+			},
+			{
+				name: "page_population",
+				reason:
+					"Every registered page must contain valid non-negative traffic and conversion values.",
+			},
+			{
+				name: "first_touch_coverage",
+				reason:
+					"Recognized product-page claims must reconcile to all product-page claims and clean signups.",
+			},
+			{
+				name: "subscription_parity",
+				reason:
+					"Paid organizations, subscriptions, and paid conversion rates must reconcile.",
+			},
+			{
+				name: "first_touch_identity",
+				reason:
+					"Each organization must be assigned to at most one first-touch product page.",
+			},
+			{
+				name: "sensitive_detail_boundary",
+				reason:
+					"The governed result must exclude person and organization identifiers.",
+			},
+			{
+				name: "oldest_complete_watermark",
+				reason:
+					"Every row must use the same complete UTC data-through boundary.",
+			},
+		],
+		ownerTeam: "Marketing",
+		createdBy: "atlas-product-pages-registry",
+		cadenceMinutes: 8 * 60,
+	},
+	{
 		questionNumber: 7002,
 		sourceExternalId: "cron:studio:period-kpis",
 		key: "product.studio_weekly_delivery_logo_movement",

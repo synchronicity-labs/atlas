@@ -142,6 +142,33 @@ describe("product feedback metric registry", () => {
 		);
 	});
 
+	test("registers the governed product-page funnel contract", () => {
+		const productPages = PRODUCT_METRIC_SPECS.find(
+			(spec) => spec.questionNumber === 7005,
+		);
+
+		expect(productPages?.sourceExternalId).toBe(
+			"cron:product-pages:weekly-funnel",
+		);
+		expect(productPages?.businessDefinition).toMatchObject({
+			entity: "product_page_week",
+			periodAssignment: "complete Monday-Sunday UTC week",
+		});
+		expect(productPages?.requiresCrossSourceEligibility).toBe(false);
+		expect(productPages?.pendingChecks?.map((check) => check.name)).toEqual([
+			"page_registry_review",
+			"page_population",
+			"first_touch_coverage",
+			"subscription_parity",
+			"first_touch_identity",
+			"sensitive_detail_boundary",
+			"oldest_complete_watermark",
+		]);
+		expect(
+			preferredAtlasQuestionNumber("cron:product-pages:weekly-funnel"),
+		).toBe(7005);
+	});
+
 	test("registers the governed Lipsync-attributed product funnel", () => {
 		const lipsync = PRODUCT_METRIC_SPECS.find(
 			(spec) => spec.questionNumber === 7004,

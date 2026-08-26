@@ -18,6 +18,13 @@ export const ga4Query = z.object({
 	metrics: z.array(z.string().trim().min(1)).min(1).max(8),
 	merge: z.enum(["sum", "series", "rows"]),
 	limit: z.number().int().min(1).max(10_000).default(1_000),
+	dimensionFilter: z
+		.object({
+			fieldName: z.string().trim().min(1),
+			values: z.array(z.string()).min(1).max(100),
+			caseSensitive: z.boolean().default(true),
+		})
+		.optional(),
 });
 
 export const searchConsoleQuery = z.object({
@@ -83,12 +90,19 @@ export const adobePluginQuery = z.object({
 	version: z.literal(1),
 });
 
+export const productPagesQuery = z.object({
+	source: z.literal("product_pages"),
+	report: z.literal("weekly-funnel"),
+	version: z.literal(1),
+});
+
 export const marketingQuery = z.discriminatedUnion("source", [
 	ga4Query,
 	searchConsoleQuery,
 	posthogQuery,
 	posthogInsightQuery,
 	adobePluginQuery,
+	productPagesQuery,
 ]);
 
 export type MarketingQuery = z.infer<typeof marketingQuery>;

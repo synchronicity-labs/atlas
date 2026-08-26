@@ -197,6 +197,52 @@ describe("contract reconciliation", () => {
 		expect(findings[0]?.kind).toBe("NO_STRIPE_ACCOUNT");
 	});
 
+	it("does not compare a contract commitment with the Stripe base license", () => {
+		const baseline = contractCommercialBaseline([
+			document({
+				documentType: "ORDER_FORM",
+				effectiveDate: "2026-01-01",
+				serviceEndDate: "2027-01-01",
+				currency: "USD",
+				annualCommitmentAmountMinor: 1_200_000,
+			}),
+		]);
+		const findings = commercialFindingDrafts({
+			customerId: "customer_1",
+			customerName: "Customer",
+			productOrganizationId: "product_1",
+			productOrganizationExternalId: "org_1",
+			productOrganizationName: "Customer",
+			baseline,
+			framePrices: [],
+			activity: {
+				organizationId: "org_1",
+				stripeCustomerId: "cus_1",
+				stripeSubscriptionId: "sub_1",
+				subscription: {
+					organization_id: "org_1",
+					customer_id: "cus_1",
+					subscription_id: "sub_1",
+					subscription_status: "active",
+					plan: "enterprise",
+					monthly_licensed_usd: 5,
+					subscription_observed_at: "2026-08-01T00:00:00Z",
+				},
+				invoices: null,
+				usage: {
+					organization_id: "org_1",
+					last_usage_at: "2026-08-01T00:00:00Z",
+					usage_30d_usd: 1_000,
+					usage_365d_usd: 10_000,
+					current_cost_per_frame_millicents: null,
+					recent_costs_per_frame_millicents: [],
+				},
+			},
+		});
+
+		expect(findings).toEqual([]);
+	});
+
 	it("flags old unpaid invoices with no recent usage as critical", () => {
 		const findings = commercialFindingDrafts({
 			customerId: "customer_1",

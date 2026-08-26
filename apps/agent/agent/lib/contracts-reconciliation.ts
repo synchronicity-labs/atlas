@@ -564,47 +564,6 @@ export function commercialFindingDrafts(input: {
 				},
 			});
 		}
-		const licensed = input.activity.subscription?.monthly_licensed_usd ?? 0;
-		if (licensed > 0 && materiallyDifferent(monthlyUsd, licensed)) {
-			const evidence = {
-				...commonEvidence,
-				baseline: input.baseline,
-				observedMonthlyLicensedUsd: licensed,
-				subscriptionStatus:
-					input.activity.subscription?.subscription_status ?? null,
-				subscriptionPlan: input.activity.subscription?.plan ?? null,
-				subscriptionObservedAt:
-					input.activity.subscription?.subscription_observed_at ?? null,
-			};
-			drafts.push({
-				findingKey: `${input.customerId}:${input.productOrganizationExternalId}:commitment-price-mismatch`,
-				contractCustomerId: input.customerId,
-				productOrganizationId: input.productOrganizationId,
-				kind: ContractFindingKind.PRICE_MISMATCH,
-				severity: ContractFindingSeverity.WARNING,
-				title: `${input.customerName} contract and Stripe monthly prices differ`,
-				summary: `The contract monthlyizes to $${monthlyUsd.toFixed(2)}. The live licensed Stripe item monthlyizes to $${licensed.toFixed(2)}.`,
-				evidence,
-			});
-			if (
-				observedAfterDocument(
-					input.activity.subscription?.subscription_observed_at ?? null,
-					input.baseline.documentDate,
-				)
-			) {
-				drafts.push({
-					findingKey: `${input.customerId}:${input.productOrganizationExternalId}:possible-missing-commitment-addendum`,
-					contractCustomerId: input.customerId,
-					productOrganizationId: input.productOrganizationId,
-					kind: ContractFindingKind.POSSIBLE_MISSING_ADDENDUM,
-					severity: ContractFindingSeverity.CRITICAL,
-					title: `${input.customerName} may have an unfiled price addendum`,
-					summary:
-						"The live Stripe licensed price began after the latest matching contract price and the values differ.",
-					evidence,
-				});
-			}
-		}
 	}
 
 	const invoices = input.activity.invoices;

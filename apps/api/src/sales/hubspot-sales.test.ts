@@ -3,9 +3,23 @@ import {
 	buildActivePilotSummary,
 	buildEnterpriseBookings,
 	buildStudioBookings,
+	resolvePilotCompany,
 } from "@crm/db/hubspot-sales";
 
 describe("HubSpot active pilot summary", () => {
+	test("refuses arbitrary company selection when a deal has multiple domains", () => {
+		const companies = new Map([
+			["agency", { name: "Agency", domain: "agency.example" }],
+			["customer", { name: "Customer", domain: "customer.example" }],
+		]);
+
+		expect(resolvePilotCompany(["agency", "customer"], companies)).toBeNull();
+		expect(resolvePilotCompany(["customer"], companies)).toEqual({
+			name: "Customer",
+			domain: "customer.example",
+		});
+	});
+
 	test("reconciles the current registry and weekly entries and exits", () => {
 		const result = buildActivePilotSummary({
 			now: new Date("2026-08-26T12:00:00.000Z"),

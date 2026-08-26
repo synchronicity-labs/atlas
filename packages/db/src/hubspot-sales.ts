@@ -273,6 +273,8 @@ export type ActivePilotRegistry = {
 	entries: ActivePilotRegistryEntry[];
 };
 
+type PilotCompany = { name: string; domain: string | null };
+
 const APPROVED_PILOT_STAGES = new Set([
 	"989457121:1512749755",
 	"1984250589:3147790024",
@@ -367,6 +369,38 @@ function approvedPilotStage(
 	return APPROVED_PILOT_STAGES.has(`${deal.pipelineId}:${deal.stageId}`);
 }
 
+export function resolvePilotCompany(
+	companyIds: string[],
+	companies: Map<string, PilotCompany>,
+): PilotCompany | null {
+	const associated = [
+		...new Map(
+			companyIds.flatMap((id) => {
+				const company = companies.get(id);
+				return company ? [[id, company] as const] : [];
+			}),
+		).values(),
+	];
+	const domains = [
+		...new Set(
+			associated.flatMap((company) =>
+				company.domain?.trim().toLowerCase()
+					? [company.domain.trim().toLowerCase()]
+					: [],
+			),
+		),
+	];
+	if (domains.length > 1) return null;
+	if (domains.length === 1) {
+		return (
+			associated.find(
+				(company) => company.domain?.trim().toLowerCase() === domains[0],
+			) ?? null
+		);
+	}
+	return associated.length === 1 ? (associated[0] ?? null) : null;
+}
+
 export async function activePilotRegistry(
 	db: Db,
 ): Promise<ActivePilotRegistry> {
@@ -389,7 +423,7 @@ export async function activePilotRegistry(
 		.map((row) => parseDeal(row.payload, row.sourceCreatedAt))
 		.filter(approvedPilotStage);
 	const companyExternalIds = [
-		...new Set(deals.flatMap((deal) => deal.companyIds.slice(0, 1))),
+		...new Set(deals.flatMap((deal) => deal.companyIds)),
 	];
 	const companyRows = await db.sourceRecord.findMany({
 		where: {
@@ -431,7 +465,10 @@ export async function activePilotRegistry(
 		dataThrough: source.lastSyncAt ?? new Date(0),
 		entries: deals
 			.map((deal) => {
-				const company = companyByExternalId.get(deal.companyIds[0] ?? "");
+				const company = resolvePilotCompany(
+					deal.companyIds,
+					companyByExternalId,
+				);
 				const pilotStartedAt = [...deal.stageHistory]
 					.filter((entry) => entry.stageId === deal.stageId)
 					.sort(

@@ -55,15 +55,37 @@ describe("Adobe plugin weekly report", () => {
 		);
 		expect(check?.status).toBe("FAILED");
 	});
+
+	test("accepts a valid negative NPS score", async () => {
+		const result = await report(metabasePreviewNegative);
+		const checks = adobePluginVerificationChecks(result, query);
+
+		expect(checks.every((check) => check.status === "PASSED")).toBe(true);
+		expect(
+			records(result).find((row) => row.metric === "nps_score")?.value,
+		).toBe(-30);
+	});
 });
 
-async function report() {
+async function report(preview: typeof metabasePreview = metabasePreview) {
 	return adobePluginWeeklyReport({
 		query,
 		now: new Date("2026-08-26T12:00:00.000Z"),
 		nativeInsight,
-		metabase: { preview: metabasePreview } as unknown as MetabaseClient,
+		metabase: { preview } as unknown as MetabaseClient,
 	});
+}
+
+async function metabasePreviewNegative(input: {
+	queryText: string;
+}): Promise<MetabaseResult> {
+	if (input.queryText.includes("as nps_score")) {
+		return result(
+			["total", "promoters", "passives", "detractors", "nps_score"],
+			[[10, 2, 3, 5, -30]],
+		);
+	}
+	return metabasePreview(input);
 }
 
 async function nativeInsight(queryValue: unknown): Promise<unknown> {

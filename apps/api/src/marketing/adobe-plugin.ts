@@ -310,11 +310,20 @@ export function adobePluginVerificationChecks(
 	const outputComplete = requiredSections.every((section) =>
 		sections.has(section),
 	);
-	const nonNegative = rows.every((row) =>
-		["numerator", "denominator", "value"].every(
+	const populationValid = rows.every((row) => {
+		if (number(row.denominator) < 0) return false;
+		if (row.metric === "nps_score") {
+			return (
+				Number.isFinite(Number(row.numerator)) &&
+				Number.isFinite(Number(row.value)) &&
+				number(row.value) >= -100 &&
+				number(row.value) <= 100
+			);
+		}
+		return ["numerator", "value"].every(
 			(field) => row[field] === null || number(row[field]) >= 0,
-		),
-	);
+		);
+	});
 	const ratesReconcile = rows.every((row) => {
 		if (row.rate_pct === null) return true;
 		return rateMatches(row.rate_pct, row.numerator, row.denominator);
@@ -344,9 +353,26 @@ export function adobePluginVerificationChecks(
 	const npsTotal = number(
 		rows.find((row) => row.metric === "nps_score")?.denominator,
 	);
+	const npsScore = rows.find((row) => row.metric === "nps_score");
+	const npsCategoryRows = rows.filter(
+		(row) => row.metric === "response_category",
+	);
 	const npsCategories = rows
 		.filter((row) => row.metric === "response_category")
 		.reduce((sum, row) => sum + number(row.value), 0);
+	const promoters = number(
+		npsCategoryRows.find((row) => row.dimension === "promoters")?.value,
+	);
+	const detractors = number(
+		npsCategoryRows.find((row) => row.dimension === "detractors")?.value,
+	);
+	const npsScoreReconciles =
+		npsScore !== undefined &&
+		number(npsScore.numerator) === promoters - detractors &&
+		Math.abs(
+			number(npsScore.value) -
+				Math.round(((promoters - detractors) / npsTotal) * 1_000) / 10,
+		) <= 0.05;
 	const npsDistribution = rows
 		.filter((row) => row.section === "nps_distribution")
 		.reduce((sum, row) => sum + number(row.value), 0);
@@ -360,7 +386,7 @@ export function adobePluginVerificationChecks(
 		),
 		check(
 			"report_population",
-			outputComplete && nonNegative,
+			outputComplete && populationValid,
 			"Every required report section must be present with non-negative values.",
 			{ sections: [...sections].sort(), requiredSections },
 		),
@@ -380,9 +406,10 @@ export function adobePluginVerificationChecks(
 			"nps_response_parity",
 			npsTotal > 0 &&
 				npsCategories === npsTotal &&
-				npsDistribution === npsTotal,
+				npsDistribution === npsTotal &&
+				npsScoreReconciles,
 			"NPS categories and score distribution must reconcile to scored responses.",
-			{ npsTotal, npsCategories, npsDistribution },
+			{ npsTotal, npsCategories, npsDistribution, npsScoreReconciles },
 		),
 		check(
 			"sensitive_detail_boundary",

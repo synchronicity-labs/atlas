@@ -10,8 +10,8 @@ import { ConfigService } from "@nestjs/config";
 import { AllowAnonymous } from "@thallesp/nestjs-better-auth";
 import type { EnvironmentVariables } from "../config/env.validation";
 import { validAtlasAuthoringAuthorization } from "./atlas-authoring.auth";
-import { atlasQuestionDraft } from "./atlas-authoring.contracts";
 import { AtlasAuthoringService } from "./atlas-authoring.service";
+import { parseAtlasQuestionDraft } from "./atlas-authoring.validation";
 
 @Controller("internal/atlas/authoring")
 export class AtlasAuthoringController {
@@ -38,6 +38,6 @@ export class AtlasAuthoringController {
 		if (!validAtlasAuthoringAuthorization(this.secret, authorization)) {
 			throw new ForbiddenException();
 		}
-		return this.authoring.createDraft(atlasQuestionDraft.parse(body));
+		return this.authoring.createDraft(parseAtlasQuestionDraft(body));
 	}
 }

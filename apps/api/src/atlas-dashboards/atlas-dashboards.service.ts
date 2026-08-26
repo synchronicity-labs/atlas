@@ -92,7 +92,8 @@ export class AtlasDashboardsService {
 				sourceKeys.has("atlas:marketing") ||
 				sourceKeys.has("atlas:abuse") ||
 				sourceKeys.has("atlas:lipsync") ||
-				sourceKeys.has("atlas:studio-product")
+				sourceKeys.has("atlas:studio-product") ||
+				sourceKeys.has("atlas:api-operations")
 			) {
 				sourceSyncs.push(this.marketing.syncDashboard(number));
 			}

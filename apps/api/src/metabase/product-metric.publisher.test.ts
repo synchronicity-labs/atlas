@@ -171,6 +171,33 @@ describe("product feedback metric registry", () => {
 		).toBe(7005);
 	});
 
+	test("registers the governed public API adoption contract", () => {
+		const apiAdoption = PRODUCT_METRIC_SPECS.find(
+			(spec) => spec.questionNumber === 7008,
+		);
+
+		expect(apiAdoption?.sourceExternalId).toBe(
+			"cron:api-endpoints:adoption-revenue",
+		);
+		expect(apiAdoption?.businessDefinition).toMatchObject({
+			entity: "api_endpoint_week",
+			revenueBasis:
+				"usageCostMillicents or generationCostMillicents divided by 100000; this is accrued usage value, not Stripe cash, invoices, or subscription value",
+		});
+		expect(apiAdoption?.pendingChecks?.map((check) => check.name)).toEqual([
+			"endpoint_registry_review",
+			"api_key_owner_join",
+			"clean_organization_population",
+			"usage_revenue_basis",
+			"source_count_reconciliation",
+			"sensitive_detail_boundary",
+			"oldest_complete_watermark",
+		]);
+		expect(
+			preferredAtlasQuestionNumber("cron:api-endpoints:adoption-revenue"),
+		).toBe(7008);
+	});
+
 	test("registers the governed Lipsync-attributed product funnel", () => {
 		const lipsync = PRODUCT_METRIC_SPECS.find(
 			(spec) => spec.questionNumber === 7004,

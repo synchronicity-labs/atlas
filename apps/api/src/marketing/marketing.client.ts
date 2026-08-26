@@ -94,7 +94,11 @@ export class MarketingClient {
 		if (query.source === "ga4") return this.ga4(query);
 		if (query.source === "search_console") return this.searchConsole(query);
 		if (query.source === "posthog_insight") return this.posthogInsight(query);
-		if (query.source === "adobe_plugin" || query.source === "product_pages") {
+		if (
+			query.source === "adobe_plugin" ||
+			query.source === "product_pages" ||
+			query.source === "api_adoption"
+		) {
 			throw new Error(
 				"Composite reports require the configured source adapter.",
 			);

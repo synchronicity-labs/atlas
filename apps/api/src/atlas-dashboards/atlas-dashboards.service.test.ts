@@ -206,4 +206,44 @@ describe("Atlas dashboard refresh", () => {
 			errors: [],
 		});
 	});
+
+	test("routes API operations through the governed composite reader", async () => {
+		const findUnique = mock().mockResolvedValue({
+			cards: [
+				{
+					question: {
+						id: "api-adoption",
+						number: 240,
+						connector: DataSourceKind.ATLAS,
+						sourceId: "api-operations-source",
+						source: { key: "atlas:api-operations" },
+					},
+				},
+			],
+		});
+		const marketingSync = mock().mockResolvedValue({
+			cardsProcessed: 1,
+			snapshotsCreated: 1,
+			errors: [],
+		});
+		const service = new AtlasDashboardsService(
+			{ dashboard: { findUnique } } as unknown as Db,
+			{ syncDashboard: mock() } as never,
+			{ syncAtlasDashboard: mock() } as never,
+			{ syncDashboard: mock() } as never,
+			{ syncDashboard: marketingSync } as never,
+			{ syncDashboard: mock() } as never,
+			{ syncDashboard: mock() } as never,
+		);
+
+		const result = await service.refresh(1, "native");
+
+		expect(marketingSync).toHaveBeenCalledWith(1);
+		expect(result).toMatchObject({
+			cardsProcessed: 1,
+			snapshotsCreated: 1,
+			completed: true,
+			errors: [],
+		});
+	});
 });

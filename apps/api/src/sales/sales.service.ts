@@ -1,16 +1,24 @@
 import { createHash, randomUUID } from "node:crypto";
 import { type Db, type Prisma, SyncMode, SyncRunStatus } from "@crm/db";
 import {
+	activePilotRegistry,
 	executeHubspotSalesQuery,
 	parseHubspotSalesQuery,
 } from "@crm/db/hubspot-sales";
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { InjectDatabase } from "../database/database.constants";
+import { MetabaseClient } from "../metabase/metabase.client";
+import { metabaseConfig } from "../metabase/metabase.config";
 import { ProductMetricPublisher } from "../metabase/product-metric.publisher";
 import {
 	enterpriseBookingsVerificationChecks,
 	studioBookingsVerificationChecks,
 } from "./bookings-verification";
+import {
+	buildPilotAdoptionQuery,
+	emptyPilotAdoptionResult,
+} from "./pilot-adoption";
+import { pilotAdoptionVerificationChecks } from "./pilot-adoption-verification";
 import { pilotSummaryVerificationChecks } from "./pilot-verification";
 
 const SOURCE_KEY = "hubspot:crm";
@@ -31,13 +39,68 @@ export class SalesService {
 	) {}
 
 	async preview(queryText: string) {
+		return (await this.execute(queryText)).result;
+	}
+
+	private async execute(queryText: string) {
 		let query: unknown;
 		try {
 			query = JSON.parse(queryText);
 		} catch {
 			throw new Error("HubSpot sales questions must contain valid JSON.");
 		}
-		return executeHubspotSalesQuery(this.db, query);
+		const parsedQuery = parseHubspotSalesQuery(query);
+		if (parsedQuery.report === "active-pilot-adoption") {
+			const registry = await activePilotRegistry(this.db);
+			const adoptionQuery = buildPilotAdoptionQuery(registry);
+			let result = emptyPilotAdoptionResult();
+			if (adoptionQuery) {
+				const config = metabaseConfig();
+				if (!config) throw new Error("Metabase is not configured.");
+				const raw = await new MetabaseClient(config).preview({
+					language: "SQL",
+					queryText: adoptionQuery,
+					databaseExternalId: "34",
+				});
+				result = {
+					columns: raw.columns.map((column) => ({
+						name: column.name,
+						displayName: column.displayName ?? column.name,
+						baseType: column.baseType ?? "type/Text",
+					})),
+					rows: raw.rows.map((row) =>
+						row.map((value) =>
+							value === null ||
+							typeof value === "string" ||
+							typeof value === "number"
+								? value
+								: String(value),
+						),
+					),
+				};
+			}
+			return {
+				result,
+				parsedQuery,
+				verificationChecks: pilotAdoptionVerificationChecks({
+					result,
+					query: parsedQuery,
+					queryText: adoptionQuery,
+					registryCount: registry.entries.length,
+					dataThrough: registry.dataThrough,
+				}),
+			};
+		}
+		const result = await executeHubspotSalesQuery(this.db, query);
+		const verificationChecks =
+			parsedQuery.report === "active-pilot-summary"
+				? pilotSummaryVerificationChecks(result, parsedQuery)
+				: parsedQuery.report === "studio-bookings"
+					? studioBookingsVerificationChecks(result, parsedQuery)
+					: parsedQuery.report === "enterprise-bookings"
+						? enterpriseBookingsVerificationChecks(result, parsedQuery)
+						: [];
+		return { result, parsedQuery, verificationChecks };
 	}
 
 	async syncDashboard(number = 4) {
@@ -112,10 +175,8 @@ export class SalesService {
 				continue;
 			}
 			try {
-				const parsedQuery = parseHubspotSalesQuery(
-					JSON.parse(version.queryText),
-				);
-				const result = await this.preview(version.queryText);
+				const execution = await this.execute(version.queryText);
+				const { result, verificationChecks } = execution;
 				const payload = { columns: result.columns, rows: result.rows };
 				const contentHash = hash(payload);
 				const externalId =
@@ -138,14 +199,6 @@ export class SalesService {
 					],
 					skipDuplicates: true,
 				});
-				const verificationChecks =
-					parsedQuery.report === "active-pilot-summary"
-						? pilotSummaryVerificationChecks(result, parsedQuery)
-						: parsedQuery.report === "studio-bookings"
-							? studioBookingsVerificationChecks(result, parsedQuery)
-							: parsedQuery.report === "enterprise-bookings"
-								? enterpriseBookingsVerificationChecks(result, parsedQuery)
-								: [];
 				await this.metricPublisher.publish({
 					question,
 					version,

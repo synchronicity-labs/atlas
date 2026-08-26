@@ -21,6 +21,7 @@ export type HubspotSalesQuery = {
 		| "lead-pipeline-status"
 		| "lead-stage-view"
 		| "active-pilot-summary"
+		| "active-pilot-adoption"
 		| "studio-bookings"
 		| "enterprise-bookings";
 	months: number;
@@ -154,6 +155,7 @@ export function parseHubspotSalesQuery(value: unknown): HubspotSalesQuery {
 		"lead-pipeline-status",
 		"lead-stage-view",
 		"active-pilot-summary",
+		"active-pilot-adoption",
 		"studio-bookings",
 		"enterprise-bookings",
 	]);
@@ -259,6 +261,25 @@ type PilotSummaryPipeline = {
 	stages: Map<string, string | { label: string }>;
 };
 
+export type ActivePilotRegistryEntry = {
+	account: string;
+	domain: string | null;
+	owner: string;
+	pilotStartedAt: Date | null;
+};
+
+export type ActivePilotRegistry = {
+	dataThrough: Date;
+	entries: ActivePilotRegistryEntry[];
+};
+
+type PilotCompany = { name: string; domain: string | null };
+
+const APPROVED_PILOT_STAGES = new Set([
+	"989457121:1512749755",
+	"1984250589:3147790024",
+]);
+
 export function buildActivePilotSummary(input: {
 	now: Date;
 	dataThrough: Date;
@@ -340,6 +361,129 @@ function pilotStage(
 	const value = pipelines.get(deal.pipelineId)?.stages.get(deal.stageId);
 	const label = typeof value === "string" ? value : value?.label;
 	return ["pilot", "pilot/poc"].includes(label?.trim().toLowerCase() ?? "");
+}
+
+function approvedPilotStage(
+	deal: Pick<PilotSummaryDeal, "pipelineId" | "stageId">,
+): boolean {
+	return APPROVED_PILOT_STAGES.has(`${deal.pipelineId}:${deal.stageId}`);
+}
+
+export function resolvePilotCompany(
+	companyIds: string[],
+	companies: Map<string, PilotCompany>,
+): PilotCompany | null {
+	const associated = [
+		...new Map(
+			companyIds.flatMap((id) => {
+				const company = companies.get(id);
+				return company ? [[id, company] as const] : [];
+			}),
+		).values(),
+	];
+	const domains = [
+		...new Set(
+			associated.flatMap((company) =>
+				company.domain?.trim().toLowerCase()
+					? [company.domain.trim().toLowerCase()]
+					: [],
+			),
+		),
+	];
+	if (domains.length > 1) return null;
+	if (domains.length === 1) {
+		return (
+			associated.find(
+				(company) => company.domain?.trim().toLowerCase() === domains[0],
+			) ?? null
+		);
+	}
+	return associated.length === 1 ? (associated[0] ?? null) : null;
+}
+
+export async function activePilotRegistry(
+	db: Db,
+): Promise<ActivePilotRegistry> {
+	const source = await db.dataSource.findUnique({
+		where: { key: "hubspot:crm" },
+		select: { id: true, lastSyncAt: true },
+	});
+	if (!source) throw new Error("HubSpot CRM has not been ingested yet.");
+	const [dealRows, ownerRows] = await Promise.all([
+		db.sourceRecord.findMany({
+			where: { sourceId: source.id, kind: ExternalRecordKind.DEAL },
+			select: { payload: true, sourceCreatedAt: true },
+		}),
+		db.sourceRecord.findMany({
+			where: { sourceId: source.id, kind: ExternalRecordKind.OWNER },
+			select: { externalId: true, payload: true },
+		}),
+	]);
+	const deals = dealRows
+		.map((row) => parseDeal(row.payload, row.sourceCreatedAt))
+		.filter(approvedPilotStage);
+	const companyExternalIds = [
+		...new Set(deals.flatMap((deal) => deal.companyIds)),
+	];
+	const companyRows = await db.sourceRecord.findMany({
+		where: {
+			sourceId: source.id,
+			kind: ExternalRecordKind.COMPANY,
+			externalId: { in: companyExternalIds },
+		},
+		select: { externalId: true, companyId: true },
+	});
+	const linkedCompanies = await db.company.findMany({
+		where: {
+			id: {
+				in: companyRows.flatMap((row) =>
+					row.companyId ? [row.companyId] : [],
+				),
+			},
+		},
+		select: { id: true, name: true, domain: true },
+	});
+	const companyById = new Map(
+		linkedCompanies.map((company) => [company.id, company]),
+	);
+	const companyByExternalId = new Map(
+		companyRows.flatMap((row) => {
+			const company = row.companyId ? companyById.get(row.companyId) : null;
+			return company ? [[row.externalId, company] as const] : [];
+		}),
+	);
+	const owners = new Map(
+		ownerRows.map((row) => {
+			const value = record(row.payload);
+			const name = [stringValue(value.firstName), stringValue(value.lastName)]
+				.filter(Boolean)
+				.join(" ");
+			return [row.externalId, name || "Unassigned"] as const;
+		}),
+	);
+	return {
+		dataThrough: source.lastSyncAt ?? new Date(0),
+		entries: deals
+			.map((deal) => {
+				const company = resolvePilotCompany(
+					deal.companyIds,
+					companyByExternalId,
+				);
+				const pilotStartedAt = [...deal.stageHistory]
+					.filter((entry) => entry.stageId === deal.stageId)
+					.sort(
+						(left, right) =>
+							right.changedAt.getTime() - left.changedAt.getTime(),
+					)[0]?.changedAt;
+				return {
+					account: company?.name || deal.name,
+					domain: company?.domain?.trim().toLowerCase() || null,
+					owner: owners.get(deal.ownerId) ?? "Unassigned",
+					pilotStartedAt: pilotStartedAt ?? deal.createdAt,
+				};
+			})
+			.sort((left, right) => left.account.localeCompare(right.account)),
+	};
 }
 
 type BookingDeal = Pick<

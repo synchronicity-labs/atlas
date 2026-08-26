@@ -55,13 +55,13 @@ export class SalesService {
 			const adoptionQuery = buildPilotAdoptionQuery(registry);
 			let result = emptyPilotAdoptionResult();
 			let eligibility = {
-				applied: true,
+				applied: false,
 				capturedAt: new Date().toISOString(),
 				contentHash: hash({ sourceRows: 0, returnedRows: 0 }),
 				excludedUsers: 0,
 				excludedOrganizations: 0,
 				excludedCustomers: 0,
-				complete: true,
+				complete: false,
 				sourceRows: 0,
 				returnedRows: 0,
 				scope: "ALL_IDENTITIES" as const,
@@ -96,6 +96,7 @@ export class SalesService {
 				};
 				eligibility = {
 					...eligibility,
+					applied: true,
 					capturedAt: new Date().toISOString(),
 					contentHash: hash(evidence),
 					excludedUsers,

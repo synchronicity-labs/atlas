@@ -1391,6 +1391,102 @@ export const PRODUCT_METRIC_SPECS: ProductMetricSpec[] = [
 		createdBy: "atlas-exit-survey-registry",
 	},
 	{
+		questionNumber: 7012,
+		sourceExternalId: "cron:billing-v3:diagnostics",
+		key: "product.billing_v3_experiment_diagnostics",
+		name: "Billing V3 tier, top-up, cancellation, and renewal diagnostics",
+		description:
+			"Current Billing V3 diagnostics by persisted experiment arm and paid tier, with successful V3 top-ups, structured cancellations, renewal maturity, paid renewals, and unpaid invoices.",
+		grain: FactGrain.DAY,
+		source: {
+			key: "atlas:billing-experiment",
+			kind: DataSourceKind.ATLAS,
+			label: "Billing experiment assignment and Stripe outcome adapter",
+		},
+		eventTimeField: "data_through",
+		businessDefinition: {
+			entity: "billing_v3_experiment_arm",
+			assignmentSpine:
+				"one persisted billing_v3_experiment signup assignment per eligible external organization",
+			paidConverter:
+				"first_subscribed_at occurs on or after assignment and no later than data_through",
+			tierAssignment:
+				"paid subscription-create invoice plan when available, otherwise the current organization plan",
+			topups:
+				"successful V3 Stripe top-up payments on or after the organization's paid conversion",
+			cancellations:
+				"first structured Stripe cancellation on or after paid conversion; pending cancel remains separate",
+			renewal:
+				"paid converters are eligible after 30 days and renewed when a paid subscription-cycle invoice exists",
+			failedInvoices:
+				"post-conversion invoices that are not paid and retain a positive amount remaining",
+			privacyPolicy:
+				"structured reason enums are published; raw comments and customer identifiers are excluded",
+		},
+		computation: {
+			aggregate: "experiment_arm_tier_and_outcome_diagnostics",
+			outputs: [
+				"assigned",
+				"paid_converters",
+				"topup_users",
+				"topup_revenue_usd",
+				"repeat_topup_orgs",
+				"canceled",
+				"pending_cancel",
+				"renewal_eligible",
+				"renewed",
+				"failed_invoice_count",
+				"failed_invoice_amount_usd",
+				"cancellation_reason_count",
+			],
+		},
+		requiresCrossSourceEligibility: true,
+		pendingChecks: [
+			{
+				name: "assignment_spine_parity",
+				reason:
+					"The result must contain one v2 control and one v3 treatment summary, with paid converters nested inside assigned organizations.",
+			},
+			{
+				name: "tier_mapping",
+				reason:
+					"Tier rows must exactly reconcile to assigned organizations and paid converters in each experiment arm.",
+			},
+			{
+				name: "topup_and_collection_reconciliation",
+				reason:
+					"Top-ups must be a v3-only subset of paid converters, repeat users must be a subset of top-up users, and collection amounts must be non-negative.",
+			},
+			{
+				name: "cancellation_population",
+				reason:
+					"Canceled and pending-cancel organizations must remain subsets of paid converters.",
+			},
+			{
+				name: "renewal_maturity",
+				reason:
+					"Renewed organizations must remain a subset of the 30-day renewal-eligible paid population.",
+			},
+			{
+				name: "cancellation_reason_coverage",
+				reason:
+					"Structured cancellation-reason rows must reconcile to canceled paid converters in each arm.",
+			},
+			{
+				name: "customer_text_boundary",
+				reason:
+					"The governed result must exclude customer identifiers and raw cancellation comments.",
+			},
+			{
+				name: "oldest_complete_watermark",
+				reason: "All diagnostic rows must use one UTC data-through timestamp.",
+			},
+		],
+		ownerTeam: "Product",
+		createdBy: "atlas-billing-diagnostics-registry",
+		cadenceMinutes: 8 * 60,
+	},
+	{
 		questionNumber: 7013,
 		sourceExternalId: "cron:abuse:operational-detail",
 		key: "security.signup_abuse_ring_detail",

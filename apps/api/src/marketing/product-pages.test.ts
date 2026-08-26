@@ -73,6 +73,25 @@ describe("product pages weekly report", () => {
 			"Product-page first-touch attribution is not unique.",
 		);
 	});
+
+	test("does not credit a subscription that predates the attributed signup", async () => {
+		const metabase = {
+			preview: async (input: { databaseExternalId: string }) =>
+				input.databaseExternalId === "34"
+					? attribution([["org-1"]])
+					: result(
+							["organization_id", "subscription_id", "first_paid_at"],
+							[["org-1", "sub-1", "2026-08-17T00:00:00.000Z"]],
+						),
+		} as unknown as MetabaseClient;
+
+		const report = await build(metabase);
+		const row = records(report).find(
+			(candidate) => candidate.page === "/product/auto-dubbing",
+		);
+		expect(row?.subscriptions).toBe(0);
+		expect(row?.paid_organizations).toBe(0);
+	});
 });
 
 async function build(metabase: MetabaseClient = defaultMetabase()) {
@@ -96,10 +115,11 @@ function defaultMetabase() {
 			input.databaseExternalId === "34"
 				? attribution([["org-1", "org-2"], ["org-3"]])
 				: result(
-						["organization_id", "subscriptions"],
+						["organization_id", "subscription_id", "first_paid_at"],
 						[
-							["org-1", 1],
-							["org-3", 2],
+							["org-1", "sub-1", "2026-08-19T00:00:00.000Z"],
+							["org-3", "sub-2", "2026-08-20T00:00:00.000Z"],
+							["org-3", "sub-3", "2026-08-21T00:00:00.000Z"],
 						],
 					),
 	} as unknown as MetabaseClient;
@@ -112,6 +132,7 @@ function attribution(organizationLists: string[][]) {
 			"signups",
 			"attributed_organizations",
 			"organization_ids",
+			"organization_signup_ats",
 			"all_clean_signups",
 			"claimed_product_page_signups",
 			"recognized_product_page_signups",
@@ -121,6 +142,7 @@ function attribution(organizationLists: string[][]) {
 			index === 0 ? 3 : index === 1 ? 2 : 0,
 			organizationLists[index]?.length ?? 0,
 			organizationLists[index] ?? [],
+			(organizationLists[index] ?? []).map(() => "2026-08-18T00:00:00.000Z"),
 			100,
 			5,
 			5,

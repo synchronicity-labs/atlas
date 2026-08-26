@@ -65,6 +65,7 @@ export async function productPagesWeeklyReport(input: {
 
 	const attributionRows = records(attribution);
 	const organizationsBySlug = new Map<string, string[]>();
+	const organizationSignupAt = new Map<string, Date>();
 	const signupsBySlug = new Map<string, number>();
 	let allCleanSignups = 0;
 	let claimedSignups = 0;
@@ -75,12 +76,25 @@ export async function productPagesWeeklyReport(input: {
 			throw new Error(`Unexpected product-page slug ${slug}.`);
 		}
 		signupsBySlug.set(slug, number(row.signups));
-		organizationsBySlug.set(
-			slug,
-			Array.isArray(row.organization_ids)
-				? row.organization_ids.map(String)
-				: [],
-		);
+		const organizations = Array.isArray(row.organization_ids)
+			? row.organization_ids.map(String)
+			: [];
+		const signupTimes = Array.isArray(row.organization_signup_ats)
+			? row.organization_signup_ats.map((value) => new Date(String(value)))
+			: [];
+		if (
+			organizations.length !== signupTimes.length ||
+			signupTimes.some((value) => !Number.isFinite(value.getTime()))
+		) {
+			throw new Error("Product-page attribution timestamps are invalid.");
+		}
+		organizationsBySlug.set(slug, organizations);
+		for (const [index, organization] of organizations.entries()) {
+			const signupAt = signupTimes[index];
+			if (!signupAt)
+				throw new Error("Product-page attribution timestamps are invalid.");
+			organizationSignupAt.set(organization, signupAt);
+		}
 		allCleanSignups = number(row.all_clean_signups);
 		claimedSignups = number(row.claimed_product_page_signups);
 		recognizedSignups = number(row.recognized_product_page_signups);
@@ -97,6 +111,7 @@ export async function productPagesWeeklyReport(input: {
 	const subscriptions = await subscriptionRows(
 		input.metabase,
 		organizationToSlug,
+		organizationSignupAt,
 		start,
 		end,
 	);
@@ -302,6 +317,7 @@ export function productPagesVerificationChecks(
 async function subscriptionRows(
 	metabase: MetabaseClient,
 	organizationToSlug: Map<string, string>,
+	organizationSignupAt: Map<string, Date>,
 	start: Date,
 	end: Date,
 ) {
@@ -312,17 +328,40 @@ async function subscriptionRows(
 		databaseExternalId: "166",
 		queryText: `select
   organizationId as organization_id,
-  countDistinct(subscriptionId) as subscriptions
+  subscriptionId as subscription_id,
+  min(createdAt) as first_paid_at
 from sync_prod.sync_stripe_subscription_creation_invoices
 where createdAt >= toDateTime('${clickhouseDate(start)}', 'UTC')
   and createdAt < toDateTime('${clickhouseDate(end)}', 'UTC')
   and organizationId in (${organizations})
   and amountPaid > 0
-group by organizationId
-order by organizationId
-limit 10000`,
+group by organizationId, subscriptionId
+order by organizationId, subscriptionId
+limit 10001`,
 	});
-	return records(result);
+	const rows = records(result);
+	if (rows.length > 10000)
+		throw new Error(
+			"Product-page subscription result exceeded its safe limit.",
+		);
+	const counts = new Map<string, number>();
+	for (const row of rows) {
+		const organization = String(row.organization_id);
+		const signupAt = organizationSignupAt.get(organization);
+		const firstPaidAt = new Date(String(row.first_paid_at));
+		if (!signupAt)
+			throw new Error(
+				"Subscription attribution returned an unknown organization.",
+			);
+		if (!Number.isFinite(firstPaidAt.getTime()))
+			throw new Error("Subscription attribution timestamp is invalid.");
+		if (firstPaidAt < signupAt) continue;
+		counts.set(organization, (counts.get(organization) ?? 0) + 1);
+	}
+	return [...counts].map(([organization, subscriptions]) => ({
+		organization_id: organization,
+		subscriptions,
+	}));
 }
 
 function attributionSql(start: Date, end: Date) {
@@ -361,7 +400,8 @@ function attributionSql(start: Date, end: Date) {
 ), first_organization_touch as (
   select distinct on (organization_id)
     organization_id,
-    slug
+    slug,
+    created_at as signup_at
   from recognized
   where organization_id is not null
   order by organization_id, created_at, id
@@ -373,7 +413,8 @@ function attributionSql(start: Date, end: Date) {
   select
     slug,
     count(*)::int as attributed_organizations,
-    array_agg(organization_id order by organization_id) as organization_ids
+    array_agg(organization_id order by organization_id) as organization_ids,
+    array_agg(signup_at order by organization_id) as organization_signup_ats
   from first_organization_touch
   group by slug
 ), totals as (
@@ -387,6 +428,7 @@ select
   coalesce(signup_counts.signups, 0)::int as signups,
   coalesce(organization_counts.attributed_organizations, 0)::int as attributed_organizations,
   coalesce(organization_counts.organization_ids, array[]::text[]) as organization_ids,
+  coalesce(organization_counts.organization_signup_ats, array[]::timestamptz[]) as organization_signup_ats,
   totals.all_clean_signups,
   totals.claimed_product_page_signups,
   totals.recognized_product_page_signups

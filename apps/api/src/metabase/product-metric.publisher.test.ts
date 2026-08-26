@@ -198,6 +198,32 @@ describe("product feedback metric registry", () => {
 		).toBe(7008);
 	});
 
+	test("registers the governed public API reliability contract", () => {
+		const apiReliability = PRODUCT_METRIC_SPECS.find(
+			(spec) => spec.questionNumber === 7009,
+		);
+
+		expect(apiReliability?.sourceExternalId).toBe(
+			"cron:api-endpoints:reliability",
+		);
+		expect(apiReliability?.businessDefinition).toMatchObject({
+			entity: "api_endpoint_traffic_scope_week",
+			errorDefinition:
+				"4xx client, documentation, or authentication errors remain separate from 5xx application errors",
+		});
+		expect(apiReliability?.pendingChecks?.map((check) => check.name)).toEqual([
+			"betterstack_adapter",
+			"endpoint_registry_review",
+			"bot_and_healthcheck_exclusion",
+			"error_taxonomy_review",
+			"latency_population_review",
+			"oldest_complete_watermark",
+		]);
+		expect(preferredAtlasQuestionNumber("cron:api-endpoints:reliability")).toBe(
+			7009,
+		);
+	});
+
 	test("registers the governed Lipsync-attributed product funnel", () => {
 		const lipsync = PRODUCT_METRIC_SPECS.find(
 			(spec) => spec.questionNumber === 7004,

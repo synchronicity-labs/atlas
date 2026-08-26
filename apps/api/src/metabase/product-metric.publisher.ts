@@ -1510,6 +1510,84 @@ export const PRODUCT_METRIC_SPECS: ProductMetricSpec[] = [
 		cadenceMinutes: 8 * 60,
 	},
 	{
+		questionNumber: 7009,
+		sourceExternalId: "cron:api-endpoints:reliability",
+		key: "product.api_endpoint_weekly_reliability",
+		name: "Public API endpoint reliability",
+		description:
+			"Two complete UTC weeks of production API requests, latency, and classified 4xx and 5xx errors for the approved public API endpoint registry.",
+		grain: FactGrain.WEEK,
+		source: {
+			key: "atlas:betterstack-api-reliability",
+			kind: DataSourceKind.ATLAS,
+			label: "BetterStack [Prod] Sync API V2 response logs",
+		},
+		eventTimeField: "week_start",
+		businessDefinition: {
+			entity: "api_endpoint_traffic_scope_week",
+			population:
+				"finished production requests for the approved public API endpoint registry, excluding health checks, active-job SSE, and recognized bot user agents",
+			periodAssignment: "request log dt in complete Monday-Sunday UTC weeks",
+			trafficScopes:
+				"all eligible request traffic and the subset with a non-empty API key identifier",
+			errorDefinition:
+				"4xx client, documentation, or authentication errors remain separate from 5xx application errors",
+			latencyDefinition:
+				"p50 and p95 durationMs across finished requests with a positive recorded duration",
+			failureBuckets:
+				"CRAFT-4763 asset patch, project-not-found, asset auth or abuse, TTS or voice, invalid asset generation, and CORS server-error classes",
+		},
+		computation: {
+			aggregate: "weekly_api_endpoint_reliability_by_traffic_scope",
+			outputs: [
+				"requests",
+				"errors",
+				"client_errors",
+				"server_errors",
+				"error_rate_pct",
+				"p50_latency_ms",
+				"p95_latency_ms",
+				"top_error_class",
+			],
+		},
+		requiresCrossSourceEligibility: false,
+		pendingChecks: [
+			{
+				name: "betterstack_adapter",
+				reason:
+					"The reader must resolve the exact production Sync API V2 source and use its read-only EU S3 log table.",
+			},
+			{
+				name: "endpoint_registry_review",
+				reason:
+					"Both weeks must contain every approved endpoint group for all traffic and API-key traffic.",
+			},
+			{
+				name: "bot_and_healthcheck_exclusion",
+				reason:
+					"Health checks, active-job SSE, and recognized bot user agents must be excluded.",
+			},
+			{
+				name: "error_taxonomy_review",
+				reason:
+					"Errors must reconcile to separate 4xx, 5xx, and CRAFT-4763 classes.",
+			},
+			{
+				name: "latency_population_review",
+				reason:
+					"Latency percentiles must use finished requests with positive duration and remain ordered.",
+			},
+			{
+				name: "oldest_complete_watermark",
+				reason:
+					"The log source must cover both complete weeks through one UTC data-through boundary.",
+			},
+		],
+		ownerTeam: "Engineering",
+		createdBy: "atlas-api-reliability-registry",
+		cadenceMinutes: 8 * 60,
+	},
+	{
 		questionNumber: 7002,
 		sourceExternalId: "cron:studio:period-kpis",
 		key: "product.studio_weekly_delivery_logo_movement",

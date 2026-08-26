@@ -117,6 +117,31 @@ describe("product feedback metric registry", () => {
 		).toBe(7007);
 	});
 
+	test("registers the governed Adobe plugin report contract", () => {
+		const adobe = PRODUCT_METRIC_SPECS.find(
+			(spec) => spec.questionNumber === 7003,
+		);
+
+		expect(adobe?.sourceExternalId).toBe("cron:adobe-plugin:weekly-kpis");
+		expect(adobe?.businessDefinition).toMatchObject({
+			entity: "adobe_plugin_weekly_report",
+			periodAssignment: "complete Monday-Sunday UTC weeks",
+		});
+		expect(adobe?.requiresCrossSourceEligibility).toBe(false);
+		expect(adobe?.pendingChecks?.map((check) => check.name)).toEqual([
+			"event_definition_review",
+			"report_population",
+			"metric_reconciliation",
+			"cohort_maturity",
+			"nps_response_parity",
+			"sensitive_detail_boundary",
+			"oldest_complete_watermark",
+		]);
+		expect(preferredAtlasQuestionNumber("cron:adobe-plugin:weekly-kpis")).toBe(
+			7003,
+		);
+	});
+
 	test("registers the governed Lipsync-attributed product funnel", () => {
 		const lipsync = PRODUCT_METRIC_SPECS.find(
 			(spec) => spec.questionNumber === 7004,

@@ -94,7 +94,16 @@ export class MarketingClient {
 		if (query.source === "ga4") return this.ga4(query);
 		if (query.source === "search_console") return this.searchConsole(query);
 		if (query.source === "posthog_insight") return this.posthogInsight(query);
+		if (query.source === "adobe_plugin") {
+			throw new Error(
+				"Adobe plugin reports require the composite source adapter.",
+			);
+		}
 		return this.posthog(query.query);
+	}
+
+	async nativeInsight(query: unknown): Promise<unknown> {
+		return this.posthogNative(query);
 	}
 
 	private async ga4(

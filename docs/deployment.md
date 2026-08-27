@@ -25,6 +25,18 @@ The API builds its KPI schedules in `apps/api/scripts/build-func.mjs`. The inges
 
 The Modal cost collector on Rudy is a separate host-side integration. Vercel deployments do not update that collector. Changes to its host scripts or timer still require an explicit deployment to Rudy; the resulting snapshots are imported by Atlas.
 
+## Source snapshots and verified answers
+
+The raw Metabase dashboard sync stores source metadata and result snapshots for comparison. It does not publish that result under an Atlas query version or change the question's last-check time. The raw source query may not contain Atlas's current filters.
+
+The native Atlas sync executes the saved Atlas query, applies its required filters, and records the result with its verification checks. Only this checked path can publish a governed answer. Both paths are retry-safe, but they must not replace each other's evidence.
+
+## Clean database and preview builds
+
+CI replays the full migration history on an empty, disposable Postgres database. Two prerequisite migrations create the fixed catalog records that older data migrations require. They use conflict-safe inserts and leave existing records unchanged on the shared database.
+
+Prisma client generation does not need a database connection. Its configuration allows a missing connection URL during dependency installation in a secretless preview build. Migration and runtime commands still require the intended database URL. Do not copy production secrets into preview environments just to generate types.
+
 ## Retry and rollback
 
 Use the existing project's Vercel deployment page to redeploy the selected Git commit. Do not create a new project or change the public aliases. For an urgent rollback, promote the last known good production deployment for the affected service, then check health and compatibility with the still-deployed database schema. Additive migrations stay in place. Do not roll back shared data or edit saved metric snapshots.

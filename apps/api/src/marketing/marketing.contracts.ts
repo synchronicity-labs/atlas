@@ -96,6 +96,12 @@ export const productPagesQuery = z.object({
 	version: z.literal(1),
 });
 
+export const lipsyncTrafficQuery = z.object({
+	source: z.literal("lipsync_traffic"),
+	report: z.literal("weekly-acquisition"),
+	version: z.literal(1),
+});
+
 export const apiAdoptionQuery = z.object({
 	source: z.literal("api_adoption"),
 	report: z.literal("weekly-adoption"),
@@ -127,6 +133,7 @@ export const marketingQuery = z.discriminatedUnion("source", [
 	posthogInsightQuery,
 	adobePluginQuery,
 	productPagesQuery,
+	lipsyncTrafficQuery,
 	apiAdoptionQuery,
 	apiReliabilityQuery,
 	modelFeedbackQuery,

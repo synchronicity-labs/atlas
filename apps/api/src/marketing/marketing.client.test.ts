@@ -1,5 +1,6 @@
-import { afterEach, describe, expect, mock, test } from "bun:test";
+import { afterEach, describe, expect, mock, spyOn, test } from "bun:test";
 import { FactGrain } from "@crm/db";
+import { GoogleServiceAccountClient } from "@crm/db/google-service-account";
 import { inferMetricWindow } from "../metabase/product-metric.publisher";
 import { MarketingClient } from "./marketing.client";
 import type { MarketingConfig } from "./marketing.config";
@@ -19,6 +20,95 @@ const originalFetch = globalThis.fetch;
 
 afterEach(() => {
 	globalThis.fetch = originalFetch;
+	mock.restore();
+});
+
+describe("MarketingClient scoped Google weeks", () => {
+	test("preserves the GA4 property time zone and half-open date range", async () => {
+		spyOn(
+			GoogleServiceAccountClient.prototype,
+			"accessToken",
+		).mockResolvedValue("test-only");
+		const fetchMock = mock().mockResolvedValue(
+			new Response(
+				JSON.stringify({
+					metadata: { timeZone: "America/Los_Angeles" },
+					rows: [{ metricValues: [{ value: "42" }] }],
+				}),
+			),
+		);
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+		const result = await new MarketingClient({
+			...config,
+			ga4: { lipsync: { id: "525331485", label: "lipsync.com" } },
+		}).ga4Range(
+			{
+				source: "ga4",
+				properties: ["lipsync"],
+				dateRange: "30_days",
+				dimensions: [],
+				metrics: ["sessions"],
+				merge: "rows",
+				limit: 1,
+			},
+			new Date("2026-08-17T00:00:00Z"),
+			new Date("2026-08-24T00:00:00Z"),
+		);
+		expect(result.sourceTimeZone).toBe("America/Los_Angeles");
+		expect(result.rows).toEqual([["lipsync.com", 42]]);
+		const [url, init] = fetchMock.mock.calls[0] as unknown as [
+			string,
+			RequestInit,
+		];
+		expect(url).toContain("properties/525331485:runReport");
+		expect(JSON.parse(String(init.body)).dateRanges).toEqual([
+			{ startDate: "2026-08-17", endDate: "2026-08-23" },
+		]);
+	});
+	test("requests finalized ungrouped Search Console totals for the exact week", async () => {
+		spyOn(
+			GoogleServiceAccountClient.prototype,
+			"accessToken",
+		).mockResolvedValue("test-only");
+		const fetchMock = mock().mockResolvedValue(
+			new Response(
+				JSON.stringify({
+					rows: [
+						{ keys: [], clicks: 10, impressions: 100, ctr: 0.1, position: 3 },
+					],
+				}),
+			),
+		);
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+		const result = await new MarketingClient({
+			...config,
+			searchConsole: { lipsync: "sc-domain:lipsync.com" },
+		}).searchConsoleRange(
+			{
+				source: "search_console",
+				site: "lipsync",
+				dateRange: "30_days",
+				dimensions: [],
+				aggregate: "none",
+				metrics: ["clicks", "impressions", "ctr_pct", "position"],
+				limit: 25000,
+			},
+			new Date("2026-08-17T00:00:00Z"),
+			new Date("2026-08-24T00:00:00Z"),
+		);
+		expect(result.rows).toEqual([[10, 100, 10, 3]]);
+		const [url, init] = fetchMock.mock.calls[0] as unknown as [
+			string,
+			RequestInit,
+		];
+		expect(url).toContain("sc-domain%3Alipsync.com");
+		expect(JSON.parse(String(init.body))).toMatchObject({
+			startDate: "2026-08-17",
+			endDate: "2026-08-23",
+			dataState: "final",
+			dimensions: [],
+		});
+	});
 });
 
 describe("MarketingClient PostHog retries", () => {

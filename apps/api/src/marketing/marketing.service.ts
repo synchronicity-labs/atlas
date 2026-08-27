@@ -38,6 +38,10 @@ import { exitSurveyVerificationChecks } from "./exit-survey-verification";
 import { GbrainEvidenceService } from "./gbrain-evidence.service";
 import { geoConversionVerificationChecks } from "./geo-conversion-verification";
 import { lipsyncFunnelVerificationChecks } from "./lipsync-funnel-verification";
+import {
+	lipsyncTrafficVerificationChecks,
+	lipsyncTrafficWeeklyReport,
+} from "./lipsync-traffic";
 import { MarketingClient, type MarketingResult } from "./marketing.client";
 import { marketingConfig } from "./marketing.config";
 import { marketingQuery } from "./marketing.contracts";
@@ -106,6 +110,11 @@ function sourceVerificationChecks(
 	query: ReturnType<typeof marketingQuery.parse>,
 	result: MarketingResult,
 ): PublishVerificationCheck[] | undefined {
+	if (
+		sourceExternalId === "cron:lipsync:weekly-traffic" &&
+		query.source === "lipsync_traffic"
+	)
+		return lipsyncTrafficVerificationChecks(result, query);
 	if (
 		sourceExternalId === "cron:product-pages:weekly-funnel" &&
 		query.source === "product_pages"
@@ -454,6 +463,13 @@ export class MarketingService {
 		query: ReturnType<typeof marketingQuery.parse>,
 		productUserPredicate?: string,
 	): Promise<MarketingResult> {
+		if (query.source === "lipsync_traffic") {
+			return lipsyncTrafficWeeklyReport({
+				query,
+				marketing: client,
+				config: marketingConfig(),
+			});
+		}
 		if (
 			query.source !== "adobe_plugin" &&
 			query.source !== "product_pages" &&

@@ -9,9 +9,11 @@ export type MarketingResult = {
 		baseType: string | null;
 	}>;
 	rows: unknown[][];
+	sourceTimeZone?: string;
 };
 
 type GoogleReport = {
+	metadata?: { timeZone?: string };
 	dimensionHeaders?: Array<{ name?: string }>;
 	metricHeaders?: Array<{ name?: string; type?: string }>;
 	rows?: Array<{
@@ -97,6 +99,7 @@ export class MarketingClient {
 		if (
 			query.source === "adobe_plugin" ||
 			query.source === "product_pages" ||
+			query.source === "lipsync_traffic" ||
 			query.source === "api_adoption" ||
 			query.source === "api_reliability" ||
 			query.source === "model_feedback" ||
@@ -178,6 +181,7 @@ export class MarketingClient {
 				return {
 					key,
 					label: property.label,
+					timeZone: body.metadata?.timeZone,
 					rows: (body.rows ?? []).map((row) => [
 						...(row.dimensionValues ?? []).map((value, index) =>
 							normalizeDimension(
@@ -202,6 +206,9 @@ export class MarketingClient {
 		}));
 		if (query.merge === "rows") {
 			return {
+				...(reports.length === 1
+					? { sourceTimeZone: reports[0]?.timeZone }
+					: {}),
 				columns: [
 					{ name: "site", displayName: "Site", baseType: "type/Text" },
 					...dimensions,
@@ -281,8 +288,22 @@ export class MarketingClient {
 		};
 	}
 
+	async searchConsoleRange(
+		query: Extract<MarketingQuery, { source: "search_console" }>,
+		start: Date,
+		end: Date,
+	): Promise<MarketingResult> {
+		const inclusiveEnd = new Date(end);
+		inclusiveEnd.setUTCDate(inclusiveEnd.getUTCDate() - 1);
+		return this.searchConsole(query, {
+			startDate: isoDate(start),
+			endDate: isoDate(inclusiveEnd),
+		});
+	}
+
 	private async searchConsole(
 		query: Extract<MarketingQuery, { source: "search_console" }>,
+		range?: { startDate: string; endDate: string },
 	): Promise<MarketingResult> {
 		const token = await this.google.accessToken([
 			"https://www.googleapis.com/auth/webmasters.readonly",
@@ -299,10 +320,10 @@ export class MarketingClient {
 					"Content-Type": "application/json",
 				},
 				body: JSON.stringify({
-					...dates(query.dateRange),
+					...(range ?? dates(query.dateRange)),
 					dimensions: query.dimensions,
 					rowLimit: query.limit,
-					dataState: "all",
+					dataState: range ? "final" : "all",
 				}),
 			},
 		);

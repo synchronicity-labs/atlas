@@ -221,22 +221,25 @@ until its result also matches an independent reference output.
 
 | Measure | Governed rule | Current trust state |
 | --- | --- | --- |
-| Paid invoice revenue | Sum paid Stripe invoices by invoice creation month. Subscription MRR, plan mix, concentration, and the data-room retention tables use this paid-invoice basis. Past-due subscriptions without a paid invoice contribute zero. | Verified for July 2026: `$733,883.46`, which rounds to Matt's `$733,883` reference. |
+| Paid invoice revenue | Sum paid Stripe invoice source events by the UTC month of the source event. Subscription MRR, plan mix, concentration, and the data-room retention tables use this paid-invoice basis. Past-due subscriptions without a paid invoice contribute zero. | Verified for July 2026: `$733,883.46`, which rounds to Matt's `$733,883` reference. |
 | Logo churn | An organization churns in the UTC month of a Stripe subscription cancellation only when it has no paid subscription active at month end. A cancellation followed by a resubscription in the same month is not churn. | Query runs; historical plan-level results still need reference reconciliation. |
 | Governed NDR and GRR | Same-customer paid invoice revenue in the current month divided by the prior-month starting revenue. GRR caps each customer's retained revenue at its prior-month amount. | Query runs; reference reconciliation pending. |
 | Operating NDR and GRR | Subscription invoice revenue plus V2 usage accrued when the generation ends. | Supporting operating view only. It is not the governed paid-invoice result. |
-| Revenue cohorts | Month zero is the first month with positive paid-invoice revenue or any successful Stripe charge, whichever is earlier. Retention and realized LTV then use paid invoices. | Query runs; reference reconciliation pending. |
+| Revenue cohorts | For the governed paid-invoice cohort, month zero is the first month with positive paid-invoice revenue. Retention and realized LTV then use paid invoices. A first-successful-payment cohort is a separate measure. | Query runs; reference reconciliation pending. |
 | Usage-active subscriber | A customer with an active paid subscription at month end and at least one completed generation in that month. | Query runs; reference reconciliation pending. |
 | Realized LTV and CAC target | Realized lifetime value is cumulative paid-invoice revenue for the selected first-pay cohort. The current gross-margin assumptions are Hobbyist 83%, Creator 81%, Growth 72%, and Scale 66%. The CAC target is gross-margin-adjusted LTV divided by 3. | The 3:1 target and tier margins are assumptions, not approved company policy. Matt still needs to update the Andromeda cost allocation. |
-| Win-back | A customer with positive paid-invoice revenue after at least one complete UTC month with no paid-invoice revenue. | Query runs; reference reconciliation pending. |
+| Win-back | A customer with positive paid-invoice revenue after at least one complete UTC month with no paid-invoice revenue. | Definition and query verified. |
+| Reference scope bridge | Show paid-invoice revenue and successful V3 top-up payments as separate values for the same month. Do not add V3 to Matt's paid-invoice control or remove V3 from Atlas's broader revenue model. | July 2026: `$733,883.46` paid invoices and `$6,741.91` from `249` successful V3 top-ups. |
 | Invoice-line allocation | Allocate discounts, credits, and customer balance to invoice lines with the deterministic rule from Matt's panel. | Reporting definition, not an estimate. |
 | Country | Use the latest non-empty billing country from successful Stripe charges. Fall back to invoice billing or shipping country. Apply the latest country to all historical months. | Reconciling. Do not mark verified until 2026 YTD reproduces US `$2,569,160`, UA `$466,186`, and HK `$281,167`. |
-| Customer population | Use distinct organization IDs in the delivered panel. | Reconciling. Matt's panel has `38,248` organizations, while Rudy reported `48,190` customer IDs. Rudy must explain the customer-to-organization collapse before publication. |
+| Customer population | Every snapshot records its population version and entity unit. Matt's fixed panel uses `38,248` organization IDs. The current live mapping has `39,763` organization IDs. Rudy's `48,190` value counts customer IDs and is not the same unit. | The fixed reference and live result must not be compared without an explicit population bridge. |
 
 Standalone top-up charges are excluded from the governed paid-invoice retention and LTV
-tables. They remain visible in the collections funnel. The separate operating view can
-show accrued V2 usage, but it must use a different label and cannot replace the paid-
-invoice definition.
+tables. They remain visible in the collections funnel and in the V3 reference-scope
+bridge. The separate operating view can show accrued V2 usage and V3 top-ups, but it
+must use a different label and cannot replace the paid-invoice definition. A match to
+Matt proves only the matching paid-invoice scope. It does not prove that Matt's panel
+includes all V3 revenue.
 
 ## Productions definitions
 

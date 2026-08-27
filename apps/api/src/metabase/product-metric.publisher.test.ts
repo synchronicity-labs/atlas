@@ -13,16 +13,24 @@ import {
 } from "./product-metric.publisher";
 
 describe("product feedback metric registry", () => {
-	test("keeps unmatched customer economics tables in reconciliation", () => {
+	test("keeps only the unmatched customer economics tables in reconciliation", () => {
 		const paidInvoiceRevenue = CUSTOMER_ECONOMICS_METRIC_SPECS.find(
 			(spec) => spec.questionNumber === 7400,
 		);
+		const winBacks = CUSTOMER_ECONOMICS_METRIC_SPECS.find(
+			(spec) => spec.questionNumber === 7405,
+		);
+		const scopeBridge = CUSTOMER_ECONOMICS_METRIC_SPECS.find(
+			(spec) => spec.questionNumber === 7406,
+		);
 		const unmatchedReferences = CUSTOMER_ECONOMICS_METRIC_SPECS.filter(
-			(spec) => spec.questionNumber !== 7400,
+			(spec) => ![7400, 7405, 7406].includes(spec.questionNumber),
 		);
 
 		expect(paidInvoiceRevenue?.pendingChecks).toBeUndefined();
-		expect(unmatchedReferences).toHaveLength(6);
+		expect(winBacks?.pendingChecks).toBeUndefined();
+		expect(scopeBridge?.pendingChecks).toBeUndefined();
+		expect(unmatchedReferences).toHaveLength(5);
 		expect(
 			unmatchedReferences.every(
 				(spec) => (spec.pendingChecks?.length ?? 0) === 1,

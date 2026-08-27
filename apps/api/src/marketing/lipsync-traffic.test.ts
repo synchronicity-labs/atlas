@@ -179,6 +179,7 @@ describe("Lipsync weekly traffic", () => {
 			displayName: "email",
 			baseType: "type/Text",
 		});
+		for (const row of changed.rows) row.push(null);
 		const failed = lipsyncTrafficVerificationChecks(changed, query)
 			.filter((c) => c.status === "FAILED")
 			.map((c) => c.name);

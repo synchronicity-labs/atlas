@@ -265,4 +265,51 @@ select * from gens`,
 		expect(governed.applied).toBe(false);
 		expect(governed.queryText).toBe(queryText);
 	});
+
+	it("filters both the churn cohort and its requalification outcomes at the source", () => {
+		const governed = governProductPostgresQuery(
+			`with churn as (
+  select organization_id, month from public.org_movement_months where state = 'churn' and is_clean
+), qualified as (
+  select organization_id, month from org_movement_months where state = 'reactivation'
+)
+select count(*) from churn c left join qualified q on q.organization_id = c.organization_id`,
+			"PRODUCT_ACTIVITY",
+		);
+
+		expect(governed.applied).toBe(true);
+		expect(governed.queryText).toContain("atlas_subscribed_users as");
+		expect(governed.queryText).toContain("atlas_population_organizations as");
+		expect(governed.queryText).toContain(
+			"atlas_eligible_org.id = atlas_cohort.organization_id",
+		);
+		expect(
+			governed.queryText.match(/from atlas_population_org_movement_months/g),
+		).toHaveLength(2);
+		expect(
+			governed.queryText.match(/from public.org_movement_months/g),
+		).toHaveLength(1);
+		expect(governed.queryText).toContain("state = 'churn' and is_clean");
+	});
+
+	it("filters holdback assignments as well as generation outcomes", () => {
+		const governed = governProductPostgresQuery(
+			`select f.organization_id from organization_features f
+left join lateral (select 1 from generations g where g.organization_id = f.organization_id limit 1) returned on true`,
+			"PRODUCT_ACTIVITY",
+		);
+
+		expect(governed.applied).toBe(true);
+		expect(governed.queryText).toContain(
+			"from atlas_population_organization_features f",
+		);
+		expect(governed.queryText).toContain("from atlas_population_generations g");
+		expect(governed.queryText).toContain(
+			"from public.organization_features atlas_cohort",
+		);
+		expect(governed.queryText).toContain(
+			"from public.generations atlas_population_generation",
+		);
+		expect(governed.queryText).not.toContain("disabled");
+	});
 });

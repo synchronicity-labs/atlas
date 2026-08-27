@@ -321,7 +321,15 @@ export function governProductPostgresQuery(
 		queryText,
 		"organizations",
 	);
-	if (!usesGenerations && !usesOrganizations) {
+	const organizationCohortTables = [
+		"organization_features",
+		"org_movement_months",
+	].filter((table) => hasPostgresTableReference(queryText, table));
+	if (
+		!usesGenerations &&
+		!usesOrganizations &&
+		organizationCohortTables.length === 0
+	) {
 		return { queryText, applied: false };
 	}
 
@@ -346,14 +354,36 @@ export function governProductPostgresQuery(
 		"generations",
 		"atlas_population_generations",
 	);
+	for (const table of organizationCohortTables) {
+		governed = replacePostgresTableReference(
+			governed,
+			`public.${table}`,
+			`atlas_population_${table}`,
+		);
+		governed = replacePostgresTableReference(
+			governed,
+			table,
+			`atlas_population_${table}`,
+		);
+	}
 
 	const commonTableExpressions =
 		policy === "PRODUCT_ACTIVITY" ? [subscribedUserPopulation()] : [];
-	if (usesOrganizations) {
+	if (usesOrganizations || organizationCohortTables.length > 0) {
 		commonTableExpressions.push(productOrganizationPopulation(policy));
 	}
 	if (usesGenerations) {
 		commonTableExpressions.push(productGenerationPopulation(policy));
+	}
+	for (const table of organizationCohortTables) {
+		commonTableExpressions.push(`atlas_population_${table} as (
+	select atlas_cohort.*
+	from public.${table} atlas_cohort
+	where exists (
+		select 1 from atlas_population_organizations atlas_eligible_org
+		where atlas_eligible_org.id = atlas_cohort.organization_id
+	)
+)`);
 	}
 
 	return {

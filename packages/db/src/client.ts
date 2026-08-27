@@ -3,23 +3,6 @@ import "@crm/env/load";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { type Prisma, PrismaClient } from "./generated/prisma/client";
 
-const connectionString = process.env.DATABASE_URL;
-
-if (!connectionString) {
-	throw new Error(
-		"DATABASE_URL is not set. Copy .env.example to .env at the root of the repo and fill it in, or set DATABASE_URL in the environment.",
-	);
-}
-
-const connectionUrl = new URL(connectionString);
-const sslMode = connectionUrl.searchParams.get("sslmode");
-
-if (sslMode && ["prefer", "require", "verify-ca"].includes(sslMode)) {
-	connectionUrl.searchParams.set("sslmode", "verify-full");
-}
-
-const secureConnectionString = connectionUrl.toString();
-
 export interface PrismaLogRecord {
 	level: Prisma.LogLevel;
 	message: string;
@@ -62,8 +45,19 @@ const logDefinitions: Prisma.LogDefinition[] = [
 ];
 
 const createPrismaClient = () => {
+	const connectionString = process.env.DATABASE_URL;
+	if (!connectionString) {
+		throw new Error(
+			"DATABASE_URL is not set. Run with Doppler or configure the deployment environment before using the database.",
+		);
+	}
+	const connectionUrl = new URL(connectionString);
+	const sslMode = connectionUrl.searchParams.get("sslmode");
+	if (sslMode && ["prefer", "require", "verify-ca"].includes(sslMode)) {
+		connectionUrl.searchParams.set("sslmode", "verify-full");
+	}
 	const client = new PrismaClient({
-		adapter: new PrismaPg({ connectionString: secureConnectionString }),
+		adapter: new PrismaPg({ connectionString: connectionUrl.toString() }),
 		log: logDefinitions,
 	});
 
@@ -87,10 +81,19 @@ const globalForPrisma = globalThis as unknown as {
 	prisma: ReturnType<typeof createPrismaClient> | undefined;
 };
 
-export const db = globalForPrisma.prisma ?? createPrismaClient();
+export type Db = ReturnType<typeof createPrismaClient>;
 
-if (process.env.NODE_ENV !== "production") {
-	globalForPrisma.prisma = db;
-}
+let client = globalForPrisma.prisma;
 
-export type Db = typeof db;
+export const db = new Proxy({} as Db, {
+	get(_target, property) {
+		if (!client) {
+			client = createPrismaClient();
+			if (process.env.NODE_ENV !== "production") {
+				globalForPrisma.prisma = client;
+			}
+		}
+		const value = Reflect.get(client, property, client);
+		return typeof value === "function" ? value.bind(client) : value;
+	},
+});

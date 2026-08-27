@@ -1599,24 +1599,10 @@ export class MetabaseService {
 			question.id,
 		);
 
-		const version = await this.db.questionVersion.findFirstOrThrow({
-			where: { questionId: question.id },
-			orderBy: { version: "desc" },
-			select: {
-				id: true,
-				version: true,
-				queryLanguage: true,
-				queryText: true,
-			},
-		});
 		const capturedAt = new Date();
 		const payload = { columns: result.columns, rows: result.rows };
 		const contentHash = stableHash(payload);
 		const idempotencyKey = `metabase:${input.dashboard.id}:${placement.card.id}:${input.period}:${contentHash}`;
-		await this.db.question.update({
-			where: { id: question.id },
-			data: { lastCheckedAt: capturedAt },
-		});
 		const existing = await this.db.resultSnapshot.findUnique({
 			where: { idempotencyKey },
 			select: { id: true },
@@ -1638,14 +1624,6 @@ export class MetabaseService {
 				},
 			});
 		}
-
-		await this.productMetrics.publish({
-			question,
-			version,
-			result,
-			syncRunId: input.syncRunId,
-			capturedAt,
-		});
 
 		return !existing;
 	}

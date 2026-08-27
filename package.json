@@ -11,6 +11,8 @@
 		"format": "biome format --write .",
 		"check-types": "turbo run check-types",
 		"test": "turbo run test",
+		"release:check": "bun ops/release/check.ts",
+		"release:test": "bun test ops/release",
 		"auth:generate": "doppler run -- turbo run auth:generate",
 		"db:deploy": "doppler run -- turbo run db:deploy",
 		"db:generate": "doppler run -- turbo run db:generate",

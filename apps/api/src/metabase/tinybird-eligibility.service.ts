@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { Injectable } from "@nestjs/common";
+import { astVisitor, locationOf, parse } from "pgsql-ast-parser";
 import { MetabaseClient } from "./metabase.client";
 import { metabaseConfig } from "./metabase.config";
 
@@ -316,56 +317,18 @@ export function governProductPostgresQuery(
 			applied: true,
 		};
 	}
-	const usesGenerations = hasPostgresTableReference(queryText, "generations");
-	const usesOrganizations = hasPostgresTableReference(
-		queryText,
-		"organizations",
+	const rewritten = rewriteProductTables(
+		normalizeEmbeddedProductPopulation(queryText, policy),
 	);
+	if (!rewritten || rewritten.tables.size === 0) {
+		return { queryText, applied: false };
+	}
+	const usesGenerations = rewritten.tables.has("generations");
+	const usesOrganizations = rewritten.tables.has("organizations");
 	const organizationCohortTables = [
 		"organization_features",
 		"org_movement_months",
-	].filter((table) => hasPostgresTableReference(queryText, table));
-	if (
-		!usesGenerations &&
-		!usesOrganizations &&
-		organizationCohortTables.length === 0
-	) {
-		return { queryText, applied: false };
-	}
-
-	let governed = normalizeEmbeddedProductPopulation(queryText, policy);
-	governed = replacePostgresTableReference(
-		governed,
-		"public.organizations",
-		"atlas_population_organizations",
-	);
-	governed = replacePostgresTableReference(
-		governed,
-		"organizations",
-		"atlas_population_organizations",
-	);
-	governed = replacePostgresTableReference(
-		governed,
-		"public.generations",
-		"atlas_population_generations",
-	);
-	governed = replacePostgresTableReference(
-		governed,
-		"generations",
-		"atlas_population_generations",
-	);
-	for (const table of organizationCohortTables) {
-		governed = replacePostgresTableReference(
-			governed,
-			`public.${table}`,
-			`atlas_population_${table}`,
-		);
-		governed = replacePostgresTableReference(
-			governed,
-			table,
-			`atlas_population_${table}`,
-		);
-	}
+	].filter((table) => rewritten.tables.has(table));
 
 	const commonTableExpressions =
 		policy === "PRODUCT_ACTIVITY" ? [subscribedUserPopulation()] : [];
@@ -388,7 +351,7 @@ export function governProductPostgresQuery(
 
 	return {
 		queryText: prependPostgresCommonTableExpressions(
-			governed,
+			rewritten.queryText,
 			commonTableExpressions,
 		),
 		applied: true,
@@ -536,21 +499,134 @@ function normalizeEmbeddedProductPopulation(
 	);
 }
 
-function hasPostgresTableReference(queryText: string, table: string): boolean {
-	const qualified = `(?:public\\.)?${table.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`;
-	return new RegExp(`\\b(?:from|join)\\s+${qualified}\\b`, "i").test(queryText);
+function parseProductQuery(queryText: string) {
+	try {
+		return {
+			statements: parse(queryText, { locationTracking: true }),
+			columnListAliases: new Set<number>(),
+		};
+	} catch {
+		const identifier = String.raw`(?:"(?:[^"]|"")*"|[a-z_][\w$]*)`;
+		const columnLists = new RegExp(
+			`(${identifier})\\s*(\\(\\s*${identifier}(?:\\s*,\\s*${identifier})*\\s*\\))(?=\\s+as\\s*\\()`,
+			"gi",
+		);
+		const columnListAliases = new Set<number>();
+		const parseText = queryText.replace(
+			columnLists,
+			(match, _alias: string, columns: string, offset: number) => {
+				columnListAliases.add(offset);
+				return match.slice(0, -columns.length) + " ".repeat(columns.length);
+			},
+		);
+		if (!columnListAliases.size) throw new Error("Unsupported Product SQL.");
+		return {
+			statements: parse(parseText, { locationTracking: true }),
+			columnListAliases,
+		};
+	}
 }
 
-function replacePostgresTableReference(
+function rewriteProductTables(
 	queryText: string,
-	table: string,
-	replacement: string,
-): string {
-	const escaped = table.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-	return queryText.replace(
-		new RegExp(`\\b(from|join)\\s+${escaped}\\b`, "gi"),
-		(_match, clause: string) => `${clause} ${replacement}`,
-	);
+): { queryText: string; tables: Set<string> } | null {
+	const sourceTables = new Set([
+		"generations",
+		"organizations",
+		"organization_features",
+		"org_movement_months",
+	]);
+	const reservedNames = new Set([
+		"atlas_subscribed_users",
+		...[...sourceTables].map((table) => `atlas_population_${table}`),
+	]);
+	const tables = new Set<string>();
+	const edits: { start: number; end: number; text: string }[] = [];
+	let commonTableNames = new Set<string>();
+	try {
+		const { statements, columnListAliases } = parseProductQuery(queryText);
+		const statement = statements[0];
+		if (statements.length !== 1 || !statement) return null;
+		const visitor = astVisitor((visit) => ({
+			statement(statement) {
+				if (
+					![
+						"select",
+						"with",
+						"with recursive",
+						"union",
+						"union all",
+						"values",
+					].includes(statement.type)
+				) {
+					throw new Error(
+						"Only read-only queries can use population rewriting.",
+					);
+				}
+				visit.super().statement(statement);
+			},
+			with(statement) {
+				const outerNames = commonTableNames;
+				commonTableNames = new Set(outerNames);
+				for (const binding of statement.bind) {
+					const aliasLocation = locationOf(binding.alias);
+					if (aliasLocation) columnListAliases.delete(aliasLocation.start);
+					if (reservedNames.has(binding.alias.name)) {
+						throw new Error("Query uses a reserved population name.");
+					}
+					visit.statement(binding.statement);
+					commonTableNames.add(binding.alias.name);
+				}
+				visit.statement(statement.in);
+				commonTableNames = outerNames;
+			},
+			withRecursive(statement) {
+				if (reservedNames.has(statement.alias.name)) {
+					throw new Error("Query uses a reserved population name.");
+				}
+				const outerNames = commonTableNames;
+				commonTableNames = new Set([...outerNames, statement.alias.name]);
+				visit.statement(statement.bind);
+				visit.statement(statement.in);
+				commonTableNames = outerNames;
+			},
+			tableRef(table) {
+				if (
+					!sourceTables.has(table.name) ||
+					(table.schema && table.schema !== "public") ||
+					(!table.schema && commonTableNames.has(table.name))
+				)
+					return;
+				const location = locationOf(table);
+				if (!location) throw new Error("Missing SQL source location.");
+				tables.add(table.name);
+				edits.push({
+					...location,
+					text: `atlas_population_${table.name}${table.alias ? "" : ` as "${table.name}"`}`,
+				});
+			},
+			ref(reference) {
+				if (
+					reference.table?.schema !== "public" ||
+					!sourceTables.has(reference.table.name)
+				)
+					return;
+				const location = locationOf(reference.table);
+				if (!location) throw new Error("Missing SQL reference location.");
+				edits.push({ ...location, text: `"${reference.table.name}"` });
+			},
+		}));
+		visitor.statement(statement);
+		if (columnListAliases.size) return null;
+		let rewritten = queryText;
+		for (const edit of edits.sort((left, right) => right.start - left.start)) {
+			rewritten =
+				rewritten.slice(0, edit.start) + edit.text + rewritten.slice(edit.end);
+		}
+		return { queryText: rewritten, tables };
+	} catch {
+		return null;
+	}
 }
 
 function prependPostgresCommonTableExpressions(

@@ -324,6 +324,7 @@ export function governProductPostgresQuery(
 		return { queryText, applied: false };
 	}
 	const usesGenerations = rewritten.tables.has("generations");
+	const usesFeedback = rewritten.tables.has("generation_feedback");
 	const usesOrganizations = rewritten.tables.has("organizations");
 	const organizationCohortTables = [
 		"organization_features",
@@ -337,6 +338,11 @@ export function governProductPostgresQuery(
 	}
 	if (usesGenerations) {
 		commonTableExpressions.push(productGenerationPopulation(policy));
+	}
+	if (usesFeedback) {
+		commonTableExpressions.push(
+			productGenerationPopulation(policy, "generation_feedback"),
+		);
 	}
 	for (const table of organizationCohortTables) {
 		commonTableExpressions.push(`atlas_population_${table} as (
@@ -426,6 +432,7 @@ function subscribedUserPopulation(): string {
 
 function productGenerationPopulation(
 	policy: TinybirdEligibilitySnapshot["policy"],
+	table: "generations" | "generation_feedback" = "generations",
 ): string {
 	const populationRule =
 		policy === "PRODUCT_ACTIVITY"
@@ -434,9 +441,9 @@ function productGenerationPopulation(
 		or atlas_population_user.id in (select user_id from atlas_subscribed_users)
 	)`
 			: "";
-	return `atlas_population_generations as (
+	return `atlas_population_${table} as (
 	select atlas_population_generation.*
-  from public.generations atlas_population_generation
+  from public.${table} atlas_population_generation
 	join auth.users atlas_population_user
     on atlas_population_user.id = atlas_population_generation.user_id
 	where coalesce(atlas_population_user.is_anonymous, false) = false
@@ -532,6 +539,7 @@ function rewriteProductTables(
 ): { queryText: string; tables: Set<string> } | null {
 	const sourceTables = new Set([
 		"generations",
+		"generation_feedback",
 		"organizations",
 		"organization_features",
 		"org_movement_months",

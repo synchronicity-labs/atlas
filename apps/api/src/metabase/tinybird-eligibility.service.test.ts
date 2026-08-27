@@ -189,6 +189,31 @@ where "organizationPlanType" in ('hobbyist', 'creator')`),
 		expect(governed.queryText).not.toContain("atlas_population_user.banned");
 	});
 
+	it("filters feedback independently of its left-joined generation", () => {
+		const governed = governProductPostgresQuery(
+			`select f.feedback_text, g.status from public.generation_feedback f
+left join public.generations g on g.id = f.generation_id`,
+			"PRODUCT_ACTIVITY",
+		);
+
+		expect(governed.applied).toBe(true);
+		expect(governed.queryText).toContain(
+			"atlas_population_generation_feedback as",
+		);
+		expect(governed.queryText).toContain(
+			"from public.generation_feedback atlas_population_generation",
+		);
+		expect(governed.queryText).toContain(
+			"from atlas_population_generation_feedback f",
+		);
+		expect(governed.queryText).toContain(
+			"left join atlas_population_generations g",
+		);
+		expect(
+			governed.queryText.match(/atlas_population_generation.user_id/g)?.length,
+		).toBe(2);
+	});
+
 	it("joins Product Postgres organizations to the same population", () => {
 		const governed = governProductPostgresQuery(
 			"select count(*) from public.organizations o",

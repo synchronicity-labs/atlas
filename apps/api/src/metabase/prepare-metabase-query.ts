@@ -70,6 +70,11 @@ export async function prepareGovernedMetabaseQuery(
 			question.databaseExternalId,
 			snapshot,
 		);
+		if (question.databaseExternalId === "34" && !governed.applied) {
+			throw new Error(
+				"Atlas could not apply the required clean-user filter. The Product query was not executed. Existing results are unchanged.",
+			);
+		}
 	}
 	const queryText = boundSensitiveIdentityResult(
 		prepared.language,

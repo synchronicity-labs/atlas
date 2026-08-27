@@ -134,11 +134,47 @@ describe("shared Metabase preview and refresh preparation", () => {
 		const { client, eligibility, policy } = dependencies();
 		const prepared = await prepareGovernedMetabaseQuery(
 			question,
-			{ language: "SQL", queryText: "select date_trunc({{bucket}}, now())" },
+			{
+				language: "SQL",
+				queryText:
+					"select date_trunc({{bucket}}, created_at) from public.generations",
+			},
 			client,
 			eligibility,
 			policy,
 		);
-		expect(prepared.input.queryText).toContain("date_trunc('month', now())");
+		expect(prepared.input.queryText).toContain(
+			"date_trunc('month', created_at)",
+		);
 	});
+
+	it.each(["SQL", "MBQL"] as const)(
+		"stops %s Product queries when the population filter cannot be applied",
+		async (language) => {
+			const { eligibility, policy } = dependencies();
+			const client = {
+				preparePreview: mock(
+					async (
+						input: MetabasePreviewInput,
+					): Promise<MetabasePreviewInput> => ({
+						...input,
+						language: "SQL",
+						queryText: "select * from public.unrecognized_product_records",
+					}),
+				),
+			};
+			await expect(
+				prepareGovernedMetabaseQuery(
+					question,
+					{
+						language,
+						queryText: language === "SQL" ? "select 1" : '{"database":34}',
+					},
+					client,
+					eligibility,
+					policy,
+				),
+			).rejects.toThrow("The Product query was not executed");
+		},
+	);
 });

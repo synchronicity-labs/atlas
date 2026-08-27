@@ -56,6 +56,7 @@ describe("Atlas dashboard refresh", () => {
 		const service = new AtlasDashboardsService(
 			{ dashboard: { findUnique } } as unknown as Db,
 			{ syncDashboard: billingSync } as never,
+			{ syncDashboard: mock() } as never,
 			{ syncAtlasDashboard: metabaseSync } as never,
 			{ syncDashboard: mock() } as never,
 			{ syncDashboard: mock() } as never,
@@ -113,6 +114,7 @@ describe("Atlas dashboard refresh", () => {
 		const service = new AtlasDashboardsService(
 			{ dashboard: { findUnique } } as unknown as Db,
 			{ syncDashboard: billingSync } as never,
+			{ syncDashboard: mock() } as never,
 			{ syncAtlasDashboard: metabaseSync } as never,
 			{ syncDashboard: mock() } as never,
 			{ syncDashboard: mock() } as never,
@@ -148,6 +150,7 @@ describe("Atlas dashboard refresh", () => {
 		});
 		const service = new AtlasDashboardsService(
 			{ dashboard: { findUnique } } as unknown as Db,
+			{ syncDashboard: mock() } as never,
 			{ syncDashboard: mock() } as never,
 			{ syncAtlasDashboard: mock() } as never,
 			{ syncDashboard: mock() } as never,
@@ -189,6 +192,7 @@ describe("Atlas dashboard refresh", () => {
 		const service = new AtlasDashboardsService(
 			{ dashboard: { findUnique } } as unknown as Db,
 			{ syncDashboard: mock() } as never,
+			{ syncDashboard: mock() } as never,
 			{ syncAtlasDashboard: mock() } as never,
 			{ syncDashboard: mock() } as never,
 			{ syncDashboard: marketingSync } as never,
@@ -228,6 +232,7 @@ describe("Atlas dashboard refresh", () => {
 		});
 		const service = new AtlasDashboardsService(
 			{ dashboard: { findUnique } } as unknown as Db,
+			{ syncDashboard: mock() } as never,
 			{ syncDashboard: mock() } as never,
 			{ syncAtlasDashboard: mock() } as never,
 			{ syncDashboard: mock() } as never,
@@ -269,6 +274,7 @@ describe("Atlas dashboard refresh", () => {
 		const service = new AtlasDashboardsService(
 			{ dashboard: { findUnique } } as unknown as Db,
 			{ syncDashboard: mock() } as never,
+			{ syncDashboard: mock() } as never,
 			{ syncAtlasDashboard: mock() } as never,
 			{ syncDashboard: mock() } as never,
 			{ syncDashboard: marketingSync } as never,
@@ -309,6 +315,7 @@ describe("Atlas dashboard refresh", () => {
 		const service = new AtlasDashboardsService(
 			{ dashboard: { findUnique } } as unknown as Db,
 			{ syncDashboard: mock() } as never,
+			{ syncDashboard: mock() } as never,
 			{ syncAtlasDashboard: mock() } as never,
 			{ syncDashboard: mock() } as never,
 			{ syncDashboard: mock() } as never,
@@ -322,6 +329,47 @@ describe("Atlas dashboard refresh", () => {
 		expect(result).toMatchObject({
 			cardsProcessed: 1,
 			snapshotsCreated: 1,
+			completed: true,
+			errors: [],
+		});
+	});
+
+	test("routes contract reconciliation through the native contract reader", async () => {
+		const findUnique = mock().mockResolvedValue({
+			cards: [
+				{
+					question: {
+						id: "contract-summary",
+						number: 7500,
+						connector: DataSourceKind.ATLAS,
+						sourceId: "contracts-source",
+						source: { key: "atlas:contracts" },
+					},
+				},
+			],
+		});
+		const contractsSync = mock().mockResolvedValue({
+			cardsProcessed: 7,
+			snapshotsCreated: 7,
+			errors: [],
+		});
+		const service = new AtlasDashboardsService(
+			{ dashboard: { findUnique } } as unknown as Db,
+			{ syncDashboard: mock() } as never,
+			{ syncDashboard: contractsSync } as never,
+			{ syncAtlasDashboard: mock() } as never,
+			{ syncDashboard: mock() } as never,
+			{ syncDashboard: mock() } as never,
+			{ syncDashboard: mock() } as never,
+			{ syncDashboard: mock() } as never,
+		);
+
+		const result = await service.refresh(13, "native");
+
+		expect(contractsSync).toHaveBeenCalledWith(13);
+		expect(result).toMatchObject({
+			cardsProcessed: 7,
+			snapshotsCreated: 7,
 			completed: true,
 			errors: [],
 		});

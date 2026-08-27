@@ -30,6 +30,7 @@
 		"customer:sync": "doppler run -- bun apps/agent/scripts/sync-customer-data.ts",
 		"contracts:sync": "doppler run -- bun apps/agent/scripts/sync-contracts-drive.ts",
 		"contracts:reconcile": "doppler run -- bun apps/agent/scripts/reconcile-contracts.ts",
+		"contracts:dashboard": "doppler run -- sh -c 'curl -fsS -X POST -H \"Authorization: Bearer $CRON_SECRET\" http://localhost:3001/internal/sync/atlas/13/native'",
 		"hubspot:sales:sync": "doppler run -- bun apps/agent/scripts/sync-hubspot-sales.ts"
 	},
 	"devDependencies": {

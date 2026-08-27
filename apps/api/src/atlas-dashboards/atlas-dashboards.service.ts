@@ -2,6 +2,7 @@ import { DataSourceKind, type Db, Prisma, SourceStatus } from "@crm/db";
 import { Injectable, NotFoundException } from "@nestjs/common";
 import type { z } from "zod";
 import { BillingExperimentService } from "../billing-experiment/billing-experiment.service";
+import { ContractsReportingService } from "../contracts-reporting/contracts-reporting.service";
 import { InjectDatabase } from "../database/database.constants";
 import { EconomicsService } from "../economics/economics.service";
 import { MarketingService } from "../marketing/marketing.service";
@@ -23,6 +24,7 @@ export class AtlasDashboardsService {
 	constructor(
 		@InjectDatabase() private readonly db: Db,
 		private readonly billingExperiment: BillingExperimentService,
+		private readonly contractsReporting: ContractsReportingService,
 		private readonly metabase: MetabaseService,
 		private readonly productEligibility: ProductEligibilityService,
 		private readonly marketing: MarketingService,
@@ -103,6 +105,9 @@ export class AtlasDashboardsService {
 			}
 			if (sourceKeys.has("atlas:product-eligibility")) {
 				sourceSyncs.push(this.productEligibility.syncDashboard(number));
+			}
+			if (sourceKeys.has("atlas:contracts")) {
+				sourceSyncs.push(this.contractsReporting.syncDashboard(number));
 			}
 			results.push(...(await Promise.all(sourceSyncs)));
 		}

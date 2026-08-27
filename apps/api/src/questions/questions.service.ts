@@ -5,6 +5,7 @@ import {
 	NotFoundException,
 } from "@nestjs/common";
 import { BillingExperimentService } from "../billing-experiment/billing-experiment.service";
+import { ContractsReportingService } from "../contracts-reporting/contracts-reporting.service";
 import { InjectDatabase } from "../database/database.constants";
 import { EconomicsService } from "../economics/economics.service";
 import { MarketingService } from "../marketing/marketing.service";
@@ -54,6 +55,7 @@ export class QuestionsService {
 	constructor(
 		@InjectDatabase() private readonly db: Db,
 		private readonly billingExperiment: BillingExperimentService,
+		private readonly contractsReporting: ContractsReportingService,
 		private readonly marketing: MarketingService,
 		private readonly sales: SalesService,
 		private readonly economics: EconomicsService,
@@ -410,7 +412,9 @@ export class QuestionsService {
 							? await this.billingExperiment.preview(input.queryText)
 							: question.source?.key === "atlas:product-eligibility"
 								? await this.productEligibility.preview(input.queryText)
-								: await this.marketing.preview(input.queryText)
+								: question.source?.key === "atlas:contracts"
+									? await this.contractsReporting.preview(input.queryText)
+									: await this.marketing.preview(input.queryText)
 				: await this.metabasePreview(
 						question.number,
 						input.queryLanguage,

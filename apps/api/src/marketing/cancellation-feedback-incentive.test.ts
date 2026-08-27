@@ -40,6 +40,16 @@ describe("cancellation feedback incentive weekly report", () => {
 		expect(posthogQuery).toContain("limit 100");
 		expect(posthogQuery).toContain("arrayJoin([");
 		expect(posthogQuery).toContain("toTimeZone(timestamp, 'UTC'), 1");
+		expect(posthogQuery).toContain("weeks.week_start as week_start");
+		expect(posthogQuery).toContain(
+			"on weeks.week_start = organization_weeks.week_start",
+		);
+		expect(posthogQuery).toContain(
+			"coalesce(sum(reward_granted_cents), 0) as posthog_reward_granted_cents",
+		);
+		expect(posthogQuery).toContain("group by weeks.week_start");
+		expect(posthogQuery).toContain("order by weeks.week_start");
+		expect(posthogQuery).not.toContain("using (week_start)");
 		expect(productQuery).toContain("generate_series(");
 	});
 

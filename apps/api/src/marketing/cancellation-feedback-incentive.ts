@@ -362,18 +362,18 @@ function posthogQuery(start: Date, end: Date, eligibility: string): string {
   group by week_start, organization_id
 )
 select
-  week_start,
+  weeks.week_start as week_start,
   countIf(offer_shown = 1) as offer_shown_organizations,
   countIf(offer_shown = 1 and incentive_declined = 1) as incentive_declines,
   countIf(offer_shown = 1 and continued_cancellation = 1) as continued_cancellations,
   countIf(reward_claimed = 1 and saved_after_reward = 1) as saved_after_reward,
   countIf(reward_claimed = 1) as posthog_reward_claims,
   countIf(call_requested = 1) as posthog_call_requests,
-  sum(reward_granted_cents) as posthog_reward_granted_cents
+  coalesce(sum(reward_granted_cents), 0) as posthog_reward_granted_cents
 from weeks
-left join organization_weeks using (week_start)
-group by week_start
-order by week_start
+left join organization_weeks on weeks.week_start = organization_weeks.week_start
+group by weeks.week_start
+order by weeks.week_start
 limit 100`;
 }
 

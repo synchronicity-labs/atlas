@@ -1,5 +1,6 @@
 import { Module } from "@nestjs/common";
 import { BillingExperimentModule } from "../billing-experiment/billing-experiment.module";
+import { ContractsReportingModule } from "../contracts-reporting/contracts-reporting.module";
 import { EconomicsModule } from "../economics/economics.module";
 import { MarketingModule } from "../marketing/marketing.module";
 import { MetabaseModule } from "../metabase/metabase.module";
@@ -13,6 +14,7 @@ import { AtlasDashboardsService } from "./atlas-dashboards.service";
 	imports: [
 		TrpcModule,
 		BillingExperimentModule,
+		ContractsReportingModule,
 		EconomicsModule,
 		MetabaseModule,
 		MarketingModule,

@@ -78,12 +78,37 @@ export async function cancellationFeedbackIncentiveWeeklyReport(input: {
 			throw new Error("Product returned an unknown report row kind.");
 		}
 	}
+	if (posthogByWeek.size !== WEEKS || productByWeek.size !== WEEKS) {
+		throw new Error(
+			"Both sources must return all twelve requested weeks explicitly.",
+		);
+	}
 	const rows: unknown[][] = [];
 	for (let index = 0; index < WEEKS; index += 1) {
 		const weekStart = new Date(periodStart.getTime() + index * WEEK_MS);
 		const week = weekStart.toISOString();
-		const posthogRow = posthogByWeek.get(week) ?? {};
-		const productRow = productByWeek.get(week) ?? {};
+		const posthogRow = posthogByWeek.get(week);
+		const productRow = productByWeek.get(week);
+		if (!posthogRow || !productRow) {
+			throw new Error(`A source is missing the requested week ${week}.`);
+		}
+		requireMeasures(posthogRow, [
+			"offer_shown_organizations",
+			"incentive_declines",
+			"continued_cancellations",
+			"saved_after_reward",
+			"posthog_reward_claims",
+			"posthog_call_requests",
+			"posthog_reward_granted_cents",
+		]);
+		requireMeasures(productRow, [
+			"feedback_submissions",
+			"completed_feedback_submissions",
+			"written_reward_claims",
+			"call_requests",
+			"reward_granted_cents",
+			"reward_reversed_cents",
+		]);
 		rows.push(
 			rowValues({
 				weekStart: week,
@@ -96,6 +121,7 @@ export async function cancellationFeedbackIncentiveWeeklyReport(input: {
 			}),
 		);
 		for (const reason of reasonsByWeek.get(week) ?? []) {
+			requireMeasures(reason, ["reason_responses"]);
 			rows.push(
 				rowValues({
 					weekStart: week,
@@ -295,9 +321,16 @@ function rowValues(input: {
 }
 
 function posthogQuery(start: Date, end: Date, eligibility: string): string {
-	return `with organization_weeks as (
+	const weeks = Array.from(
+		{ length: WEEKS },
+		(_, index) =>
+			`parseDateTimeBestEffort('${new Date(start.getTime() + index * WEEK_MS).toISOString()}')`,
+	).join(", ");
+	return `with weeks as (
+  select arrayJoin([${weeks}]) as week_start
+), organization_weeks as (
   select
-    toStartOfWeek(toTimeZone(timestamp, 'UTC')) as week_start,
+    toStartOfWeek(toTimeZone(timestamp, 'UTC'), 1) as week_start,
     toString(properties.organization_id) as organization_id,
     max(event = 'exit_survey_incentive_shown') as offer_shown,
     max(event = 'exit_survey_incentive_earned') as reward_claimed,
@@ -337,14 +370,21 @@ select
   countIf(reward_claimed = 1) as posthog_reward_claims,
   countIf(call_requested = 1) as posthog_call_requests,
   sum(reward_granted_cents) as posthog_reward_granted_cents
-from organization_weeks
+from weeks
+left join organization_weeks using (week_start)
 group by week_start
 order by week_start
 limit 100`;
 }
 
 function productQuery(start: Date, end: Date): string {
-	return `with dirty_users as (
+	return `with weeks as (
+  select generate_series(
+    timestamptz '${start.toISOString()}',
+    timestamptz '${end.toISOString()}' - interval '1 week',
+    interval '1 week'
+  ) as week_start
+), dirty_users as (
   select id
   from auth.users
   where coalesce(banned, false)
@@ -412,14 +452,15 @@ select
   week_start,
   'weekly_total'::text as row_kind,
   'all'::text as reason,
-  feedback_submissions,
-  completed_feedback_submissions,
-  written_reward_claims,
-  call_requests,
-  reward_granted_cents,
-  reward_reversed_cents,
+  coalesce(feedback_submissions, 0)::int as feedback_submissions,
+  coalesce(completed_feedback_submissions, 0)::int as completed_feedback_submissions,
+  coalesce(written_reward_claims, 0)::int as written_reward_claims,
+  coalesce(call_requests, 0)::int as call_requests,
+  coalesce(reward_granted_cents, 0)::bigint as reward_granted_cents,
+  coalesce(reward_reversed_cents, 0)::bigint as reward_reversed_cents,
   0::int as reason_responses
-from totals
+from weeks
+left join totals using (week_start)
 union all
 select
   week_start,
@@ -447,6 +488,20 @@ function byWeek(result: MetabaseResult): Map<string, Row> {
 		values.set(week, row);
 	}
 	return values;
+}
+
+function requireMeasures(row: Row, names: string[]) {
+	for (const name of names) {
+		const value = row[name];
+		if (
+			(typeof value !== "number" && typeof value !== "string") ||
+			String(value).trim() === "" ||
+			!Number.isFinite(Number(value)) ||
+			Number(value) < 0
+		) {
+			throw new Error(`Source returned an invalid measure: ${name}.`);
+		}
+	}
 }
 
 function completeWeekBoundary(now: Date): Date {

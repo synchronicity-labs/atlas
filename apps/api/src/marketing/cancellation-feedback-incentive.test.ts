@@ -38,6 +38,42 @@ describe("cancellation feedback incentive weekly report", () => {
 		expect(productQuery).not.toContain("additional_comments");
 		expect(posthogQuery).toContain("person_id not in");
 		expect(posthogQuery).toContain("limit 100");
+		expect(posthogQuery).toContain("arrayJoin([");
+		expect(posthogQuery).toContain("toTimeZone(timestamp, 'UTC'), 1");
+		expect(productQuery).toContain("generate_series(");
+	});
+
+	for (const source of ["posthogRows", "productRows"] as const) {
+		test(`rejects empty or truncated ${source}`, async () => {
+			await expect(build({ [source]: () => [] })).rejects.toThrow(
+				"all twelve requested weeks",
+			);
+			await expect(
+				build({ [source]: (rows: unknown[][]) => rows.slice(1) }),
+			).rejects.toThrow("all twelve requested weeks");
+		});
+	}
+
+	test("rejects a missing week even when the source returns twelve rows", async () => {
+		await expect(
+			build({
+				posthogRows: (rows) =>
+					rows.map((row, index) =>
+						index === 0 ? ["2026-08-24T00:00:00.000Z", ...row.slice(1)] : row,
+					),
+			}),
+		).rejects.toThrow("missing the requested week");
+	});
+
+	test("rejects null measurements instead of inventing zero", async () => {
+		await expect(
+			build({
+				posthogRows: (rows) =>
+					rows.map((row, index) =>
+						index === 0 ? [row[0], null, ...row.slice(2)] : row,
+					),
+			}),
+		).rejects.toThrow("invalid measure");
 	});
 
 	test("fails verification when PostHog and Product rewards diverge", async () => {
@@ -67,13 +103,18 @@ describe("cancellation feedback incentive weekly report", () => {
 	});
 });
 
-async function build() {
+async function build(
+	options: {
+		posthogRows?: (rows: unknown[][]) => unknown[][];
+		productRows?: (rows: unknown[][]) => unknown[][];
+	} = {},
+) {
 	let productQuery = "";
 	let posthogQuery = "";
 	const marketing = {
 		execute: async (input: { query: string }) => {
 			posthogQuery = input.query;
-			return result(
+			const payload = result(
 				[
 					"week_start",
 					"offer_shown_organizations",
@@ -84,14 +125,19 @@ async function build() {
 					"posthog_call_requests",
 					"posthog_reward_granted_cents",
 				],
-				[["2026-08-17T00:00:00.000Z", 2, 1, 1, 1, 1, 1, 2500]],
+				[
+					...zeroWeeks().map((week) => [week, 0, 0, 0, 0, 0, 0, 0]),
+					["2026-08-17T00:00:00.000Z", 2, 1, 1, 1, 1, 1, 2500],
+				],
 			);
+			payload.rows = options.posthogRows?.(payload.rows) ?? payload.rows;
+			return payload;
 		},
 	} as unknown as MarketingClient;
 	const metabase = {
 		preview: async (input: { queryText: string }) => {
 			productQuery = input.queryText;
-			return result(
+			const payload = result(
 				[
 					"week_start",
 					"row_kind",
@@ -105,6 +151,18 @@ async function build() {
 					"reason_responses",
 				],
 				[
+					...zeroWeeks().map((week) => [
+						week,
+						"weekly_total",
+						"all",
+						0,
+						0,
+						0,
+						0,
+						0,
+						0,
+						0,
+					]),
 					[
 						"2026-08-17T00:00:00.000Z",
 						"weekly_total",
@@ -131,6 +189,8 @@ async function build() {
 					],
 				],
 			);
+			payload.rows = options.productRows?.(payload.rows) ?? payload.rows;
+			return payload;
 		},
 	} as unknown as MetabaseClient;
 	const report = await cancellationFeedbackIncentiveWeeklyReport({
@@ -141,6 +201,14 @@ async function build() {
 		now: new Date("2026-08-26T12:00:00.000Z"),
 	});
 	return { report, productQuery, posthogQuery };
+}
+
+function zeroWeeks() {
+	return Array.from({ length: 11 }, (_, index) =>
+		new Date(
+			Date.parse("2026-06-01T00:00:00.000Z") + index * 7 * 24 * 60 * 60 * 1000,
+		).toISOString(),
+	);
 }
 
 function result(names: string[], rows: unknown[][]): MetabaseResult {

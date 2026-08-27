@@ -49,12 +49,19 @@ country_candidates as (
     ) != ''
 )
 select
-  customer_id,
-  argMax(country_code, tuple(source_priority, observed_at)) as country_code,
-  argMax(country_source, tuple(source_priority, observed_at)) as country_source
-from country_candidates
-group by customer_id
-order by customer_id
+  country_code,
+  country_source,
+  count() as mapped_customers
+from (
+  select
+    customer_id,
+    argMax(country_code, tuple(source_priority, observed_at)) as country_code,
+    argMax(country_source, tuple(source_priority, observed_at)) as country_source
+  from country_candidates
+  group by customer_id
+)
+group by country_code, country_source
+order by mapped_customers desc, country_code
 limit 20`,
 	logoChurnByTier: `with
 paid_subscription_ids as (
@@ -178,21 +185,10 @@ customer_months as (
   where lower(plan) in ('hobbyist', 'creator', 'growth', 'scale')
   group by month_start, customer_id
 ),
-cohort_events as (
-  select customer_id, month_start
-  from customer_months
-  where customer_revenue_usd > 0
-  union all
-  select
-    customerId as customer_id,
-    toStartOfMonth(toTimeZone("createdAt", 'UTC')) as month_start
-  from sync_prod.sync_stripe_payments
-  where lower(status) = 'succeeded'
-    and customerId != ''
-),
 cohorts as (
-  select customer_id, min(month_start) as cohort_month
-  from cohort_events
+	select customer_id, min(month_start) as cohort_month
+	from customer_months
+	where customer_revenue_usd > 0
   group by customer_id
 ),
 cohort_customers as (
@@ -372,6 +368,40 @@ from history
 where month_start >= addMonths(toStartOfMonth(toTimeZone(now(), 'UTC')), -8)
 group by period_start, tier
 order by period_start, tier`,
+	referenceScopeBridge: `with
+paid_invoices as (
+  select
+    toStartOfMonth(toTimeZone("createdAt", 'UTC')) as period_start,
+    round(sum("amountPaid") / 100.0, 2) as paid_invoice_revenue_usd,
+    countDistinct(id) as paid_invoice_count
+  from sync_prod.sync_stripe_invoices_paid
+  where "createdAt" >= addMonths(toStartOfMonth(toTimeZone(now(), 'UTC')), -12)
+    and "createdAt" < toStartOfMonth(toTimeZone(now(), 'UTC'))
+  group by period_start
+),
+v3_top_ups as (
+  select
+    toStartOfMonth(toTimeZone("createdAt", 'UTC')) as period_start,
+    round(sum(amount) / 100.0, 2) as successful_v3_top_up_payments_usd,
+    countDistinct(id) as successful_v3_top_up_count
+  from sync_prod.sync_stripe_payments
+  where "createdAt" >= addMonths(toStartOfMonth(toTimeZone(now(), 'UTC')), -12)
+    and "createdAt" < toStartOfMonth(toTimeZone(now(), 'UTC'))
+    and lower(status) = 'succeeded'
+    and lower(coalesce("billingVersion", '')) = 'v3'
+  group by period_start
+)
+select
+  paid_invoices.period_start,
+  paid_invoices.paid_invoice_revenue_usd,
+  paid_invoices.paid_invoice_count,
+  coalesce(v3_top_ups.successful_v3_top_up_payments_usd, 0) as successful_v3_top_up_payments_usd,
+  coalesce(v3_top_ups.successful_v3_top_up_count, 0) as successful_v3_top_up_count,
+  addMonths(paid_invoices.period_start, 1) as period_end,
+  'V3 top-ups are context and are not removed to force a reference tie' as scope_note
+from paid_invoices
+left join v3_top_ups using (period_start)
+order by period_start`,
 	countryEconomics: `with
 customer_months as (
   select

@@ -331,6 +331,25 @@ HubSpot private app token stays read-only and includes company, contact, deal,
 pipeline, owner, activity, and Leads-object read scopes. Store it in Doppler
 project `atlas`, config `local`; never put it in `.env.local` or source control.
 
+## Contract reconciliation
+
+Dashboard 13 reports the contract intelligence written by the research agent. The
+Finance review tab shows current contract-versus-Product price differences, Drive
+customers without verified Product or Stripe accounts, and Product organizations
+marked enterprise without an active Enterprise or Channel Partner contract link.
+Internal organizations whose known members all use `sync.so` email addresses are
+excluded from the reverse account audit.
+
+The Operations tab shows the complete open finding queue, customer identity and
+document coverage, and extraction and parsing health by Enterprise, Production, and
+Channel Partner class. The API only reads existing contract records and publishes
+immutable Atlas snapshots. Contract extraction, matching, and reconciliation remain
+owned by the agent. The generated deployment refreshes dashboard 13 every six hours,
+after the Drive customer sync and normal contract parsing window.
+
+Run `bun run contracts:dashboard` locally while the API is running to publish the
+same snapshots on demand.
+
 ## Sales ingestion
 
 Dashboard 4 mirrors HubSpot sales operations through stable Atlas questions. Deal,

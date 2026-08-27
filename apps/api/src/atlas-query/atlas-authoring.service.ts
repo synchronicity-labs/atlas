@@ -24,6 +24,7 @@ import type {
 } from "./atlas-authoring.contracts";
 import {
 	ATLAS_AUTOMATED_REPORT_DASHBOARD,
+	ATLAS_AUTOMATED_REPORT_DASHBOARD_ID,
 	ATLAS_AUTOMATED_REPORT_SOURCE,
 	atlasAuthoringRecipe,
 } from "./atlas-authoring.recipes";
@@ -288,8 +289,9 @@ export class AtlasAuthoringService {
 				},
 			});
 			const dashboard = await transaction.dashboard.upsert({
-				where: { number: ATLAS_AUTOMATED_REPORT_DASHBOARD },
+				where: { id: ATLAS_AUTOMATED_REPORT_DASHBOARD_ID },
 				create: {
+					id: ATLAS_AUTOMATED_REPORT_DASHBOARD_ID,
 					number: ATLAS_AUTOMATED_REPORT_DASHBOARD,
 					name: "Automated governed reports",
 					description: "Reviewed Atlas recipes created for recurring reports.",

@@ -1,6 +1,8 @@
 import { QueryLanguage } from "@crm/db";
 
-export const ATLAS_AUTOMATED_REPORT_DASHBOARD = 13;
+export const ATLAS_AUTOMATED_REPORT_DASHBOARD = 17;
+export const ATLAS_AUTOMATED_REPORT_DASHBOARD_ID =
+	"atlas-automated-report-dashboard";
 export const ATLAS_AUTOMATED_REPORT_SOURCE = "atlas:automated-reports";
 
 type Recipe = {

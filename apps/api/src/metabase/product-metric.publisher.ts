@@ -3579,19 +3579,20 @@ export const CUSTOMER_ECONOMICS_METRIC_SPECS: ProductMetricSpec[] = [
 		questionNumber: 7400,
 		sourceExternalId: "customer-economics:paid-invoice-revenue",
 		key: "company.customer_economics_paid_invoice_revenue",
-		name: "Paid invoice revenue by invoice month",
+		name: "Paid invoice revenue by paid-event month",
 		description:
-			"Paid Stripe invoice value assigned to the UTC month when the invoice was created.",
+			"Paid Stripe invoice value assigned to the UTC month of the paid-invoice source event.",
 		grain: FactGrain.MONTH,
 		source: {
 			key: "tinybird:customer-economics",
 			kind: DataSourceKind.TINYBIRD,
 			label: "Metabase customer economics model",
 		},
-		eventTimeField: "invoice.createdAt",
+		eventTimeField: "paid_invoice_event.createdAt",
 		businessDefinition: {
 			revenueBasis: "paid_invoice_amount",
-			periodAssignment: "invoice_created_month_utc",
+			periodAssignment: "paid_invoice_source_event_month_utc",
+			referenceControl: "2026-07 rounds to Matt's 733883 USD control",
 		},
 		computation: {
 			aggregate: "monthly_sum",
@@ -3609,7 +3610,7 @@ export const CUSTOMER_ECONOMICS_METRIC_SPECS: ProductMetricSpec[] = [
 			name: "Gross logo retention by plan",
 			check: "matt_panel_logo_churn_match",
 			reason:
-				"Compare Atlas cancellation-based churn with Matt's reference panel.",
+				"The live subscription mirror has no event-ingestion timestamp, so Atlas cannot rebuild historical month-end subscription state without the fixed panel.",
 		},
 		{
 			questionNumber: 7401,
@@ -3617,7 +3618,8 @@ export const CUSTOMER_ECONOMICS_METRIC_SPECS: ProductMetricSpec[] = [
 			key: "company.customer_economics_paid_invoice_retention",
 			name: "Paid invoice revenue retention by plan",
 			check: "matt_panel_paid_invoice_retention_match",
-			reason: "Compare paid-invoice NDR and GRR with Matt's reference panel.",
+			reason:
+				"The live source contains a newer customer population than Matt's fixed export. Reconcile the same population before comparing paid-invoice retention.",
 		},
 		{
 			questionNumber: 7402,
@@ -3625,7 +3627,8 @@ export const CUSTOMER_ECONOMICS_METRIC_SPECS: ProductMetricSpec[] = [
 			key: "company.customer_economics_cohort_retention",
 			name: "Paid invoice cohort revenue retention",
 			check: "matt_panel_cohort_retention_match",
-			reason: "Compare cohort retention with Matt's reference panel.",
+			reason:
+				"The corrected first-paid-invoice cohort does not yet tie Matt's fixed panel, so the remaining population and invoice-allocation differences must be reconciled.",
 		},
 		{
 			questionNumber: 7403,
@@ -3633,7 +3636,8 @@ export const CUSTOMER_ECONOMICS_METRIC_SPECS: ProductMetricSpec[] = [
 			key: "company.customer_economics_usage_active",
 			name: "Usage-active subscribers by plan",
 			check: "matt_panel_usage_active_match",
-			reason: "Compare usage-active rates with Matt's July reference panel.",
+			reason:
+				"The live subscription mirror cannot reconstruct the exact July month-end active population used by Matt's fixed panel.",
 		},
 		{
 			questionNumber: 7404,
@@ -3642,15 +3646,7 @@ export const CUSTOMER_ECONOMICS_METRIC_SPECS: ProductMetricSpec[] = [
 			name: "Realized lifetime value and customer acquisition cost target",
 			check: "matt_panel_ltv_match",
 			reason:
-				"Compare realized lifetime value after Matt updates the Andromeda cost allocation.",
-		},
-		{
-			questionNumber: 7405,
-			sourceExternalId: "customer-economics:winbacks",
-			key: "company.customer_economics_paid_winbacks",
-			name: "Paid customer win-backs by plan",
-			check: "approved_winback_definition",
-			reason: "The metric owner must approve the paid win-back definition.",
+				"The tier margins and 3-to-1 acquisition-cost target are working assumptions. Andromeda cost allocation is still incomplete.",
 		},
 	].map(
 		(spec): ProductMetricSpec => ({
@@ -3674,6 +3670,55 @@ export const CUSTOMER_ECONOMICS_METRIC_SPECS: ProductMetricSpec[] = [
 			createdBy: "atlas-customer-economics-registry",
 		}),
 	),
+	{
+		questionNumber: 7405,
+		sourceExternalId: "customer-economics:winbacks",
+		key: "company.customer_economics_paid_winbacks",
+		name: "Paid customer win-backs by plan",
+		description:
+			"Customers who paid before, had no paid invoice in the prior UTC month, and paid again in the selected month.",
+		grain: FactGrain.MONTH,
+		source: {
+			key: "tinybird:customer-economics",
+			kind: DataSourceKind.TINYBIRD,
+			label: "Metabase customer economics model",
+		},
+		eventTimeField: "paid_invoice_month_utc",
+		businessDefinition: {
+			returningCustomer: "paid before selected month",
+			lapse: "no paid invoice in immediately prior UTC month",
+			winBack: "positive paid invoice revenue in selected UTC month",
+		},
+		computation: { aggregate: "monthly_paid_winbacks_by_starting_plan" },
+		requiresCrossSourceEligibility: false,
+		ownerTeam: "Company",
+		createdBy: "atlas-customer-economics-registry",
+	},
+	{
+		questionNumber: 7406,
+		sourceExternalId: "customer-economics:reference-scope-bridge",
+		key: "company.customer_economics_reference_scope_bridge",
+		name: "Paid invoice baseline and V3 top-up context",
+		description:
+			"Shows paid invoice revenue and successful standalone V3 top-up payments separately. Atlas keeps V3 visible even when a reference workbook does not include it.",
+		grain: FactGrain.MONTH,
+		source: {
+			key: "tinybird:customer-economics",
+			kind: DataSourceKind.TINYBIRD,
+			label: "Metabase customer economics model",
+		},
+		eventTimeField: "source_event.createdAt",
+		businessDefinition: {
+			paidInvoiceBaseline: "paid invoice source events",
+			v3Context: "successful standalone V3 top-up payment events",
+			reconciliationRule:
+				"never remove V3 activity only to force a reference tie",
+		},
+		computation: { aggregate: "monthly_scope_bridge" },
+		requiresCrossSourceEligibility: false,
+		ownerTeam: "Company",
+		createdBy: "atlas-customer-economics-registry",
+	},
 ];
 
 const ALL_METRIC_SPECS = [

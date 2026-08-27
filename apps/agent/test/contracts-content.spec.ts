@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 import {
 	contractRevisionKey,
 	extractContractText,
+	isRemovedContractText,
 	normalizeContractText,
 } from "../agent/lib/contracts-content";
 import type { ContractDriveDocument } from "../agent/lib/contracts-drive-client";
@@ -61,5 +62,10 @@ describe("contract text extraction", () => {
 		expect(normalizeContractText("one  \r\n\r\n\r\n\r\ntwo")).toBe(
 			"one\n\n\ntwo",
 		);
+	});
+
+	it("recognizes Drive removal notices instead of sending them to OCR", () => {
+		expect(isRemovedContractText("The document has been removed.")).toBe(true);
+		expect(isRemovedContractText("The contract has been removed.")).toBe(false);
 	});
 });

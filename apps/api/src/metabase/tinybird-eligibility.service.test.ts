@@ -178,6 +178,35 @@ where "organizationPlanType" in ('hobbyist', 'creator')`),
 		expect(governed.queryText).toContain("atlas_population_user.banned");
 	});
 
+	it.each(["generations", "generation_feedback", "generation_score"])(
+		"keeps repeated %s lookups eligible for predicate pushdown",
+		(table) => {
+			const governed = governProductPostgresQuery(
+				`select count(*) from public.${table} current_record
+where exists (select 1 from public.${table} previous_record
+where previous_record.user_id = current_record.user_id)`,
+				"PRODUCT_ACTIVITY",
+			);
+
+			expect(governed.applied).toBe(true);
+			expect(governed.queryText).toContain(
+				`atlas_population_${table} as not materialized (`,
+			);
+			expect(
+				governed.queryText.match(
+					new RegExp(`from atlas_population_${table} `, "g"),
+				),
+			).toHaveLength(2);
+			expect(governed.queryText).toContain(
+				"atlas_population_user.is_anonymous",
+			);
+			expect(governed.queryText).toContain("atlas_population_user.banned");
+			expect(governed.queryText).toContain("atlas_subscribed_users");
+			expect(governed.queryText).toContain("%@sync.so");
+			expect(governed.queryText).toContain("%@sync.labs");
+		},
+	);
+
 	it("keeps banned paying customers in Product Postgres money queries", () => {
 		const governed = governProductPostgresQuery(
 			"select count(*) from generations g",

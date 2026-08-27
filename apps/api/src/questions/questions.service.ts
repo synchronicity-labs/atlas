@@ -11,11 +11,12 @@ import { EconomicsService } from "../economics/economics.service";
 import { MarketingService } from "../marketing/marketing.service";
 import { MetabaseClient } from "../metabase/metabase.client";
 import { metabaseConfig } from "../metabase/metabase.config";
-import { ProductEligibilityService } from "../metabase/product-eligibility.service";
 import {
-	RevenueDoorPolicyService,
-	usesRevenueDoorPolicy,
-} from "../metabase/revenue-door-policy.service";
+	type MetabaseQuestionContext,
+	prepareGovernedMetabaseQuery,
+} from "../metabase/prepare-metabase-query";
+import { ProductEligibilityService } from "../metabase/product-eligibility.service";
+import { RevenueDoorPolicyService } from "../metabase/revenue-door-policy.service";
 import { TinybirdEligibilityService } from "../metabase/tinybird-eligibility.service";
 import {
 	summarizeMetricVerification,
@@ -30,11 +31,7 @@ import type {
 	QuestionPreviewInput,
 	QuestionSaveVersionInput,
 } from "./questions.contracts";
-import {
-	assertReadOnlyQuery,
-	bindDefaultMetabaseTemplateVariables,
-	boundSensitiveIdentityResult,
-} from "./read-only-query";
+import { assertReadOnlyQuery } from "./read-only-query";
 import { filterQuestionResult } from "./reporting-period";
 
 const SORTABLE: Record<
@@ -389,6 +386,8 @@ export class QuestionsService {
 			where: questionNumberWhere(input.number),
 			select: {
 				number: true,
+				name: true,
+				sourceExternalId: true,
 				databaseExternalId: true,
 				source: { select: { key: true } },
 			},
@@ -416,10 +415,9 @@ export class QuestionsService {
 									? await this.contractsReporting.preview(input.queryText)
 									: await this.marketing.preview(input.queryText)
 				: await this.metabasePreview(
-						question.number,
+						question,
 						input.queryLanguage,
 						input.queryText,
-						question.databaseExternalId,
 					);
 		const limit = 500;
 		const rows = filterQuestionResult(
@@ -466,49 +464,21 @@ export class QuestionsService {
 	}
 
 	private async metabasePreview(
-		questionNumber: number,
+		question: MetabaseQuestionContext,
 		language: "SQL" | "MBQL",
 		queryText: string,
-		databaseExternalId: string | null,
 	) {
 		const config = metabaseConfig();
 		if (!config) throw new Error("Metabase is not configured.");
-		const boundQueryText = bindDefaultMetabaseTemplateVariables(
-			language,
-			queryText,
+		const client = new MetabaseClient(config);
+		const prepared = await prepareGovernedMetabaseQuery(
+			question,
+			{ language, queryText },
+			client,
+			this.tinybirdEligibility,
+			this.revenueDoorPolicy,
 		);
-		if (language !== "SQL" || databaseExternalId !== "166") {
-			return new MetabaseClient(config).preview({
-				language,
-				queryText: boundSensitiveIdentityResult(
-					language,
-					boundQueryText,
-					databaseExternalId,
-				),
-				databaseExternalId,
-			});
-		}
-		const classified = usesRevenueDoorPolicy(questionNumber)
-			? await this.revenueDoorPolicy.compileForQuestion(
-					questionNumber,
-					boundQueryText,
-				)
-			: null;
-		const classifiedQueryText = classified?.queryText ?? boundQueryText;
-		assertReadOnlyQuery(language, classifiedQueryText);
-		const eligibility = usesRevenueDoorPolicy(questionNumber)
-			? await this.tinybirdEligibility.currentForRevenue()
-			: await this.tinybirdEligibility.current();
-		const governed = this.tinybirdEligibility.govern(
-			classifiedQueryText,
-			databaseExternalId,
-			eligibility,
-		);
-		return new MetabaseClient(config).preview({
-			language,
-			queryText: governed.queryText,
-			databaseExternalId,
-		});
+		return client.preview(prepared.input);
 	}
 
 	async saveVersion(input: QuestionSaveVersionInput, createdBy: string) {

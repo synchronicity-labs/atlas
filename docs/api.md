@@ -486,6 +486,20 @@ reconnection recomputes it. The delete itself is still translated: a record
 removed between the pre-check and the delete is the documented 404, not a P2025
 escaping as a 500.
 
+## Product question execution
+
+Metabase previews and scheduled refreshes use `prepareGovernedMetabaseQuery`.
+Product visual queries are compiled to read-only SQL before the shared user
+filter runs. Atlas rejects unresolved parameters instead of changing their
+meaning. Feedback rows are filtered directly, even when generation details are
+left-joined. Filtering only the joined generation would leave excluded users'
+feedback in the result.
+
+The user filter runs inside Product Postgres. Atlas does not download the full
+identity table. Sensitive result sets remain capped at 2,000 rows. Governed
+snapshots retain the SQL that actually ran, including the population filter.
+An ordinary source mirror is not proof that this check passed.
+
 ## Freshness: invalidate the query, don't disable the cache
 
 There is no HTTP response cache in front of tRPC. Freshness is TanStack Query's

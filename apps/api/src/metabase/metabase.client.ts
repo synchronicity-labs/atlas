@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { assertReadOnlyQuery } from "../questions/read-only-query";
 import type { MetabaseConfig } from "./metabase.config";
 
 type MetabaseColumn = {
@@ -355,6 +356,58 @@ export class MetabaseClient {
 			}),
 		});
 		return this.result(raw);
+	}
+
+	async preparePreview(
+		input: MetabasePreviewInput,
+	): Promise<MetabasePreviewInput> {
+		if (input.language !== "MBQL" || input.databaseExternalId !== "34") {
+			return input;
+		}
+		const datasetQuery = JSON.parse(input.queryText) as unknown;
+		if (
+			!datasetQuery ||
+			typeof datasetQuery !== "object" ||
+			Array.isArray(datasetQuery)
+		) {
+			throw new Error("The MBQL query must be a JSON object.");
+		}
+		if (
+			(datasetQuery as Record<string, unknown>).database !==
+			Number(input.databaseExternalId)
+		) {
+			throw new Error("The MBQL database does not match this question.");
+		}
+		const parameters = (datasetQuery as Record<string, unknown>).parameters;
+		if (
+			parameters != null &&
+			(!Array.isArray(parameters) || parameters.length > 0)
+		) {
+			throw new Error(
+				"Atlas cannot compile this visual query with bound parameters yet.",
+			);
+		}
+		const native = await this.request<{ query?: unknown; params?: unknown }>(
+			"/api/dataset/native",
+			{
+				method: "POST",
+				body: JSON.stringify({ ...datasetQuery, parameters: [] }),
+				signal: AbortSignal.timeout(PREVIEW_TIMEOUT_MS),
+			},
+		);
+		if (
+			native.params != null &&
+			(!Array.isArray(native.params) || native.params.length > 0)
+		) {
+			throw new Error(
+				"Atlas cannot apply its user filter to a compiled query with bound parameters yet.",
+			);
+		}
+		if (typeof native.query !== "string" || !native.query.trim()) {
+			throw new Error("Metabase did not return SQL for this visual query.");
+		}
+		assertReadOnlyQuery("SQL", native.query);
+		return { ...input, language: "SQL", queryText: native.query };
 	}
 
 	async preview(input: MetabasePreviewInput): Promise<MetabaseResult> {

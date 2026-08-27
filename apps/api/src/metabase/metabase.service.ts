@@ -14,15 +14,7 @@ import { Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import type { EnvironmentVariables } from "../config/env.validation";
 import { InjectDatabase } from "../database/database.constants";
-import {
-	assertReadOnlyQuery,
-	bindDefaultMetabaseTemplateVariables,
-	boundSensitiveIdentityResult,
-} from "../questions/read-only-query";
-import {
-	abuseEnforcementVerificationChecks,
-	abuseUsesAllIdentities,
-} from "./abuse-detail-verification";
+import { abuseEnforcementVerificationChecks } from "./abuse-detail-verification";
 import { atlasQuestionName } from "./atlas-question-name";
 import {
 	type MetabaseCardResponse,
@@ -31,17 +23,14 @@ import {
 	type MetabaseResult,
 } from "./metabase.client";
 import { type MetabaseConfig, metabaseConfig } from "./metabase.config";
+import { prepareGovernedMetabaseQuery } from "./prepare-metabase-query";
 import { productGapVerificationChecks } from "./product-gap-verification";
 import {
 	ProductMetricPublisher,
 	type PublishVerificationCheck,
 	preferredAtlasQuestionNumber,
 } from "./product-metric.publisher";
-import {
-	RevenueDoorPolicyService,
-	usesRevenueDoorPolicy,
-	usesSubscribedRevenueEligibility,
-} from "./revenue-door-policy.service";
+import { RevenueDoorPolicyService } from "./revenue-door-policy.service";
 import { comparePaidCustomerRevenue } from "./saved-question-equivalence";
 import {
 	StripeBillingCountryClient,
@@ -61,7 +50,7 @@ import {
 	stripeCustomerBillingCountryQuery,
 } from "./stripe-customer-billing-country";
 import {
-	hasSubscribedPopulation,
+	type GovernedTinybirdQuery,
 	TinybirdEligibilityService,
 } from "./tinybird-eligibility.service";
 
@@ -1141,52 +1130,10 @@ export class MetabaseService {
 		const errors: Array<{ number: number; message: string }> = [];
 		try {
 			const client = new MetabaseClient(config);
-			const needsGeneralEligibility = questionsToProcess.some(
-				(question) =>
-					["34", "166"].includes(question.databaseExternalId ?? "") &&
-					question.versions[0]?.queryLanguage === QueryLanguage.SQL &&
-					!abuseUsesAllIdentities(question.sourceExternalId) &&
-					!usesSubscribedRevenueEligibility(
-						question.number,
-						question.name,
-						question.versions[0]?.queryText,
-					),
-			);
-			const needsRevenueEligibility = questionsToProcess.some(
-				(question) =>
-					["34", "166"].includes(question.databaseExternalId ?? "") &&
-					question.versions[0]?.queryLanguage === QueryLanguage.SQL &&
-					usesSubscribedRevenueEligibility(
-						question.number,
-						question.name,
-						question.versions[0]?.queryText,
-					),
-			);
-			const needsPaidActivityEligibility = questionsToProcess.some(
-				(question) => {
-					const version = question.versions[0];
-					return (
-						["34", "166"].includes(question.databaseExternalId ?? "") &&
-						version?.queryLanguage === QueryLanguage.SQL &&
-						!usesSubscribedRevenueEligibility(
-							question.number,
-							question.name,
-							version.queryText,
-						) &&
-						hasSubscribedPopulation(version.queryText)
-					);
-				},
-			);
-			const [generalEligibility, revenueEligibility, paidActivityEligibility] =
-				await Promise.all([
-					needsGeneralEligibility ? this.tinybirdEligibility.current() : null,
-					needsRevenueEligibility
-						? this.tinybirdEligibility.currentForRevenue()
-						: null,
-					needsPaidActivityEligibility
-						? this.tinybirdEligibility.currentForPaidActivity()
-						: null,
-				]);
+			const eligibilitySources = new Map<
+				string,
+				GovernedTinybirdQuery["eligibility"]
+			>();
 			for (
 				let offset = 0;
 				offset < questionsToProcess.length;
@@ -1207,54 +1154,22 @@ export class MetabaseService {
 							}
 							const language =
 								version.queryLanguage === QueryLanguage.SQL ? "SQL" : "MBQL";
-							const boundQueryText = bindDefaultMetabaseTemplateVariables(
-								language,
-								version.queryText,
+							const prepared = await prepareGovernedMetabaseQuery(
+								question,
+								{ language, queryText: version.queryText },
+								client,
+								this.tinybirdEligibility,
+								this.revenueDoorPolicy,
 							);
-							assertReadOnlyQuery(language, boundQueryText);
-							const revenueDoor =
-								language === "SQL" && usesRevenueDoorPolicy(question.number)
-									? await this.revenueDoorPolicy.compileForQuestion(
-											question.number,
-											boundQueryText,
-										)
-									: null;
-							const classifiedQueryText =
-								revenueDoor?.queryText ?? boundQueryText;
-							assertReadOnlyQuery(language, classifiedQueryText);
-							const eligibility = abuseUsesAllIdentities(
-								question.sourceExternalId,
-							)
-								? null
-								: usesSubscribedRevenueEligibility(
-											question.number,
-											question.name,
-											classifiedQueryText,
-										)
-									? revenueEligibility
-									: hasSubscribedPopulation(classifiedQueryText)
-										? paidActivityEligibility
-										: generalEligibility;
-							const governed = eligibility
-								? this.tinybirdEligibility.govern(
-										classifiedQueryText,
-										question.databaseExternalId,
-										eligibility,
-									)
-								: null;
-							const executedQueryText =
-								language === "SQL" && governed
-									? governed.queryText
-									: classifiedQueryText;
-							const result = await client.preview({
-								language,
-								queryText: boundSensitiveIdentityResult(
-									language,
-									executedQueryText,
-									question.databaseExternalId,
-								),
-								databaseExternalId: question.databaseExternalId,
-							});
+							const { governed, revenueDoor } = prepared;
+							if (governed) {
+								eligibilitySources.set(
+									governed.eligibility.contentHash,
+									governed.eligibility,
+								);
+							}
+							const executedQueryText = prepared.input.queryText;
+							const result = await client.preview(prepared.input);
 							const verificationChecks: PublishVerificationCheck[] = [];
 							if (
 								question.sourceExternalId === "cron:abuse:enforcement-detail"
@@ -1330,7 +1245,14 @@ export class MetabaseService {
 							});
 							await this.productMetrics.publish({
 								question,
-								version: { ...version, queryText: executedQueryText },
+								version: {
+									...version,
+									queryLanguage:
+										prepared.input.language === "SQL"
+											? QueryLanguage.SQL
+											: QueryLanguage.MBQL,
+									queryText: executedQueryText,
+								},
 								result,
 								syncRunId: run.id,
 								capturedAt,
@@ -1399,12 +1321,7 @@ export class MetabaseService {
 							questionCount: questions.length,
 							remainingQuestions,
 							errors,
-							eligibilityCapturedAt:
-								generalEligibility?.capturedAt.toISOString() ?? null,
-							eligibilityHash: generalEligibility?.contentHash ?? null,
-							revenueEligibilityCapturedAt:
-								revenueEligibility?.capturedAt.toISOString() ?? null,
-							revenueEligibilityHash: revenueEligibility?.contentHash ?? null,
+							eligibilitySources: [...eligibilitySources.values()],
 						}),
 					},
 				}),

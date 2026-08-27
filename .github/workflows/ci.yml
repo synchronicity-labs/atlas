@@ -56,10 +56,12 @@ jobs:
       - run: bun install --frozen-lockfile
 
       - name: Apply migrations
-        run: bun run db:deploy
+        run: bunx turbo run db:deploy
 
       - run: bun run check-types
 
       - run: bun run lint
 
       - run: bun run test
+
+      - run: bun run release:test

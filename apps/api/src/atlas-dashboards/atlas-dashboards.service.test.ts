@@ -156,9 +156,9 @@ describe("Atlas dashboard refresh", () => {
 			{ syncDashboard: mock() } as never,
 		);
 
-		const result = await service.refresh(10, "native");
+		const result = await service.refresh(14, "native");
 
-		expect(marketingSync).toHaveBeenCalledWith(10);
+		expect(marketingSync).toHaveBeenCalledWith(14);
 		expect(result).toMatchObject({
 			cardsProcessed: 1,
 			snapshotsCreated: 1,
@@ -196,12 +196,52 @@ describe("Atlas dashboard refresh", () => {
 			{ syncDashboard: mock() } as never,
 		);
 
-		const result = await service.refresh(11, "native");
+		const result = await service.refresh(16, "native");
 
-		expect(marketingSync).toHaveBeenCalledWith(11);
+		expect(marketingSync).toHaveBeenCalledWith(16);
 		expect(result).toMatchObject({
 			cardsProcessed: 2,
 			snapshotsCreated: 2,
+			completed: true,
+			errors: [],
+		});
+	});
+
+	test("routes customer lifecycle through the governed marketing reader", async () => {
+		const findUnique = mock().mockResolvedValue({
+			cards: [
+				{
+					question: {
+						id: "exit-survey",
+						number: 239,
+						connector: DataSourceKind.ATLAS,
+						sourceId: "customer-lifecycle-source",
+						source: { key: "atlas:marketing" },
+					},
+				},
+			],
+		});
+		const marketingSync = mock().mockResolvedValue({
+			cardsProcessed: 1,
+			snapshotsCreated: 1,
+			errors: [],
+		});
+		const service = new AtlasDashboardsService(
+			{ dashboard: { findUnique } } as unknown as Db,
+			{ syncDashboard: mock() } as never,
+			{ syncAtlasDashboard: mock() } as never,
+			{ syncDashboard: mock() } as never,
+			{ syncDashboard: marketingSync } as never,
+			{ syncDashboard: mock() } as never,
+			{ syncDashboard: mock() } as never,
+		);
+
+		const result = await service.refresh(15, "native");
+
+		expect(marketingSync).toHaveBeenCalledWith(15);
+		expect(result).toMatchObject({
+			cardsProcessed: 1,
+			snapshotsCreated: 1,
 			completed: true,
 			errors: [],
 		});

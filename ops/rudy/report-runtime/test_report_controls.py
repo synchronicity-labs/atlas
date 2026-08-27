@@ -36,6 +36,14 @@ class ReportControlsTest(unittest.TestCase):
                     with self.assertRaises(RuntimeError):
                         controls.canonical(237)
 
+    def test_refresh_does_not_hide_an_existing_fresh_snapshot(self):
+        self.payload["provenance"]["source"]["state"] = "SYNCING"
+        with patch.object(controls, "question", return_value=self.payload):
+            self.assertEqual(controls.canonical(237), self.payload)
+            self.payload["freshness"]["status"] = "stale"
+            with self.assertRaises(RuntimeError):
+                controls.canonical(237)
+
     def test_rejects_truncated_rows(self):
         with self.assertRaises(ValueError):
             controls.rows({"result": {"columns": [{"name": "a"}, {"name": "b"}], "rows": [[1]]}})

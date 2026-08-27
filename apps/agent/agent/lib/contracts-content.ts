@@ -6,6 +6,7 @@ import type { ContractDriveDocument } from "./contracts-drive-client";
 const MAX_FILE_BYTES = 25 * 1024 * 1024;
 const MAX_TEXT_CHARACTERS = 250_000;
 const OCR_TEXT_THRESHOLD = 200;
+const REMOVED_DOCUMENT_ERROR = "Drive PDF says the document was removed.";
 
 export type ContractTextExtraction = {
 	text: string;
@@ -54,6 +55,9 @@ export async function extractContractText(
 	}
 
 	const normalized = normalizeContractText(rawText);
+	if (document.format === "pdf" && isRemovedContractText(normalized)) {
+		throw new Error(REMOVED_DOCUMENT_ERROR);
+	}
 	if (!normalized && document.format !== "pdf") {
 		throw new Error("Contract document contains no readable text.");
 	}
@@ -73,6 +77,10 @@ export async function extractContractText(
 			document.format === "pdf" && normalized.length < OCR_TEXT_THRESHOLD,
 		warnings,
 	};
+}
+
+export function isRemovedContractText(value: string): boolean {
+	return /^the document has been removed\.?$/i.test(value.trim());
 }
 
 export function normalizeContractText(value: string): string {

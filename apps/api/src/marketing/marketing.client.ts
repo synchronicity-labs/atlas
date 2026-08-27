@@ -178,6 +178,22 @@ export class MarketingClient {
 						`GA4 ${property.label} request failed (${response.status}).`,
 					);
 				}
+				if (
+					range &&
+					(body.rows ?? []).some(
+						(row) =>
+							row.metricValues?.length !== query.metrics.length ||
+							(row.dimensionValues ?? []).length !== query.dimensions.length ||
+							row.metricValues.some(
+								(metric) =>
+									metric.value === undefined ||
+									metric.value === "" ||
+									!Number.isFinite(Number(metric.value)),
+							),
+					)
+				) {
+					throw new Error("GA4 ranged report returned incomplete metrics.");
+				}
 				return {
 					key,
 					label: property.label,
@@ -330,6 +346,23 @@ export class MarketingClient {
 		const body = (await response.json()) as SearchReport;
 		if (!response.ok) {
 			throw new Error(`Search Console request failed (${response.status}).`);
+		}
+		if (
+			range &&
+			(body.rows ?? []).some(
+				(row) =>
+					(row.keys ?? []).length !== query.dimensions.length ||
+					[row.clicks, row.impressions, row.ctr, row.position].some(
+						(metric) =>
+							metric === undefined ||
+							metric === null ||
+							!Number.isFinite(metric),
+					),
+			)
+		) {
+			throw new Error(
+				"Search Console ranged report returned incomplete metrics.",
+			);
 		}
 		let rows = (body.rows ?? []).map((row) => [
 			...(row.keys ?? []),

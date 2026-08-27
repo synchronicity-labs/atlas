@@ -111,6 +111,73 @@ describe("MarketingClient scoped Google weeks", () => {
 	});
 });
 
+describe("MarketingClient ranged metric completeness", () => {
+	test("does not turn a missing Google metric into a reported zero", async () => {
+		spyOn(
+			GoogleServiceAccountClient.prototype,
+			"accessToken",
+		).mockResolvedValue("test-only");
+		globalThis.fetch = mock().mockResolvedValue(
+			new Response(
+				JSON.stringify({
+					rows: [{ metricValues: [{}] }],
+				}),
+			),
+		) as unknown as typeof fetch;
+		const client = new MarketingClient({
+			...config,
+			ga4: { lipsync: { id: "525331485", label: "lipsync.com" } },
+		});
+		await expect(
+			client.ga4Range(
+				{
+					source: "ga4",
+					properties: ["lipsync"],
+					dateRange: "30_days",
+					dimensions: [],
+					metrics: ["sessions"],
+					merge: "rows",
+					limit: 1,
+				},
+				new Date("2026-08-17"),
+				new Date("2026-08-24"),
+			),
+		).rejects.toThrow("incomplete metrics");
+	});
+	test("does not turn a missing Search Console metric into zero", async () => {
+		spyOn(
+			GoogleServiceAccountClient.prototype,
+			"accessToken",
+		).mockResolvedValue("test-only");
+		globalThis.fetch = mock().mockResolvedValue(
+			new Response(
+				JSON.stringify({
+					rows: [{ keys: [], clicks: 10, impressions: 100, ctr: 0.1 }],
+				}),
+			),
+		) as unknown as typeof fetch;
+		const client = new MarketingClient({
+			...config,
+			searchConsole: { lipsync: "sc-domain:lipsync.com" },
+		});
+		await expect(
+			client.searchConsoleRange(
+				{
+					source: "search_console",
+					site: "lipsync",
+					dateRange: "30_days",
+					dimensions: [],
+					aggregate: "none",
+					metrics: ["clicks", "impressions", "ctr_pct", "position"],
+					limit: 1,
+				},
+				new Date("2026-08-17"),
+				new Date("2026-08-24"),
+			),
+		).rejects.toThrow("incomplete metrics");
+	});
+});
+
 describe("MarketingClient PostHog retries", () => {
 	test("retries a transient gateway failure", async () => {
 		const fetchMock = mock()

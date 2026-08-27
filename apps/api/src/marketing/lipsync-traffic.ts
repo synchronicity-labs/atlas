@@ -51,6 +51,9 @@ export function completeMonday(now: Date, lagDays = 0): Date {
 }
 
 function records(result: MarketingResult): Record<string, unknown>[] {
+	if (result.rows.some((row) => row.length !== result.columns.length)) {
+		throw new Error("Lipsync weekly source returned a truncated row.");
+	}
 	return result.rows.map((row) =>
 		Object.fromEntries(
 			result.columns.map((column, i) => [column.name, row[i]]),

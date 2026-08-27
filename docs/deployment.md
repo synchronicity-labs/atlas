@@ -35,7 +35,7 @@ The native Atlas sync executes the saved Atlas query, applies its required filte
 
 CI replays the full migration history on an empty, disposable Postgres database. Two prerequisite migrations create the fixed catalog records that older data migrations require. They use conflict-safe inserts and leave existing records unchanged on the shared database.
 
-Prisma client generation does not need a database connection. Its configuration allows a missing connection URL during dependency installation in a secretless preview build. Migration and runtime commands still require the intended database URL. Do not copy production secrets into preview environments just to generate types.
+Prisma client generation does not need a database connection. Its configuration allows a missing connection URL during dependency installation in a secretless preview build. The database client also initializes on first use, so Eve can inspect agent modules during its build without runtime secrets. Migration and runtime database access still require the intended database URL. Do not copy production secrets into preview environments just to generate types or discover routes.
 
 ## Retry and rollback
 

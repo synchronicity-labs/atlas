@@ -35,4 +35,14 @@ hermes cron create '15 17 * * 1' \
   --deliver local
 ```
 
-The wrapper reads Atlas and Linear credentials from their existing Hermes secret files. It never prints them. Run `publish_weekly_metrics.sh --dry-run` to verify the rendered update without writing to Linear.
+The deployed wrapper uses scoped Doppler injection for Atlas and Linear credentials. It never prints them. Run `publish_weekly_metrics.sh --dry-run` to verify the rendered update without writing to Linear.
+
+## Final report migration acceptance
+
+`report-runtime` holds the live report guards, final migration helper, and doctor canary. `report-skills` holds the eight corrected active skills. These files are loaded by new report processes; installing them does not require a gateway restart.
+
+After deploying the dedicated Lipsync source migration, refresh Marketing and obtain its allocated public question number. Run `apply_final_migrations.py --traffic-question NUMBER` as the Rudy user with the Hermes runtime on PYTHONPATH and HERMES_HOME set. Review the dry-run result, then add `--apply`. The helper holds Hermes's jobs lock, makes a private backup, and changes only prompts and five known Slack delivery targets. Schedules, run counts, models, and the exit-survey job's existing local destination stay unchanged.
+
+Install the Python runtime files root-owned in `/usr/local/lib/rudy-hermes-crons`, except `atlas_report_controls.py`, which belongs in `/usr/local/lib/rudy-atlas-runtime`. Install the skills under `/root/.hermes/skills/sync-reports`. Keep backups and use atomic replacement. Run `rudy-atlas-cron-canary` and the GEO, Product Pages, and Lipsync funnel no-delivery checks before recording acceptance.
+
+The doctor checks question purpose, trust, freshness, source health, Lipsync's exact source populations and weekly calendars, governed arithmetic, active skill versions, and gateway-owned delivery. An exit-survey local archive is not evidence of a Slack post. Never infer an unknown channel or spend one of a finite cron's runs just to test it.

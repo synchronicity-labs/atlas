@@ -325,6 +325,24 @@ describe("product feedback metric registry", () => {
 		);
 	});
 
+	test("registers the dedicated Lipsync weekly traffic contract", () => {
+		const traffic = PRODUCT_METRIC_SPECS.find(
+			(spec) => spec.questionNumber === 7100,
+		);
+		expect(traffic?.sourceExternalId).toBe("cron:lipsync:weekly-traffic");
+		expect(traffic?.registerByQuestion).toBe(false);
+		expect(traffic?.pendingChecks?.map((check) => check.name)).toEqual([
+			"lipsync_source_scope",
+			"complete_source_weeks",
+			"weekly_population",
+			"metric_reconciliation",
+			"aggregate_privacy",
+		]);
+		expect(preferredAtlasQuestionNumber("cron:lipsync:weekly-traffic")).toBe(
+			7100,
+		);
+	});
+
 	test("registers the governed GEO-attributed product funnel", () => {
 		const geo = PRODUCT_METRIC_SPECS.find(
 			(spec) => spec.questionNumber === 7017,

@@ -1517,6 +1517,81 @@ export const PRODUCT_METRIC_SPECS: ProductMetricSpec[] = [
 		cadenceMinutes: 8 * 60,
 	},
 	{
+		questionNumber: 7100,
+		registerByQuestion: false,
+		sourceExternalId: "cron:lipsync:weekly-traffic",
+		key: "marketing.lipsync_weekly_traffic",
+		name: "Lipsync weekly traffic and search",
+		description:
+			"Two complete source-calendar weeks for the reviewed lipsync.com GA4 property and finalized Search Console site totals. Product conversion remains separate in Q236.",
+		grain: FactGrain.WEEK,
+		source: {
+			key: "atlas:lipsync-weekly",
+			kind: DataSourceKind.ATLAS,
+			label: "Lipsync GA4 and Search Console",
+		},
+		eventTimeField: "period_start",
+		businessDefinition: {
+			entity: "lipsync_source_week",
+			population:
+				"GA4 property 525331485 and Search Console sc-domain:lipsync.com only",
+			periodAssignment:
+				"Monday-Sunday date labels in each source calendar, not a joined UTC cohort",
+			sourceCalendars:
+				"Both reviewed sources use America/Los_Angeles; require matching GA4 metadata and complete local calendar weeks",
+			searchFinality:
+				"finalized daily rows only; three-day processing allowance and seven complete days per week; show the older search window when it differs from GA4",
+			aggregation:
+				"weekly unique users and native ungrouped site totals; never sum query or page rankings into headline totals",
+			identityBoundary:
+				"GA4, Search Console, and Q236 product cohorts are separate populations; no cross-system conversion division",
+		},
+		computation: {
+			aggregate: "two_complete_source_weeks",
+			outputs: [
+				"users",
+				"sessions",
+				"new_users",
+				"engaged_sessions",
+				"engagement_rate_pct",
+				"average_session_duration",
+				"clicks",
+				"impressions",
+				"ctr_pct",
+				"position",
+			],
+		},
+		requiresCrossSourceEligibility: false,
+		pendingChecks: [
+			{
+				name: "lipsync_source_scope",
+				reason:
+					"Only the reviewed Lipsync property and site may supply these values.",
+			},
+			{
+				name: "complete_source_weeks",
+				reason: "Both source windows must be complete and separately labeled.",
+			},
+			{
+				name: "weekly_population",
+				reason:
+					"Native weekly aggregate counts must be present and non-negative.",
+			},
+			{
+				name: "metric_reconciliation",
+				reason:
+					"Rates must reconcile to counts and daily search totals to weekly totals.",
+			},
+			{
+				name: "aggregate_privacy",
+				reason: "Only approved aggregate columns may be published.",
+			},
+		],
+		ownerTeam: "Marketing",
+		createdBy: "atlas-lipsync-traffic-registry",
+		cadenceMinutes: 8 * 60,
+	},
+	{
 		questionNumber: 7005,
 		sourceExternalId: "cron:product-pages:weekly-funnel",
 		key: "marketing.product_pages_weekly_funnel",

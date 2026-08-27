@@ -450,7 +450,7 @@ function productGenerationPopulation(
 		or atlas_population_user.id in (select user_id from atlas_subscribed_users)
 	)`
 			: "";
-	return `atlas_population_${table} as (
+	return `atlas_population_${table} as not materialized (
 	select atlas_population_generation.*
   from public.${table} atlas_population_generation
 	join auth.users atlas_population_user

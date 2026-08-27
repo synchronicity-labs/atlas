@@ -325,6 +325,7 @@ export function governProductPostgresQuery(
 	}
 	const usesGenerations = rewritten.tables.has("generations");
 	const usesFeedback = rewritten.tables.has("generation_feedback");
+	const usesScores = rewritten.tables.has("generation_score");
 	const usesOrganizations = rewritten.tables.has("organizations");
 	const organizationCohortTables = [
 		"organization_features",
@@ -342,6 +343,11 @@ export function governProductPostgresQuery(
 	if (usesFeedback) {
 		commonTableExpressions.push(
 			productGenerationPopulation(policy, "generation_feedback"),
+		);
+	}
+	if (usesScores) {
+		commonTableExpressions.push(
+			productGenerationPopulation(policy, "generation_score"),
 		);
 	}
 	for (const table of organizationCohortTables) {
@@ -432,7 +438,10 @@ function subscribedUserPopulation(): string {
 
 function productGenerationPopulation(
 	policy: TinybirdEligibilitySnapshot["policy"],
-	table: "generations" | "generation_feedback" = "generations",
+	table:
+		| "generations"
+		| "generation_feedback"
+		| "generation_score" = "generations",
 ): string {
 	const populationRule =
 		policy === "PRODUCT_ACTIVITY"
@@ -540,6 +549,7 @@ function rewriteProductTables(
 	const sourceTables = new Set([
 		"generations",
 		"generation_feedback",
+		"generation_score",
 		"organizations",
 		"organization_features",
 		"org_movement_months",

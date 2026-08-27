@@ -46,3 +46,7 @@ After deploying the dedicated Lipsync source migration, refresh Marketing and ob
 Install the Python runtime files root-owned in `/usr/local/lib/rudy-hermes-crons`, except `atlas_report_controls.py`, which belongs in `/usr/local/lib/rudy-atlas-runtime`. Install the skills under `/root/.hermes/skills/sync-reports`. Keep backups and use atomic replacement. Run `rudy-atlas-cron-canary` and the GEO, Product Pages, and Lipsync funnel no-delivery checks before recording acceptance.
 
 The doctor checks question purpose, trust, freshness, source health, Lipsync's exact source populations and weekly calendars, governed arithmetic, active skill versions, and gateway-owned delivery. An exit-survey local archive is not evidence of a Slack post. Never infer an unknown channel or spend one of a finite cron's runs just to test it.
+
+An in-progress source refresh is not a doctor failure when the API still serves a fresh, verified, certified snapshot. Error or unavailable snapshots remain failures. The doctor must not report every Revenue question as broken during its normal refresh.
+
+Q43 remains a provisional visitor-to-signup metric with incomplete surface coverage. It has a separate refresh source so its query timeout does not invalidate unrelated canonical reports. Its query, verification status, and error stay unchanged and visible in Atlas. Do not substitute the trial single-scan rewrite: it did not match the existing result.

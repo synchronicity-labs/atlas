@@ -199,7 +199,7 @@ def main() -> None:
         trust = payload.get("result", {}).get("trustStatus")
         purpose = payload.get("question", {}).get("purpose")
         source_state = payload.get("provenance", {}).get("source", {}).get("state")
-        if freshness != "fresh" or trust != "VERIFIED" or purpose != "CERTIFIED" or source_state != "HEALTHY":
+        if freshness != "fresh" or trust != "VERIFIED" or purpose != "CERTIFIED" or source_state not in {"HEALTHY", "SYNCING"}:
             canonical_failures.append(f"Q{number}:{purpose}/{freshness}/{trust}/{source_state}")
     if canonical_failures:
         fail("canonical questions are not ready: " + ", ".join(canonical_failures))

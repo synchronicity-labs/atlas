@@ -49,6 +49,23 @@ describe("marketing source runs", () => {
 		).toThrow("Q7014 has no configured Atlas source");
 	});
 
+	test("isolates the provisional conversion query from canonical report refreshes", () => {
+		const groups = groupMarketingQuestionsBySource([
+			{ number: 2002, sourceId: "atlas-marketing-source" },
+			{ number: 2019, sourceId: "atlas-marketing-conversion-rate-source" },
+			{ number: 7003, sourceId: "atlas-marketing-source" },
+			{ number: 7100, sourceId: "atlas-lipsync-weekly-source" },
+		]);
+		expect(groups.get("atlas-marketing-source")?.map((q) => q.number)).toEqual([
+			2002, 7003,
+		]);
+		expect(
+			groups
+				.get("atlas-marketing-conversion-rate-source")
+				?.map((q) => q.number),
+		).toEqual([2019]);
+	});
+
 	test("does not gate independent composite sources on product eligibility", () => {
 		expect(
 			requiresProductUserEligibility({

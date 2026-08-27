@@ -30,10 +30,13 @@ describe("AtlasAuthoringService", () => {
 			}),
 		);
 		const transaction = mock(() => Promise.reject(new Error("must not run")));
-		const service = new AtlasAuthoringService({
-			question: { findUnique },
-			$transaction: transaction,
-		} as unknown as Db);
+		const service = new AtlasAuthoringService(
+			{
+				question: { findUnique },
+				$transaction: transaction,
+			} as unknown as Db,
+			{} as never,
+		);
 
 		const result = await service.createDraft(input);
 
@@ -72,7 +75,7 @@ describe("AtlasAuthoringService", () => {
 				callback: (value: typeof transactionDatabase) => unknown,
 			) => callback(transactionDatabase),
 		} as unknown as Db;
-		const service = new AtlasAuthoringService(database);
+		const service = new AtlasAuthoringService(database, {} as never);
 
 		const result = await service.createDraft(input);
 
@@ -86,5 +89,49 @@ describe("AtlasAuthoringService", () => {
 		expect(data.status).toBe("DRAFT");
 		expect(data.purpose).toBe("RECONCILIATION");
 		expect(data.metricVersionId).toBeUndefined();
+	});
+
+	test("rejects publication when the reviewed recipe does not match the request", async () => {
+		const findUnique = mock(() => Promise.reject(new Error("must not read")));
+		const service = new AtlasAuthoringService(
+			{ question: { findUnique } } as unknown as Db,
+			{} as never,
+		);
+
+		expect(
+			service.publishDraft(283, {
+				requestKey: "weekly-other-report",
+				expectedDraftVersion: 1,
+				recipe: {
+					key: "product.cancellation-feedback-incentive-weekly",
+					version: 1,
+				},
+			}),
+		).rejects.toThrow("does not match");
+		expect(findUnique).not.toHaveBeenCalled();
+	});
+
+	test("rejects publication of a question created for another request", async () => {
+		const service = new AtlasAuthoringService(
+			{
+				question: {
+					findUnique: mock(() =>
+						Promise.resolve({ sourceExternalId: "rudy-cron:other-request" }),
+					),
+				},
+			} as unknown as Db,
+			{} as never,
+		);
+
+		expect(
+			service.publishDraft(283, {
+				requestKey: "weekly-cancellation-feedback-incentive",
+				expectedDraftVersion: 1,
+				recipe: {
+					key: "product.cancellation-feedback-incentive-weekly",
+					version: 1,
+				},
+			}),
+		).rejects.toThrow("does not match this Rudy request");
 	});
 });

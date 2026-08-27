@@ -26,7 +26,9 @@ Every new recurring cron requires an Atlas preflight. One-time reminders do not.
 2. If a logical candidate is certified, verified, and fresh, use it. Attach this skill to the cron. Add the exact canonical `ATLAS_PLAN` marker returned by the tool to the prompt.
 3. If the task is an operational check with no logical Atlas metric, add the exact `operational-direct` marker and a specific reason.
 4. If an analytics report has no logical candidate, call `atlas_cron_plan` with `action=create_draft`. Include the business definition, decision use, owner, cadence, dimensions, source hints, and acceptance checks.
-5. Do not create the cron after a draft is created. Wait until Atlas gives the question a governed query and marks it certified, verified, and fresh. Then run a new search preflight.
+5. If a reviewed Atlas recipe matches the request, the tool publishes, verifies, certifies, refreshes, and returns a canonical plan in the same turn. Create the cron with the exact returned marker and this skill.
+6. If no reviewed recipe matches, the tool leaves the question as a draft and blocks the cron. Do not bypass this state with a raw query. Ask for a reviewed Atlas recipe.
+7. Use `action=publish_draft` only to retry a draft with the exact recipe information returned by Atlas.
 
 Never use a raw vendor query as the canonical headline of a new recurring report. Raw sources are valid for operational checks, detail rows, investigation, and explicit reconciliation.
 
@@ -38,7 +40,7 @@ Never use a raw vendor query as the canonical headline of a new recurring report
 4. Do not present `PENDING`, `STALE`, or `FAILED` results as certified. Explain the exact state.
 5. If Atlas has no answer, use the relevant source skill and say that Atlas coverage is missing.
 6. Use raw-source queries to investigate or verify Atlas, not to silently replace a verified Atlas answer.
-7. Rudy's normal Atlas access is read-only. The `atlas_cron_plan` tool can propose a new draft through a separate broker. It cannot activate, certify, verify, refresh, or edit a question.
+7. Rudy's normal Atlas access is read-only. The `atlas_cron_plan` tool uses a separate broker for drafts and reviewed recipe publication. Rudy selects a recipe ID. Atlas owns the source query, verification, certification, refresh, and activation. Rudy cannot submit query text or set trust state.
 
 ## Product policy
 

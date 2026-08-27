@@ -181,8 +181,12 @@ writeFileSync(
 				schedule: "4-59/5 * * * *",
 			},
 			{
-				path: "/internal/sync/atlas/4",
+				path: "/internal/sync/atlas/4/metabase",
 				schedule: "31 */8 * * *",
+			},
+			{
+				path: "/internal/sync/atlas/4/native",
+				schedule: "10 9 * * *",
 			},
 			{
 				path: "/internal/sync/metabase/backfill",
@@ -223,6 +227,22 @@ writeFileSync(
 			{
 				path: "/internal/sync/atlas/13/native",
 				schedule: "57 */6 * * *",
+			},
+			{
+				path: "/internal/sync/atlas/14/native",
+				schedule: "23 */8 * * *",
+			},
+			{
+				path: "/internal/sync/atlas/15/native",
+				schedule: "27 */8 * * *",
+			},
+			{
+				path: "/internal/sync/atlas/16/native",
+				schedule: "37 */8 * * *",
+			},
+			{
+				path: "/internal/sync/atlas/17/native",
+				schedule: "33 */8 * * *",
 			},
 		],
 	}),

@@ -3,7 +3,7 @@ set -Eeuo pipefail
 umask 077
 
 if [[ $EUID -ne 0 || $# -ne 0 ]]; then
-  echo "usage: sudo rudy-atlas-question-draft" >&2
+  echo "usage: sudo rudy-atlas-question-draft < request.json" >&2
   exit 64
 fi
 

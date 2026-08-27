@@ -106,6 +106,66 @@ class AtlasCronGovernanceTest(unittest.TestCase):
         self.assertTrue(result["planToken"])
         self.assertTrue(result["candidates"][0]["eligible"])
 
+    @patch.object(MODULE, "_broker")
+    def test_reviewed_draft_is_published_and_allows_the_cron(self, broker):
+        broker.side_effect = [
+            {
+                "question": {
+                    "number": 283,
+                    "status": "DRAFT",
+                    "purpose": "RECONCILIATION",
+                },
+                "cronEligible": False,
+            },
+            {
+                "question": {
+                    "number": 283,
+                    "status": "ACTIVE",
+                    "purpose": "CERTIFIED",
+                },
+                "cronEligible": True,
+                "cronBlocked": False,
+            },
+        ]
+        result = json.loads(
+            MODULE.handle_plan(
+                {
+                    "action": "create_draft",
+                    "request_key": "weekly-cancellation-feedback-incentive",
+                    "name": "Weekly cancellation feedback incentive adoption",
+                    "business_definition": "Complete weekly incentive outcomes.",
+                    "decision_use": "Product decides whether to widen the offer.",
+                    "owner_team": "Product",
+                    "cadence": "weekly",
+                    "acceptance_checks": ["Reconcile Product and PostHog."],
+                },
+                session_id="s1",
+            )
+        )
+        self.assertTrue(result["cronEligible"])
+        self.assertFalse(result["cronBlocked"])
+        self.assertIn("canonical=Q283", result["instructions"]["canonical"])
+        self.assertEqual(MODULE._PLANS["s1"]["eligible_numbers"], [283])
+
+    @patch.object(MODULE, "_broker")
+    def test_unreviewed_draft_remains_blocked(self, broker):
+        broker.return_value = {
+            "question": {"number": 284, "status": "DRAFT"},
+            "cronEligible": False,
+        }
+        result = json.loads(
+            MODULE.handle_plan(
+                {
+                    "action": "create_draft",
+                    "request_key": "weekly-unknown-report",
+                    "business_definition": "A new governed weekly report.",
+                },
+                session_id="s1",
+            )
+        )
+        self.assertTrue(result["cronBlocked"])
+        self.assertEqual(MODULE._PLANS["s1"]["mode"], "draft")
+
 
 if __name__ == "__main__":
     unittest.main()

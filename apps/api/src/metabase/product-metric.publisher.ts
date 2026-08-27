@@ -25,6 +25,7 @@ const MAX_LAG_SECONDS = FRESHNESS_SLA_MINUTES * 60;
 
 type ProductMetricSpec = {
 	questionNumber: number;
+	registerByQuestion?: boolean;
 	sourceExternalId: string;
 	key: string;
 	name: string;
@@ -685,6 +686,90 @@ const HUBSPOT_REPORT_SPECS: ProductMetricSpec[] = [
 ];
 
 export const PRODUCT_METRIC_SPECS: ProductMetricSpec[] = [
+	{
+		questionNumber: 283,
+		registerByQuestion: false,
+		sourceExternalId: "rudy-cron:weekly-cancellation-feedback-incentive",
+		key: "product.cancellation_feedback_incentive_weekly",
+		name: "Weekly cancellation feedback incentive adoption",
+		description:
+			"Complete Monday-Sunday UTC cancellation-feedback incentive offer, feedback, reward, call, save, and cancellation outcomes by organization, with deidentified structured reasons.",
+		grain: FactGrain.WEEK,
+		source: {
+			key: "atlas:automated-reports",
+			kind: DataSourceKind.ATLAS,
+			label: "Atlas reviewed automated reports",
+		},
+		eventTimeField: "week_start",
+		businessDefinition: {
+			entity: "organization_week",
+			periodAssignment: "complete Monday-Sunday UTC week",
+			population:
+				"eligible non-internal, non-anonymous, non-banned Product organizations",
+			offerExposure:
+				"one organization with exit_survey_incentive_shown in the week",
+			feedbackSubmission:
+				"one eligible organization with a cancellation_feedback record in the week",
+			writtenRewardClaim:
+				"one eligible organization with reward_granted_at in the week",
+			callRequest:
+				"one eligible organization with call_requested_at in the week",
+			continuedCancellation:
+				"an offered organization with subscription_cancel_pending or subscription_canceled in the same week",
+			saveAfterReward:
+				"an organization with exit_survey_incentive_earned and exit_survey_incentive_save in the same week",
+			privacy:
+				"publish aggregate organization counts and structured reasons only",
+			unavailable:
+				"feature-flag-positive organizations that never opened the offer cannot be measured from current instrumentation",
+		},
+		computation: {
+			aggregate: "weekly_incentive_funnel_and_source_reconciliation",
+			outputs: [
+				"offer_shown_organizations",
+				"feedback_submissions",
+				"written_reward_claims",
+				"call_requests",
+				"incentive_declines",
+				"continued_cancellations",
+				"saved_after_reward",
+				"reward_granted_usd",
+				"reward_reversed_usd",
+				"structured_reason_counts",
+			],
+		},
+		requiresCrossSourceEligibility: true,
+		pendingChecks: [
+			{
+				name: "approved_automated_recipe",
+				reason: "The question must use the reviewed server-owned recipe.",
+			},
+			{
+				name: "incentive_funnel_reconciliation",
+				reason: "Every funnel stage must remain a valid subset.",
+			},
+			{
+				name: "product_posthog_parity",
+				reason: "Product and PostHog reward and call outcomes must reconcile.",
+			},
+			{
+				name: "structured_reason_reconciliation",
+				reason: "Structured reason rows must reconcile to completed feedback.",
+			},
+			{
+				name: "sensitive_detail_boundary",
+				reason:
+					"The result must not contain customer identifiers or free text.",
+			},
+			{
+				name: "complete_week_watermark",
+				reason: "Every result must use complete UTC weeks and one watermark.",
+			},
+		],
+		ownerTeam: "Product",
+		createdBy: "atlas-automated-report-registry",
+		cadenceMinutes: 8 * 60,
+	},
 	{
 		questionNumber: 15,
 		sourceExternalId: "8164",
@@ -3643,7 +3728,11 @@ const ALL_METRIC_SPECS = [
 	...CUSTOMER_ECONOMICS_METRIC_SPECS,
 ];
 const specsByQuestion = new Map(
-	ALL_METRIC_SPECS.map((spec) => [spec.questionNumber, spec]),
+	ALL_METRIC_SPECS.flatMap((spec) =>
+		spec.registerByQuestion === false
+			? []
+			: [[spec.questionNumber, spec] as const],
+	),
 );
 const specsBySourceExternalId = new Map(
 	ALL_METRIC_SPECS.map((spec) => [spec.sourceExternalId, spec]),

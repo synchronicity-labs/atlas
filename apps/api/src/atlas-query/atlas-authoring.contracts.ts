@@ -27,3 +27,23 @@ export const atlasQuestionDraft = z
 	.strict();
 
 export type AtlasQuestionDraft = z.infer<typeof atlasQuestionDraft>;
+
+export const atlasQuestionPublish = z
+	.object({
+		requestKey: z
+			.string()
+			.trim()
+			.min(8)
+			.max(128)
+			.regex(/^[a-z0-9][a-z0-9._:-]+$/),
+		expectedDraftVersion: z.number().int().min(1).max(10_000),
+		recipe: z
+			.object({
+				key: z.string().trim().min(8).max(160),
+				version: z.number().int().min(1).max(100),
+			})
+			.strict(),
+	})
+	.strict();
+
+export type AtlasQuestionPublish = z.infer<typeof atlasQuestionPublish>;

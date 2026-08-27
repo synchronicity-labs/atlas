@@ -284,14 +284,32 @@ class HubspotClient {
 			lastStatus = response.status;
 			if (response.ok) return (await response.json()) as T;
 			if (response.status !== 429 && response.status < 500) break;
-			const retryAfter = Number(response.headers.get("retry-after"));
-			const delay = Number.isFinite(retryAfter)
-				? Math.min(retryAfter * 1000, 15_000)
-				: Math.min(500 * 2 ** attempt, 8_000);
+			if (attempt === 4) break;
+			const delay = hubspotRetryDelay(
+				response.headers.get("retry-after"),
+				attempt,
+			);
+			await response.body?.cancel();
 			await new Promise((resolve) => setTimeout(resolve, delay));
 		}
 		throw new Error(`HubSpot request failed (${lastStatus}).`);
 	}
+}
+
+export function hubspotRetryDelay(
+	header: string | null,
+	attempt: number,
+	now = Date.now(),
+): number {
+	const backoff = Math.min(1000 * 2 ** attempt, 8_000);
+	if (!header?.trim()) return backoff;
+	const seconds = Number(header);
+	const requested = Number.isFinite(seconds)
+		? seconds * 1000
+		: Date.parse(header) - now;
+	return Number.isFinite(requested) && requested > 0
+		? Math.max(backoff, Math.min(requested, 60_000))
+		: backoff;
 }
 
 function properties(record: HubspotRecord): Record<string, unknown> {

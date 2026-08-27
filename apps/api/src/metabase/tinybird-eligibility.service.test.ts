@@ -214,6 +214,46 @@ left join public.generations g on g.id = f.generation_id`,
 		).toBe(2);
 	});
 
+	it("filters rating-only questions with the shared Product population", () => {
+		const governed = governProductPostgresQuery(
+			"select s.context, avg(s.score) from public.generation_score s group by s.context",
+			"PRODUCT_ACTIVITY",
+		);
+
+		expect(governed.applied).toBe(true);
+		expect(governed.queryText).toContain(
+			"atlas_population_generation_score as",
+		);
+		expect(governed.queryText).toContain(
+			"from public.generation_score atlas_population_generation",
+		);
+		expect(governed.queryText).toContain(
+			"from atlas_population_generation_score s",
+		);
+		expect(governed.queryText).toContain("atlas_population_user.is_anonymous");
+		expect(governed.queryText).toContain("atlas_population_user.banned");
+		expect(governed.queryText).toContain("atlas_subscribed_users");
+	});
+
+	it("filters score and feedback branches independently in a union", () => {
+		const governed = governProductPostgresQuery(
+			`select s.user_id from public.generation_score s
+union all select f.user_id from public.generation_feedback f`,
+			"PRODUCT_ACTIVITY",
+		);
+
+		expect(governed.applied).toBe(true);
+		expect(governed.queryText).toContain(
+			"from atlas_population_generation_score s",
+		);
+		expect(governed.queryText).toContain(
+			"from atlas_population_generation_feedback f",
+		);
+		expect(
+			governed.queryText.match(/atlas_population_generation.user_id/g)?.length,
+		).toBe(2);
+	});
+
 	it("joins Product Postgres organizations to the same population", () => {
 		const governed = governProductPostgresQuery(
 			"select count(*) from public.organizations o",

@@ -49,4 +49,4 @@ The doctor checks question purpose, trust, freshness, source health, Lipsync's e
 
 An in-progress source refresh is not a doctor failure when the API still serves a fresh, verified, certified snapshot. Error or unavailable snapshots remain failures. The doctor must not report every Revenue question as broken during its normal refresh.
 
-Q43 remains a provisional visitor-to-signup metric with incomplete surface coverage. It has a separate refresh source so its query timeout does not invalidate unrelated canonical reports. Its query, verification status, and error stay unchanged and visible in Atlas. Do not substitute the trial single-scan rewrite: it did not match the existing result.
+Q27 and Q43 remain provisional visitor-to-signup count and rate views with incomplete surface coverage. They share a separate conversion refresh source so their query timeouts do not invalidate unrelated canonical reports. Their queries, verification status, and errors stay unchanged and visible in Atlas. Do not substitute the trial single-scan rewrite: it did not match the existing result.

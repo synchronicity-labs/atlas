@@ -52,6 +52,7 @@ describe("marketing source runs", () => {
 	test("isolates the provisional conversion query from canonical report refreshes", () => {
 		const groups = groupMarketingQuestionsBySource([
 			{ number: 2002, sourceId: "atlas-marketing-source" },
+			{ number: 2006, sourceId: "atlas-marketing-conversion-rate-source" },
 			{ number: 2019, sourceId: "atlas-marketing-conversion-rate-source" },
 			{ number: 7003, sourceId: "atlas-marketing-source" },
 			{ number: 7100, sourceId: "atlas-lipsync-weekly-source" },
@@ -63,7 +64,7 @@ describe("marketing source runs", () => {
 			groups
 				.get("atlas-marketing-conversion-rate-source")
 				?.map((q) => q.number),
-		).toEqual([2019]);
+		).toEqual([2006, 2019]);
 	});
 
 	test("does not gate independent composite sources on product eligibility", () => {

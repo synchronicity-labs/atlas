@@ -60,9 +60,15 @@ const CHECK_LABELS: Record<string, string> = {
 export function summarizeMetricVerification(
 	snapshot: SnapshotVerificationInput,
 ): MetricVerificationSummary {
+	const emptyResult = snapshot.metricRun.verifications.find(
+		(check) => check.name === "result_non_empty" && check.status === "PENDING",
+	);
 	return {
 		status: snapshot.trustStatus,
-		reason: trustReason(snapshot.trustStatus),
+		reason:
+			(snapshot.trustStatus === "PENDING" && emptyResult
+				? evidenceReason(emptyResult.evidence)
+				: null) ?? trustReason(snapshot.trustStatus),
 		reportingPeriod: snapshot.reportingPeriod,
 		dataThrough: snapshot.dataThrough.toISOString(),
 		computedAt: snapshot.computedAt.toISOString(),

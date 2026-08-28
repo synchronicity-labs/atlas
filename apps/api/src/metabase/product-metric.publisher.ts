@@ -4338,10 +4338,16 @@ export class ProductMetricPublisher {
 			revenueDoorPolicy: input.revenueDoorPolicy,
 		});
 
+		const emptyResultReason = emptyCohortResultReason({
+			sourceExternalId: input.question.sourceExternalId,
+			queryText: input.version.queryText,
+			rowCount: input.result.rows.length,
+		});
 		const verificationHash = hash({
 			eligibilityVerified,
 			revenueDoorVerified,
 			verificationChecks: input.verificationChecks ?? [],
+			...(emptyResultReason ? { emptyResultReason } : {}),
 		});
 		const snapshotKey = `${metricVersion.id}:${window.reportingPeriod}:${outputHash}:${verificationHash}`;
 		const existing = await this.db.metricSnapshot.findUnique({
@@ -4381,6 +4387,7 @@ export class ProductMetricPublisher {
 					revenueDoorVerified,
 					revenueDoorPolicy: input.revenueDoorPolicy ?? null,
 					resultPresent,
+					emptyResultReason,
 					verificationChecks: input.verificationChecks ?? [],
 				}),
 				startedAt: input.capturedAt,
@@ -4393,6 +4400,7 @@ export class ProductMetricPublisher {
 						requiresRevenueDoorPolicy,
 						revenueDoorPolicy: input.revenueDoorPolicy,
 						resultPresent,
+						emptyResultReason,
 						questionVersion: input.version.version,
 						capturedAt: input.capturedAt,
 						pendingChecks: spec.pendingChecks ?? [],
@@ -4600,6 +4608,24 @@ function incrementPeriod(value: Date, grain: FactGrain): Date {
 	return new Date(date.getTime() + 1);
 }
 
+export function emptyCohortResultReason(input: {
+	sourceExternalId: string | null;
+	queryText: string;
+	rowCount: number;
+}): string | null {
+	if (
+		input.rowCount !== 0 ||
+		!input.sourceExternalId ||
+		!["8181", "8182", "8189"].includes(input.sourceExternalId) ||
+		!/addMonths\s*\(\s*toStartOfMonth\s*\(\s*now\s*\(\s*\)\s*\)\s*,\s*-3\s*\)/i.test(
+			input.queryText,
+		)
+	) {
+		return null;
+	}
+	return "This result includes only starting cohorts whose third UTC calendar month is complete. No qualifying cohort was returned for this period. This is not 0% retention.";
+}
+
 function verificationRows(input: {
 	eligibilityVerified: boolean;
 	requiresEligibility: boolean;
@@ -4607,6 +4633,7 @@ function verificationRows(input: {
 	requiresRevenueDoorPolicy: boolean;
 	revenueDoorPolicy?: RevenueDoorPolicyEvidence;
 	resultPresent: boolean;
+	emptyResultReason?: string | null;
 	questionVersion: number;
 	capturedAt: Date;
 	pendingChecks: Array<{ name: string; reason: string }>;
@@ -4656,6 +4683,7 @@ function verificationRows(input: {
 				? undefined
 				: json({
 						reason:
+							input.emptyResultReason ??
 							"The query ran successfully but returned no rows for this period. Confirm whether zero rows are expected or make the query return an explicit zero.",
 					}),
 			status: input.resultPresent

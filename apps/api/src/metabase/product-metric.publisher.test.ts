@@ -3,6 +3,7 @@ import { MetricReadinessStatus, MetricTrustStatus } from "@crm/db";
 import {
 	CUSTOMER_ECONOMICS_METRIC_SPECS,
 	declaredQuestionIdentityPolicy,
+	emptyCohortResultReason,
 	marketingSourceCoverageChecks,
 	metricTrustStatus,
 	needsApprovedMetricDefinitionCheck,
@@ -11,6 +12,32 @@ import {
 	REVENUE_CLOSE_METRIC_SPECS,
 	REVENUE_METRIC_SPECS,
 } from "./product-metric.publisher";
+
+describe("empty V3 retention results", () => {
+	const queryText = "where p.month <= addMonths(toStartOfMonth(now()), -3)";
+
+	test.each(["8181", "8182", "8189"])(
+		"explains the complete-month rule for source question %s without approving an empty result",
+		(sourceExternalId) => {
+			expect(
+				emptyCohortResultReason({ sourceExternalId, queryText, rowCount: 0 }),
+			).toBe(
+				"This result includes only starting cohorts whose third UTC calendar month is complete. No qualifying cohort was returned for this period. This is not 0% retention.",
+			);
+		},
+	);
+
+	test("does not infer immature cohorts for other queries or nonempty results", () => {
+		for (const input of [
+			{ sourceExternalId: "8164", queryText, rowCount: 0 },
+			{ sourceExternalId: null, queryText, rowCount: 0 },
+			{ sourceExternalId: "8181", queryText: "select 1", rowCount: 0 },
+			{ sourceExternalId: "8181", queryText, rowCount: 1 },
+		]) {
+			expect(emptyCohortResultReason(input)).toBeNull();
+		}
+	});
+});
 
 describe("product feedback metric registry", () => {
 	test("keeps only the unmatched customer economics tables in reconciliation", () => {

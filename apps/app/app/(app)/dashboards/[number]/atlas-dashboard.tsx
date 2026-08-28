@@ -906,10 +906,16 @@ function exportCardCsv(card: DashboardCard) {
 	URL.revokeObjectURL(url);
 }
 
-function CardUnavailable({ message }: { message?: string | null }) {
+function CardUnavailable({
+	message,
+	title = "Source result unavailable",
+}: {
+	message?: string | null;
+	title?: string;
+}) {
 	return (
 		<div className="flex h-full min-h-24 flex-col items-center justify-center gap-2 p-6 text-center">
-			<p className="font-medium text-sm">Source result unavailable</p>
+			<p className="font-medium text-sm">{title}</p>
 			<p className="max-w-sm text-muted-foreground text-xs leading-5">
 				{message ?? "No source result is available for this question yet."}
 			</p>
@@ -1269,7 +1275,24 @@ const QuestionCard = memo(
 						</Button>
 					) : null}
 				</div>
-				{presentation === "metric-strip" ? (
+				{card.snapshot && rows(card.snapshot).length === 0 ? (
+					<>
+						<CardHeading card={card} />
+						<div className="h-full pt-14">
+							<CardUnavailable
+								title="No data for this period"
+								message={
+									card.verification?.checks.find(
+										(check) =>
+											check.name === "result_non_empty" &&
+											check.status === "PENDING",
+									)?.detail ??
+									"The saved result has no rows for the selected period. This does not mean the value is zero."
+								}
+							/>
+						</div>
+					</>
+				) : presentation === "metric-strip" ? (
 					<MetricStripCard card={card} />
 				) : presentation === "forecast-stage" ? (
 					<ForecastStageCard card={card} />

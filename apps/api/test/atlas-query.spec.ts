@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { MetricTrustStatus, SourceStatus } from "@crm/db";
+import { type Db, MetricTrustStatus, SourceStatus } from "@crm/db";
 import {
+	AtlasQueryService,
 	metricFreshnessDeadline,
 	resolveFreshness,
 	resolveMetricFreshness,
@@ -89,5 +90,59 @@ describe("Atlas agent query freshness", () => {
 				maxLagSeconds: [36_000, 28_800],
 			}),
 		).toEqual(new Date("2026-08-25T08:00:00.000Z"));
+	});
+
+	test("explains freshness using the latest check, not an older identical snapshot", async () => {
+		const checkedAt = new Date(Date.now() - 60_000);
+		const computedAt = new Date(checkedAt.getTime() - 86_400_000);
+		const deadline = new Date(checkedAt.getTime() + 36_000_000);
+		const db = {
+			question: {
+				findFirst: async () => ({
+					number: 7011,
+					publicNumber: 243,
+					name: "Q3 lifecycle funnel",
+					description: null,
+					metricVersionId: "metric-v1",
+					lastCheckedAt: checkedAt,
+					updatedAt: checkedAt,
+					versions: [],
+					source: {
+						state: SourceStatus.HEALTHY,
+						freshnessDeadlineAt: new Date(deadline.getTime() + 3_600_000),
+					},
+					metricVersion: {
+						metric: { description: null },
+						inputs: [{ required: true, maxLagSeconds: 36_000 }],
+					},
+				}),
+			},
+			resultSnapshot: { findFirst: async () => null },
+			metricSnapshot: {
+				findFirst: async () => ({
+					computedAt,
+					periodStart: computedAt,
+					periodEnd: checkedAt,
+					dataThrough: checkedAt,
+					trustStatus: MetricTrustStatus.VERIFIED,
+					metricRun: { verifications: [] },
+				}),
+			},
+		} as unknown as Db;
+		const service = new AtlasQueryService(db);
+		expect((await service.question(243, {})).freshness).toEqual({
+			status: "fresh",
+			reason: null,
+			checkedAt: checkedAt.toISOString(),
+			deadlineAt: deadline.toISOString(),
+		});
+		expect(
+			(await service.question(243, { reportingPeriod: "2026-08" })).freshness,
+		).toEqual({
+			status: "historical",
+			reason: null,
+			checkedAt: null,
+			deadlineAt: null,
+		});
 	});
 });

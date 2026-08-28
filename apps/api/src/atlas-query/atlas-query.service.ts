@@ -431,25 +431,31 @@ export class AtlasQueryService {
 		]);
 		const version = question.versions[0] ?? null;
 		const historical = Boolean(input.asOf || input.reportingPeriod);
+		const checkedAt = question.metricVersionId
+			? (question.lastCheckedAt ?? metricSnapshot?.computedAt)
+			: snapshot?.capturedAt;
+		const freshnessDeadline = question.metricVersionId
+			? metricFreshnessDeadline({
+					sourceDeadline: question.source?.freshnessDeadlineAt,
+					checkedAt,
+					maxLagSeconds: question.metricVersion?.inputs
+						.filter((input) => input.required)
+						.map((input) => input.maxLagSeconds),
+				})
+			: question.source?.freshnessDeadlineAt;
 		const freshness = question.metricVersionId
 			? resolveMetricFreshness({
 					hasResult: metricSnapshot != null,
 					historical,
 					trustStatus: metricSnapshot?.trustStatus,
 					state: question.source?.state,
-					deadline: metricFreshnessDeadline({
-						sourceDeadline: question.source?.freshnessDeadlineAt,
-						checkedAt: question.lastCheckedAt ?? metricSnapshot?.computedAt,
-						maxLagSeconds: question.metricVersion?.inputs
-							.filter((input) => input.required)
-							.map((input) => input.maxLagSeconds),
-					}),
+					deadline: freshnessDeadline,
 				})
 			: resolveFreshness({
 					hasResult: snapshot != null,
 					historical,
 					state: question.source?.state,
-					deadline: question.source?.freshnessDeadlineAt,
+					deadline: freshnessDeadline,
 				});
 
 		return {
@@ -505,7 +511,13 @@ export class AtlasQueryService {
 							immutable: true,
 						}
 					: null,
-			freshness,
+			freshness: {
+				...freshness,
+				checkedAt: historical ? null : (checkedAt?.toISOString() ?? null),
+				deadlineAt: historical
+					? null
+					: (freshnessDeadline?.toISOString() ?? null),
+			},
 			provenance: {
 				metric: question.metricVersion
 					? {

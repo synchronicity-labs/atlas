@@ -1,0 +1,111 @@
+--- rudy_doctor.py
++++ rudy_doctor.py
+@@ -1281,9 +1281,10 @@
+         if reasons:
+             parts.append(f"last reason={reasons[-1]}")
+         parts.append("fallback=" + (expected_fallbacks[0] if expected_fallbacks else "unknown"))
+-        add("routing", "paid OpenAI fallback active", "FAIL", "; ".join(parts))
++        parts.append("usage notice, not a service health failure")
++        add("routing", "paid OpenAI fallback used recently", "WARN", "; ".join(parts))
+     else:
+-        add("routing", "paid OpenAI fallback active", "OK", "no direct API use in 10 minutes")
++        add("routing", "paid OpenAI fallback used recently", "OK", "no paid API use observed in the last 10 minutes; not a primary-route health test")
+ 
+ 
+ def check_remi_inference_safety():
+@@ -2337,7 +2338,8 @@
+         detail = (proc.stderr or proc.stdout or f"exit={proc.returncode}").strip()
+         return "FAIL", "Atlas cron canary returned invalid output: " + detail[-200:]
+     if proc.returncode != 0 or payload.get("ok") is not True:
+-        return "FAIL", str(payload.get("error") or "Atlas cron canary failed")[-240:]
++        detail = str(payload.get("error") or "Atlas cron canary failed")
++        return "FAIL", detail[:1800] + (" ... (see canary output for remaining detail)" if len(detail) > 1800 else "")
+     return (
+         "OK",
+         f"{payload.get('canonicalQuestions')} canonical, "
+@@ -2599,21 +2601,24 @@
+             status, detail = fn()
+         except Exception as e:
+             status, detail = "FAIL", f"{type(e).__name__}: {str(e)[:120]}"
+-        add("creds", f"integration {name}", status, detail)
++        if name == "atlas_cron_migration":
++            add("atlas", "report readiness", status, detail)
++        else:
++            add("creds", f"integration {name}", status, detail)
+ 
+ 
+ # ---------------- RUN / REPORT ----------------
+-def alert_slack(fails):
++def alert_slack(fails, *, notice=False):
+     sys.path.insert(0, f"{OPT}/misc")
+     import slack_secret
+     channel = os.environ.get("RUDY_DOCTOR_CHANNEL", "")
+     if not channel:
+         return False
+-    lines = ["🩺 *rudy_doctor found problems:*"]
++    lines = ["ℹ️ *rudy_doctor usage notice:*" if notice else "🩺 *rudy_doctor found problems:*"]
+     for cat, name, status, detail in fails:
+         lines.append(f"• [{cat}] {name} — {detail}")
+     repair_summary = os.environ.get("RUDY_DOCTOR_REPAIR_SUMMARY", "").strip()
+-    if repair_summary:
++    if repair_summary and not notice:
+         lines.append(f"• auto-repair tried first: {repair_summary[:700]}")
+     data = json.dumps({"channel": channel, "text": "\n".join(lines),
+                        "unfurl_links": False}).encode()
+@@ -2640,7 +2645,7 @@
+     if not channel:
+         return False
+     summary = ", ".join(previous_names[:8]) or "previous doctor failures"
+-    text = f"✅ *rudy_doctor recovered:* {summary}"
++    text = f"✅ *rudy_doctor checks clear:* {summary}\nThe current checks pass. This does not by itself confirm a permanent fix."
+     data = json.dumps({"channel": channel, "text": text, "unfurl_links": False}).encode()
+     _status, body = http(
+         "https://slack.com/api/chat.postMessage",
+@@ -2696,9 +2701,16 @@
+             os.unlink(tmp)
+ 
+ 
+-def handle_alerts(fails, scope="default"):
++def handle_alerts(fails, scope="default", *, notice=False):
+     """Deduplicate unchanged failures and announce recovery once."""
+     state = _read_alert_state(scope)
++    previous_names = [
++        name for name in state.get("names", [])
++        if name != "[routing] paid OpenAI fallback active"
++    ]
++    if state.get("fingerprint") and not previous_names and state.get("names"):
++        _write_alert_state("", [], scope)
++        state = {}
+     names = [f"[{cat}] {name}" for cat, name, _status, _detail in fails]
+     canonical = json.dumps(
+         sorted((cat, name) for cat, name, _status, _detail in fails),
+@@ -2711,12 +2723,13 @@
+         if fingerprint == previous:
+             print("alert suppressed: failure set unchanged", file=sys.stderr)
+             return
+-        if alert_slack(fails):
++        if alert_slack(fails, notice=notice):
+             _write_alert_state(fingerprint, names, scope)
+         return
+ 
+-    if previous and alert_slack_recovery(list(state.get("names") or [])):
+-        _write_alert_state("", [], scope)
++    if previous:
++        if notice or alert_slack_recovery(previous_names):
++            _write_alert_state("", [], scope)
+ 
+ 
+ 
+@@ -3370,6 +3383,13 @@
+         try:
+             alert_scope = args.only or ("deep" if args.deep else "default")
+             handle_alerts(fails, alert_scope)
++            notices = [
++                result for result in results
++                if result[0] == "routing"
++                and result[1] == "paid OpenAI fallback used recently"
++                and result[2] == "WARN"
++            ]
++            handle_alerts(notices, alert_scope + "-notices", notice=True)
+         except Exception as e:
+             print("alert failed:", e, file=sys.stderr)

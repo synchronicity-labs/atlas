@@ -186,7 +186,7 @@ writeFileSync(
 			},
 			{
 				path: "/internal/sync/atlas/4/native",
-				schedule: "10 9 * * *",
+				schedule: "40 */6 * * *",
 			},
 			{
 				path: "/internal/sync/metabase/backfill",

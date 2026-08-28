@@ -169,6 +169,27 @@ def fail(message: str) -> None:
     raise SystemExit(1)
 
 
+def canonical_readiness_failures(responses, numbers):
+    failures = []
+    for number in sorted(numbers):
+        payload = responses[number]
+        freshness = payload.get("freshness") or {}
+        trust = (payload.get("result") or {}).get("trustStatus")
+        purpose = (payload.get("question") or {}).get("purpose")
+        source = (payload.get("provenance") or {}).get("source") or {}
+        state = source.get("state")
+        status = freshness.get("status")
+        if status == "fresh" and trust == "VERIFIED" and purpose == "CERTIFIED" and state in {"HEALTHY", "SYNCING"}:
+            continue
+        detail = f"Q{number}: {status}, trust={trust}, purpose={purpose}, source={state}"
+        if freshness.get("checkedAt"):
+            detail += f", checked={freshness['checkedAt']}"
+        if freshness.get("deadlineAt"):
+            detail += f", deadline={freshness['deadlineAt']}"
+        failures.append(detail)
+    return failures
+
+
 def main() -> None:
     if not BASE or not SECRET:
         fail("Atlas runtime is not configured")
@@ -192,17 +213,12 @@ def main() -> None:
     with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
         responses = dict(executor.map(question, numbers))
 
-    canonical_failures = []
-    for number in sorted(canonical_numbers):
-        payload = responses[number]
-        freshness = payload.get("freshness", {}).get("status")
-        trust = payload.get("result", {}).get("trustStatus")
-        purpose = payload.get("question", {}).get("purpose")
-        source_state = payload.get("provenance", {}).get("source", {}).get("state")
-        if freshness != "fresh" or trust != "VERIFIED" or purpose != "CERTIFIED" or source_state not in {"HEALTHY", "SYNCING"}:
-            canonical_failures.append(f"Q{number}:{purpose}/{freshness}/{trust}/{source_state}")
+    canonical_failures = canonical_readiness_failures(responses, canonical_numbers)
     if canonical_failures:
-        fail("canonical questions are not ready: " + ", ".join(canonical_failures))
+        shown = canonical_failures[:6]
+        remaining = len(canonical_failures) - len(shown)
+        suffix = f"; {remaining} more question(s) not ready" if remaining else ""
+        fail(f"Atlas report readiness: {len(canonical_failures)} question(s) not ready. " + "; ".join(shown) + suffix)
     try:
         final_reports = validate_final_reports(
             jobs, responses, Path("/root/.hermes/skills/sync-reports")

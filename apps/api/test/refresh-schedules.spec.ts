@@ -20,3 +20,30 @@ describe("governed Sales refresh schedule", () => {
 		).toBe(true);
 	});
 });
+
+describe("All Hands dashboard refresh schedules", () => {
+	test("refreshes native and Metabase answers before September reporting", () => {
+		const build = readFileSync(
+			new URL("../scripts/build-func.mjs", import.meta.url),
+			"utf8",
+		);
+		const schedules = [
+			...build.matchAll(/path: "([^"]+)",\s*schedule: "([^"]+)"/g),
+		];
+
+		expect(
+			schedules.some(
+				(match) =>
+					match[1] === "/internal/sync/atlas/18/native" &&
+					match[2] === "49 */8 * * *",
+			),
+		).toBe(true);
+		expect(
+			schedules.some(
+				(match) =>
+					match[1] === "/internal/sync/atlas/18/metabase" &&
+					match[2] === "11-59/15 * * * *",
+			),
+		).toBe(true);
+	});
+});

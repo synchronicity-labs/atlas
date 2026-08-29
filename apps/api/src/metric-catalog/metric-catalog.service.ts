@@ -41,6 +41,40 @@ const SOURCE_KEY = "google-sheets:q3-metrics-planning";
 const DRAFT_SOURCE_KEY = "atlas:metric-catalog";
 const FRESHNESS_MS = 24 * 60 * 60 * 1000;
 
+export const ALL_HANDS_DASHBOARD_CONFIGURATION = {
+	number: 18,
+	name: "All Hands Business Metrics",
+	description:
+		"Verified, automated answers for the company north star, product retention, revenue by business line, acquisition, pipeline, and delivery. Each card keeps its source, trust state, and data-through time.",
+	tabs: [
+		{
+			number: 1,
+			name: "Executive pulse",
+			questionNumbers: [15, 13, 152, 76, 238],
+		},
+		{
+			number: 2,
+			name: "Product and retention",
+			questionNumbers: [15, 16, 21, 22, 23, 8],
+		},
+		{
+			number: 3,
+			name: "Revenue by business line",
+			questionNumbers: [13, 155, 210, 199, 198, 197],
+		},
+		{
+			number: 4,
+			name: "Acquisition",
+			questionNumbers: [38, 39, 35, 25],
+		},
+		{
+			number: 5,
+			name: "Pipeline and delivery",
+			questionNumbers: [76, 84, 71, 73, 80, 82, 238, 243, 247, 248],
+		},
+	],
+} as const;
+
 const METRIC_ALIASES: Record<string, string> = {
 	"website visitors": "marketing.website_visitors",
 	"active professional org": "product.monthly_professional_organizations",
@@ -474,6 +508,7 @@ export class MetricCatalogService {
 				data: { missingAt: now },
 			});
 			await this.syncTeamDashboards();
+			await this.syncAllHandsDashboard();
 			const workbookHash = hash(
 				candidates.map((candidate) => [
 					candidate.externalKey,
@@ -1372,6 +1407,159 @@ export class MetricCatalogService {
 					where: { id: dashboard.id },
 					data: { layoutVersion: 2 },
 				});
+			}
+		}
+	}
+
+	private async syncAllHandsDashboard() {
+		const questionNumbers = [
+			...new Set(
+				ALL_HANDS_DASHBOARD_CONFIGURATION.tabs.flatMap(
+					(tab) => tab.questionNumbers,
+				),
+			),
+		];
+		const questions = await this.db.question.findMany({
+			where: {
+				publicNumber: { in: questionNumbers },
+				status: QuestionStatus.ACTIVE,
+				purpose: QuestionPurpose.CERTIFIED,
+			},
+			select: {
+				id: true,
+				number: true,
+				publicNumber: true,
+				source: { select: { key: true } },
+				versions: {
+					orderBy: { version: "desc" },
+					take: 1,
+					select: { display: true },
+				},
+			},
+		});
+		const questionByNumber = new Map(
+			questions.map((question) => [question.publicNumber, question]),
+		);
+		const missingQuestionNumbers = questionNumbers.filter(
+			(questionNumber) => !questionByNumber.has(questionNumber),
+		);
+		if (missingQuestionNumbers.length > 0) {
+			throw new Error(
+				`All Hands dashboard requires active, certified questions: ${missingQuestionNumbers.join(", ")}`,
+			);
+		}
+		const dashboard = await this.db.dashboard.upsert({
+			where: { number: ALL_HANDS_DASHBOARD_CONFIGURATION.number },
+			create: {
+				number: ALL_HANDS_DASHBOARD_CONFIGURATION.number,
+				name: ALL_HANDS_DASHBOARD_CONFIGURATION.name,
+				description: ALL_HANDS_DASHBOARD_CONFIGURATION.description,
+				layoutVersion: 2,
+				createdBy: "atlas",
+			},
+			update: {
+				name: ALL_HANDS_DASHBOARD_CONFIGURATION.name,
+				description: ALL_HANDS_DASHBOARD_CONFIGURATION.description,
+				layoutVersion: 2,
+			},
+			select: { id: true },
+		});
+		await this.db.dashboardTab.deleteMany({
+			where: {
+				dashboardId: dashboard.id,
+				number: {
+					notIn: ALL_HANDS_DASHBOARD_CONFIGURATION.tabs.map(
+						(tab) => tab.number,
+					),
+				},
+			},
+		});
+		for (const [
+			tabPosition,
+			configuration,
+		] of ALL_HANDS_DASHBOARD_CONFIGURATION.tabs.entries()) {
+			const tab = await this.db.dashboardTab.upsert({
+				where: {
+					dashboardId_number: {
+						dashboardId: dashboard.id,
+						number: configuration.number,
+					},
+				},
+				create: {
+					dashboardId: dashboard.id,
+					number: configuration.number,
+					name: configuration.name,
+					position: tabPosition,
+				},
+				update: { name: configuration.name, position: tabPosition },
+				select: { id: true },
+			});
+			const tabQuestions = configuration.questionNumbers.flatMap(
+				(questionNumber) => {
+					const question = questionByNumber.get(questionNumber);
+					return question ? [question] : [];
+				},
+			);
+			const existingCards = await this.db.dashboardCard.findMany({
+				where: { tabId: tab.id },
+				select: { id: true, questionId: true },
+			});
+			await this.db.dashboardCard.deleteMany({
+				where: {
+					tabId: tab.id,
+					questionId: { notIn: tabQuestions.map((question) => question.id) },
+				},
+			});
+			const existingByQuestionId = new Map(
+				existingCards.map((card) => [card.questionId, card]),
+			);
+			let nextX = 0;
+			let nextY = 0;
+			let rowHeight = 0;
+			for (const [position, question] of tabQuestions.entries()) {
+				const visualization = catalogCardVisualization(
+					question.number,
+					question.versions[0]?.display,
+				);
+				const size = catalogCardSize(
+					visualization,
+					question.source?.key === DRAFT_SOURCE_KEY,
+				);
+				if (nextX + size.width > 24) {
+					nextX = 0;
+					nextY += rowHeight;
+					rowHeight = 0;
+				}
+				const existing = existingByQuestionId.get(question.id);
+				if (existing) {
+					await this.db.dashboardCard.update({
+						where: { id: existing.id },
+						data: {
+							position,
+							x: nextX,
+							y: nextY,
+							width: size.width,
+							height: size.height,
+							visualization,
+						},
+					});
+				} else {
+					await this.db.dashboardCard.create({
+						data: {
+							dashboardId: dashboard.id,
+							tabId: tab.id,
+							questionId: question.id,
+							position,
+							x: nextX,
+							y: nextY,
+							width: size.width,
+							height: size.height,
+							visualization,
+						},
+					});
+				}
+				nextX += size.width;
+				rowHeight = Math.max(rowHeight, size.height);
 			}
 		}
 	}

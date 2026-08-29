@@ -357,7 +357,10 @@ describe("prior company enrichment CLI", () => {
 			expect(input[0]?.need_industry).toBe("true");
 			expect(input[0]).not.toHaveProperty("prior_source_url");
 			expect(input[0]).not.toHaveProperty("total_lifetime_rev");
-			expect((await stat(join(out, "clay_company_enrichment_input.csv"))).mode & 0o777).toBe(0o600);
+			expect(
+				(await stat(join(out, "clay_company_enrichment_input.csv"))).mode &
+					0o777,
+			).toBe(0o600);
 		} finally {
 			await rm(dir, { recursive: true, force: true });
 		}

@@ -630,10 +630,14 @@ export function finalizeCompanyEnrichment(rows: CsvRow[]): {
 	const finalized = rows.map((row) => {
 		const domain = normalizeDomain(row.email_domain ?? "");
 		if ((row.enrichment_key ?? "") !== domain || keys.has(domain))
-			throw new Error("Company enrichment output has an invalid or repeated key");
+			throw new Error(
+				"Company enrichment output has an invalid or repeated key",
+			);
 		keys.add(domain);
 		if (row.company_type?.trim())
-			throw new Error("Company type needs the separate approved classification");
+			throw new Error(
+				"Company type needs the separate approved classification",
+			);
 		const clayMatchValue = row["clay_field_Enrich company"]?.trim() ?? "";
 		const clayName = row[CLAY_COMPANY_FIELDS.company_name]?.trim() ?? "";
 		const companyMatchStatus =
@@ -683,6 +687,11 @@ export function finalizeCompanyEnrichment(rows: CsvRow[]): {
 		};
 	});
 	const fields = ["company_name", "employee_count", "industry"] as const;
+	const sourceFields = {
+		company_name: "company_name_source",
+		employee_count: "employee_count_source",
+		industry: "industry_source",
+	} as const;
 	const coverage = Object.fromEntries(
 		fields.map((field) => [
 			field,
@@ -691,7 +700,7 @@ export function finalizeCompanyEnrichment(rows: CsvRow[]): {
 	);
 	const sources = Object.fromEntries(
 		fields.map((field) => {
-			const sourceField = `${field}_source`;
+			const sourceField = sourceFields[field];
 			return [
 				field,
 				Object.fromEntries(

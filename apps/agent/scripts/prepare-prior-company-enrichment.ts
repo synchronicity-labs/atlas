@@ -97,9 +97,8 @@ const summary = {
 	companyInputSha256: hash(companyText),
 	priorCacheSha256: hash(priorText),
 	companyDomains: plan.length,
-	priorOverlap: plan.filter(
-		(row) => row.prior_enrichment_present === "true",
-	).length,
+	priorOverlap: plan.filter((row) => row.prior_enrichment_present === "true")
+		.length,
 	reusableAllCoreFields,
 	needsClayByField: fieldCounts,
 	notes: [
@@ -110,5 +109,8 @@ const summary = {
 		"Person emails and human persona labels are not included in these files.",
 	],
 };
-await writePrivate("reuse_summary.json", `${JSON.stringify(summary, null, 2)}\n`);
+await writePrivate(
+	"reuse_summary.json",
+	`${JSON.stringify(summary, null, 2)}\n`,
+);
 console.log(JSON.stringify(summary));

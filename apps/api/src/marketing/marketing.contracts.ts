@@ -17,6 +17,7 @@ export const ga4Query = z.object({
 	dimensions: z.array(z.string().trim().min(1)).max(3),
 	metrics: z.array(z.string().trim().min(1)).min(1).max(8),
 	merge: z.enum(["sum", "series", "rows"]),
+	completeMonthsOnly: z.boolean().optional(),
 	limit: z.number().int().min(1).max(10_000).default(1_000),
 	dimensionFilter: z
 		.object({

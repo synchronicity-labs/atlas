@@ -54,10 +54,18 @@ function isoDate(value: Date): string {
 	return value.toISOString().slice(0, 10);
 }
 
-function dates(preset: "6_months_and_mtd" | "30_days" | "90_days") {
+function dates(
+	preset: "6_months_and_mtd" | "30_days" | "90_days",
+	completeMonthsOnly = false,
+) {
 	const end = new Date();
 	const start = new Date(end);
-	if (preset === "6_months_and_mtd") {
+	if (preset === "6_months_and_mtd" && completeMonthsOnly) {
+		start.setUTCDate(1);
+		start.setUTCMonth(start.getUTCMonth() - 6);
+		end.setUTCDate(1);
+		end.setUTCDate(0);
+	} else if (preset === "6_months_and_mtd") {
 		start.setUTCDate(1);
 		start.setUTCMonth(start.getUTCMonth() - 6);
 	} else {
@@ -136,7 +144,9 @@ export class MarketingClient {
 		const token = await this.google.accessToken([
 			"https://www.googleapis.com/auth/analytics.readonly",
 		]);
-		const dateRanges = [range ?? dates(query.dateRange)];
+		const dateRanges = [
+			range ?? dates(query.dateRange, query.completeMonthsOnly),
+		];
 		const reports = await Promise.all(
 			query.properties.map(async (key) => {
 				const property = this.config.ga4[key];

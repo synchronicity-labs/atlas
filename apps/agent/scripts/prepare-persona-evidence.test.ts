@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
 	buildCompanyEnrichmentPlan,
+	buildPersonaReviewPack,
 	chunks,
 	companyInvoiceMappingSql,
 	csvText,
@@ -397,7 +398,10 @@ describe("final company enrichment evidence", () => {
 			company_name_source: "prior_sheet",
 			employee_count_source: "clay",
 			industry_source: "clay",
-			company_type_status: "not_classified",
+			suggested_company_type: "tech",
+			company_type_suggestion_confidence: "medium",
+			company_type_suggestion_evidence: "industry: software",
+			company_type_status: "suggested_needs_review",
 			company_match_status: "matched",
 			company_match_review_status: "unreviewed",
 		});
@@ -408,7 +412,30 @@ describe("final company enrichment evidence", () => {
 			clayNotFound: 0,
 			fullyEnrichedCore: 1,
 			companyTypePending: 1,
+			companyTypeSuggested: 1,
+			companyTypeSuggestionCounts: {
+				agency: 0,
+				brand: 0,
+				studio: 0,
+				tech: 1,
+			},
 			coverage: { company_name: 1, employee_count: 1, industry: 1 },
+		});
+	});
+	test("does not guess when company-type evidence is tied", () => {
+		const result = finalizeCompanyEnrichment([
+			{
+				...joined,
+				company_name: "Agency Studio",
+				industry: "",
+				clay_field_Industry: "",
+			},
+		]);
+		expect(result.rows[0]).toMatchObject({
+			suggested_company_type: "",
+			company_type_suggestion_confidence: "",
+			company_type_suggestion_evidence: "ambiguous: agency and studio",
+			company_type_status: "not_classified",
 		});
 	});
 	test("does not mistake Company Not Found for a successful match", () => {
@@ -439,6 +466,158 @@ describe("final company enrichment evidence", () => {
 		expect(() =>
 			finalizeCompanyEnrichment([{ ...joined, company_type: "agency" }]),
 		).toThrow();
+	});
+});
+
+describe("persona review pack", () => {
+	const labels = [
+		{
+			stripe_customer_id: "cus_Example1",
+			email_domain: "example.com",
+			lifetime_rev: "1000",
+			first_paid: "2026-01",
+			persona_label: "",
+			reviewed_by: "",
+			evidence_url: "",
+			review_notes: "",
+		},
+	];
+	const mappings = [
+		{
+			stripe_customer_id: "cus_Example1",
+			mapping_status: "mapped",
+		},
+	];
+	const organizations = [
+		{
+			stripe_customer_id: "cus_Example1",
+			product_organization_id: org,
+			organization_name: "Example",
+			plan: "growth",
+			billing_version: "v3",
+			non_banned_non_internal_member_count: "2",
+			completed_generations: "4",
+			generated_hours: "1.000000",
+			generation_lookup_status: "completed",
+		},
+	];
+	const mix = [
+		{
+			product_organization_id: org,
+			breakdown: "organization",
+			dimension: "all",
+			completed_generations: "4",
+			generated_seconds: "3600",
+		},
+		{
+			product_organization_id: org,
+			breakdown: "model",
+			dimension: "sync-4",
+			completed_generations: "3",
+		},
+		{
+			product_organization_id: org,
+			breakdown: "model",
+			dimension: "sync-3",
+			completed_generations: "1",
+		},
+		{
+			product_organization_id: org,
+			breakdown: "surface",
+			dimension: "api",
+			completed_generations: "4",
+		},
+	];
+	const companies = [
+		{
+			email_domain: "example.com",
+			company_name: "Example Agency",
+			employee_count: "20",
+			industry: "Marketing Services",
+			company_match_status: "matched",
+			suggested_company_type: "agency",
+			company_type_suggestion_confidence: "high",
+			company_type_suggestion_evidence: "company name: agency",
+		},
+	];
+
+	test("joins bounded evidence without replacing the human label", () => {
+		const result = buildPersonaReviewPack({
+			labels,
+			mappings,
+			organizations,
+			mix,
+			companies,
+		});
+		expect(result.rows[0]).toMatchObject({
+			product_organization_ids: org,
+			plans: "growth",
+			billing_versions: "v3",
+			eligible_members: "2",
+			completed_generations: "4",
+			generated_hours: "1.000000",
+			behavior_observation_status: "completed",
+			top_model: "sync-4",
+			top_model_share_pct: "75.00",
+			top_surface: "api",
+			top_surface_share_pct: "100.00",
+			suggested_persona: "agency",
+			persona_label: "",
+			review_status: "needs_human_label",
+		});
+		expect(result.summary).toMatchObject({
+			accounts: 1,
+			accountsWithOrganizationEvidence: 1,
+			accountsWithCompanyEvidence: 1,
+			accountsWithMatchedCompany: 1,
+			accountsWithBehaviorEvidence: 1,
+			accountsWithCompletedUsage: 1,
+			suggestions: 1,
+			humanLabels: 0,
+			accuracyStatus: "not_measurable_no_human_labels",
+			accuracy: null,
+		});
+	});
+
+	test("measures accuracy only after a person provides a comparable label", () => {
+		const result = buildPersonaReviewPack({
+			labels: [{ ...labels[0], persona_label: "agency" }],
+			mappings,
+			organizations,
+			mix,
+			companies,
+		});
+		expect(result.rows[0]?.persona_label).toBe("agency");
+		expect(result.summary).toMatchObject({
+			humanLabels: 1,
+			accuracyStatus: "measured",
+			accuracy: 1,
+		});
+	});
+
+	test("merges repeated bridge evidence only when its status agrees", () => {
+		const repeated = [
+			{ ...mappings[0], input_kind: "human_label" },
+			{ ...mappings[0], input_kind: "person" },
+		];
+		expect(
+			buildPersonaReviewPack({
+				labels,
+				mappings: repeated,
+				organizations,
+				mix,
+				companies,
+			}).rows[0]?.product_mapping_status,
+		).toBe("mapped");
+		expect(() =>
+			buildPersonaReviewPack({
+				labels,
+				mappings: [...repeated, { ...mappings[0], mapping_status: "unmapped" }],
+				organizations,
+				mix,
+				companies,
+			}),
+		).toThrow("disagree on mapping status");
 	});
 });
 

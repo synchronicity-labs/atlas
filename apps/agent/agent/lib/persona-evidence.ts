@@ -596,6 +596,100 @@ const CLAY_COMPANY_FIELDS = {
 	industry: "clay_field_Industry",
 } as const;
 
+const COMPANY_TYPE_KEYWORDS = {
+	agency: [
+		"advertising",
+		"agency",
+		"branding",
+		"creative services",
+		"marketing",
+		"public relations",
+	],
+	brand: [
+		"apparel",
+		"beauty",
+		"consumer goods",
+		"cosmetics",
+		"e-commerce",
+		"ecommerce",
+		"food and beverage",
+		"hospitality",
+		"retail",
+	],
+	studio: [
+		"animation",
+		"dubbing",
+		"film production",
+		"localization",
+		"media production",
+		"motion picture",
+		"post-production",
+		"studio",
+		"vfx",
+	],
+	tech: [
+		"artificial intelligence",
+		"computer software",
+		"developer tools",
+		"information technology",
+		"internet",
+		"saas",
+		"software",
+		"technology",
+	],
+} as const;
+
+type CompanyType = keyof typeof COMPANY_TYPE_KEYWORDS;
+
+function suggestCompanyType(row: CsvRow): {
+	type: CompanyType | "";
+	confidence: "high" | "medium" | "";
+	evidence: string;
+} {
+	const evidenceFields = [
+		["company name", row.company_name],
+		["industry", row.industry],
+		["description", row.verified_description],
+	] as const;
+	const matches = new Map<CompanyType, string[]>();
+	for (const [label, keywords] of Object.entries(COMPANY_TYPE_KEYWORDS) as [
+		CompanyType,
+		readonly string[],
+	][]) {
+		for (const [field, rawValue] of evidenceFields) {
+			const value = rawValue?.toLowerCase() ?? "";
+			for (const keyword of keywords) {
+				if (value.includes(keyword)) {
+					matches.set(label, [
+						...(matches.get(label) ?? []),
+						`${field}: ${keyword}`,
+					]);
+				}
+			}
+		}
+	}
+	if (!matches.size) return { type: "", confidence: "", evidence: "" };
+	const ranked = [...matches.entries()].sort(
+		([leftLabel, left], [rightLabel, right]) =>
+			right.length - left.length || leftLabel.localeCompare(rightLabel),
+	);
+	const first = ranked[0];
+	const second = ranked[1];
+	if (!first) return { type: "", confidence: "", evidence: "" };
+	if (second && second[1].length === first[1].length) {
+		return {
+			type: "",
+			confidence: "",
+			evidence: `ambiguous: ${[first[0], second[0]].join(" and ")}`,
+		};
+	}
+	return {
+		type: first[0],
+		confidence: first[1].length > 1 ? "high" : "medium",
+		evidence: first[1].join(" | "),
+	};
+}
+
 export type CompanyEnrichmentSummary = {
 	inputRows: number;
 	uniqueKeys: number;
@@ -603,6 +697,8 @@ export type CompanyEnrichmentSummary = {
 	clayNotFound: number;
 	fullyEnrichedCore: number;
 	companyTypePending: number;
+	companyTypeSuggested: number;
+	companyTypeSuggestionCounts: Record<string, number>;
 	coverage: Record<string, number>;
 	sources: Record<string, Record<string, number>>;
 };
@@ -670,6 +766,11 @@ export function finalizeCompanyEnrichment(rows: CsvRow[]): {
 				!Number.isSafeInteger(Number(employeeCount.value)))
 		)
 			throw new Error("Company employee count is invalid");
+		const suggestion = suggestCompanyType({
+			company_name: companyName.value,
+			industry: industry.value,
+			verified_description: row.verified_description ?? "",
+		});
 		return {
 			email_domain: domain,
 			enrichment_key: domain,
@@ -680,7 +781,12 @@ export function finalizeCompanyEnrichment(rows: CsvRow[]): {
 			company_name_source: companyName.source,
 			employee_count_source: employeeCount.source,
 			industry_source: industry.source,
-			company_type_status: "not_classified",
+			suggested_company_type: suggestion.type,
+			company_type_suggestion_confidence: suggestion.confidence,
+			company_type_suggestion_evidence: suggestion.evidence,
+			company_type_status: suggestion.type
+				? "suggested_needs_review"
+				: "not_classified",
 			company_match_status: companyMatchStatus,
 			company_match_review_status:
 				companyMatchStatus === "matched" ? "unreviewed" : "not_applicable",
@@ -727,8 +833,296 @@ export function finalizeCompanyEnrichment(rows: CsvRow[]): {
 				fields.every((field) => Boolean(row[field])),
 			).length,
 			companyTypePending: finalized.length,
+			companyTypeSuggested: finalized.filter((row) =>
+				Boolean(row.suggested_company_type),
+			).length,
+			companyTypeSuggestionCounts: Object.fromEntries(
+				["agency", "brand", "studio", "tech"].map((type) => [
+					type,
+					finalized.filter((row) => row.suggested_company_type === type).length,
+				]),
+			),
 			coverage,
 			sources,
+		},
+	};
+}
+
+const FREE_EMAIL_DOMAINS = new Set([
+	"aol.com",
+	"gmail.com",
+	"googlemail.com",
+	"hotmail.com",
+	"icloud.com",
+	"live.com",
+	"me.com",
+	"outlook.com",
+	"proton.me",
+	"protonmail.com",
+	"yahoo.com",
+]);
+
+export type PersonaReviewSummary = {
+	accounts: number;
+	accountsWithOrganizationEvidence: number;
+	accountsWithCompanyEvidence: number;
+	accountsWithMatchedCompany: number;
+	accountsWithBehaviorEvidence: number;
+	accountsWithCompletedUsage: number;
+	suggestions: number;
+	humanLabels: number;
+	accuracyStatus:
+		| "measured"
+		| "not_measurable_no_human_labels"
+		| "not_measurable_no_comparable_suggestions";
+	accuracy: number | null;
+};
+
+function numeric(row: CsvRow, field: string, allowBlank = true): number {
+	const raw = row[field]?.trim() ?? "";
+	if (allowBlank && !raw) return 0;
+	const value = Number(raw);
+	if (!Number.isFinite(value) || value < 0)
+		throw new Error(`Persona evidence has an invalid ${field}`);
+	return value;
+}
+
+function topBreakdown(
+	rows: readonly CsvRow[],
+	breakdown: "model" | "surface",
+): { value: string; share: string } {
+	const candidates = rows
+		.filter((row) => row.breakdown === breakdown)
+		.map((row) => ({
+			value: row.dimension ?? "",
+			count: numeric(row, "completed_generations", false),
+		}))
+		.filter((row) => row.value)
+		.sort(
+			(left, right) =>
+				right.count - left.count || left.value.localeCompare(right.value),
+		);
+	const total = candidates.reduce((sum, row) => sum + row.count, 0);
+	return {
+		value: candidates[0]?.value ?? "",
+		share:
+			total > 0 && candidates[0]
+				? ((candidates[0].count / total) * 100).toFixed(2)
+				: "",
+	};
+}
+
+export function buildPersonaReviewPack(input: {
+	labels: CsvRow[];
+	mappings: CsvRow[];
+	organizations: CsvRow[];
+	mix: CsvRow[];
+	companies: CsvRow[];
+}): { rows: CsvRow[]; summary: PersonaReviewSummary } {
+	const { labels, mappings, organizations, mix, companies } = input;
+	if (!labels.length) throw new Error("Persona review requires label rows");
+	const unique = (rows: readonly CsvRow[], field: string, name: string) => {
+		const values = rows.map((row) => row[field]?.trim() ?? "");
+		if (
+			values.some((value) => !value) ||
+			new Set(values).size !== values.length
+		)
+			throw new Error(`${name} has missing or repeated ${field} values`);
+	};
+	unique(labels, "stripe_customer_id", "Human labels");
+	unique(companies, "email_domain", "Company enrichment");
+
+	const mappingsByCustomer = new Map<string, CsvRow[]>();
+	for (const row of mappings) {
+		const customer = row.stripe_customer_id?.trim() ?? "";
+		if (!customer)
+			throw new Error("Account mappings has a missing stripe_customer_id");
+		mappingsByCustomer.set(customer, [
+			...(mappingsByCustomer.get(customer) ?? []),
+			row,
+		]);
+	}
+	const organizationsByCustomer = new Map<string, CsvRow[]>();
+	for (const row of organizations) {
+		const customer = row.stripe_customer_id?.trim() ?? "";
+		const organization = row.product_organization_id?.trim() ?? "";
+		if (!customer || !organization)
+			throw new Error("Organization evidence is missing its join keys");
+		organizationsByCustomer.set(customer, [
+			...(organizationsByCustomer.get(customer) ?? []),
+			row,
+		]);
+	}
+	const mixByOrganization = new Map<string, CsvRow[]>();
+	for (const row of mix) {
+		const organization = row.product_organization_id?.trim() ?? "";
+		if (!organization)
+			throw new Error("Behavior evidence is missing its organization key");
+		mixByOrganization.set(organization, [
+			...(mixByOrganization.get(organization) ?? []),
+			row,
+		]);
+	}
+	const companiesByDomain = new Map(
+		companies.map((row) => [normalizeDomain(row.email_domain ?? ""), row]),
+	);
+
+	const rows = labels.map((label) => {
+		const customer = label.stripe_customer_id ?? "";
+		const domain = normalizeDomain(label.email_domain ?? "");
+		const accountMappings = mappingsByCustomer.get(customer) ?? [];
+		if (!accountMappings.length)
+			throw new Error("A review account is missing its account mapping");
+		const mappingStatuses = [
+			...new Set(
+				accountMappings
+					.map((row) => row.mapping_status?.trim() ?? "")
+					.filter(Boolean),
+			),
+		].sort();
+		if (mappingStatuses.length !== 1)
+			throw new Error("Repeated account mappings disagree on mapping status");
+		const accountOrganizations = organizationsByCustomer.get(customer) ?? [];
+		const organizationIds = accountOrganizations.map(
+			(row) => row.product_organization_id ?? "",
+		);
+		const behavior = organizationIds.flatMap(
+			(id) => mixByOrganization.get(id) ?? [],
+		);
+		const company = companiesByDomain.get(domain);
+		const topModel = topBreakdown(behavior, "model");
+		const topSurface = topBreakdown(behavior, "surface");
+		const plans = [
+			...new Set(
+				accountOrganizations
+					.map((row) => row.plan?.trim() ?? "")
+					.filter(Boolean),
+			),
+		].sort();
+		const billingVersions = [
+			...new Set(
+				accountOrganizations
+					.map((row) => row.billing_version?.trim() ?? "")
+					.filter(Boolean),
+			),
+		].sort();
+		let suggestedPersona = "";
+		let suggestionConfidence = "";
+		let suggestionEvidence = "";
+		if (plans.some((plan) => plan.toLowerCase().includes("partner"))) {
+			suggestedPersona = "partner";
+			suggestionConfidence = "high";
+			suggestionEvidence = "Product plan contains partner";
+		} else if (
+			["agency", "brand", "studio"].includes(
+				company?.suggested_company_type ?? "",
+			)
+		) {
+			suggestedPersona = company?.suggested_company_type ?? "";
+			suggestionConfidence =
+				company?.company_type_suggestion_confidence ?? "medium";
+			suggestionEvidence = `Company evidence: ${company?.company_type_suggestion_evidence ?? ""}`;
+		} else {
+			const eligibleMembers = accountOrganizations.reduce(
+				(sum, row) =>
+					sum + numeric(row, "non_banned_non_internal_member_count"),
+				0,
+			);
+			if (FREE_EMAIL_DOMAINS.has(domain) && eligibleMembers === 1) {
+				suggestedPersona = "solo creator";
+				suggestionConfidence = "medium";
+				suggestionEvidence =
+					"Free email domain and exactly one eligible Product member";
+			}
+		}
+		const humanLabel = label.persona_label?.trim() ?? "";
+		const behaviorObservationStatus = [
+			...new Set(
+				accountOrganizations
+					.map((row) => row.generation_lookup_status?.trim() ?? "")
+					.filter(Boolean),
+			),
+		].sort();
+		return {
+			stripe_customer_id: customer,
+			email_domain: domain,
+			lifetime_revenue: label.lifetime_rev ?? "",
+			first_paid: label.first_paid ?? "",
+			product_mapping_status: mappingStatuses[0] ?? "",
+			product_organization_ids: organizationIds.join("|"),
+			organization_names: accountOrganizations
+				.map((row) => row.organization_name?.trim() ?? "")
+				.filter(Boolean)
+				.join("|"),
+			plans: plans.join("|"),
+			billing_versions: billingVersions.join("|"),
+			eligible_members: String(
+				accountOrganizations.reduce(
+					(sum, row) =>
+						sum + numeric(row, "non_banned_non_internal_member_count"),
+					0,
+				),
+			),
+			completed_generations: String(
+				accountOrganizations.reduce(
+					(sum, row) => sum + numeric(row, "completed_generations"),
+					0,
+				),
+			),
+			generated_hours: accountOrganizations
+				.reduce((sum, row) => sum + numeric(row, "generated_hours"), 0)
+				.toFixed(6),
+			behavior_observation_status: behaviorObservationStatus.join("|"),
+			top_model: topModel.value,
+			top_model_share_pct: topModel.share,
+			top_surface: topSurface.value,
+			top_surface_share_pct: topSurface.share,
+			company_name: company?.company_name ?? "",
+			company_employee_count: company?.employee_count ?? "",
+			company_industry: company?.industry ?? "",
+			company_match_status: company?.company_match_status ?? "not_available",
+			suggested_persona: suggestedPersona,
+			persona_suggestion_confidence: suggestionConfidence,
+			persona_suggestion_evidence: suggestionEvidence,
+			persona_label: humanLabel,
+			review_status: humanLabel ? "reviewed" : "needs_human_label",
+			reviewed_by: label.reviewed_by ?? "",
+			evidence_url: label.evidence_url ?? "",
+			review_notes: label.review_notes ?? "",
+		};
+	});
+	const labeled = rows.filter((row) => Boolean(row.persona_label));
+	const comparable = labeled.filter((row) => Boolean(row.suggested_persona));
+	const matching = comparable.filter(
+		(row) => row.suggested_persona === row.persona_label,
+	).length;
+	return {
+		rows,
+		summary: {
+			accounts: rows.length,
+			accountsWithOrganizationEvidence: rows.filter((row) =>
+				Boolean(row.product_organization_ids),
+			).length,
+			accountsWithCompanyEvidence: rows.filter(
+				(row) => row.company_match_status !== "not_available",
+			).length,
+			accountsWithMatchedCompany: rows.filter(
+				(row) => row.company_match_status === "matched",
+			).length,
+			accountsWithBehaviorEvidence: rows.filter(
+				(row) => row.behavior_observation_status === "completed",
+			).length,
+			accountsWithCompletedUsage: rows.filter(
+				(row) => Number(row.completed_generations) > 0,
+			).length,
+			suggestions: rows.filter((row) => Boolean(row.suggested_persona)).length,
+			humanLabels: labeled.length,
+			accuracyStatus: !labeled.length
+				? "not_measurable_no_human_labels"
+				: comparable.length
+					? "measured"
+					: "not_measurable_no_comparable_suggestions",
+			accuracy: comparable.length ? matching / comparable.length : null,
 		},
 	};
 }

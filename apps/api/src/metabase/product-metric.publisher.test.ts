@@ -1,9 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { MetricReadinessStatus, MetricTrustStatus } from "@crm/db";
+import { FactGrain, MetricReadinessStatus, MetricTrustStatus } from "@crm/db";
 import {
 	CUSTOMER_ECONOMICS_METRIC_SPECS,
 	declaredQuestionIdentityPolicy,
 	emptyCohortResultReason,
+	inferMetricWindow,
+	inferQuestionGrain,
 	marketingSourceCoverageChecks,
 	metricTrustStatus,
 	needsApprovedMetricDefinitionCheck,
@@ -12,6 +14,46 @@ import {
 	REVENUE_CLOSE_METRIC_SPECS,
 	REVENUE_METRIC_SPECS,
 } from "./product-metric.publisher";
+
+describe("saved question grain", () => {
+	test("recognizes GA4 yearMonth queries as monthly metrics", () => {
+		expect(
+			inferQuestionGrain(
+				"Website sessions",
+				JSON.stringify({
+					dateRange: "6_months_and_mtd",
+					dimensions: ["yearMonth"],
+				}),
+			),
+		).toBe(FactGrain.MONTH);
+	});
+
+	test("keeps sparse monthly results valid through the source watermark", () => {
+		const window = inferMetricWindow(
+			{
+				columns: [
+					{
+						name: "period_start",
+						displayName: "Period start",
+						baseType: "type/DateTime",
+					},
+					{
+						name: "data_through",
+						displayName: "Data through",
+						baseType: "type/DateTime",
+					},
+				],
+				rows: [["2026-08-01", "2026-09-01T08:49:51.000Z"]],
+			},
+			FactGrain.MONTH,
+			new Date("2026-09-01T08:50:00.000Z"),
+		);
+
+		expect(window.periodEnd.toISOString()).toBe("2026-09-01T08:49:51.000Z");
+		expect(window.dataThrough.toISOString()).toBe("2026-09-01T08:49:51.000Z");
+		expect(window.reportingPeriod).toBe("2026-09");
+	});
+});
 
 describe("empty V3 retention results", () => {
 	const queryText = "where p.month <= addMonths(toStartOfMonth(now()), -3)";

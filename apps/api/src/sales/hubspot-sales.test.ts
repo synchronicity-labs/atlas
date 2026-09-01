@@ -4,8 +4,35 @@ import {
 	buildEnterpriseBookings,
 	buildQ3LifecycleFunnel,
 	buildStudioBookings,
+	executeHubspotSalesQuery,
 	resolvePilotCompany,
 } from "@crm/db/hubspot-sales";
+
+describe("HubSpot pipeline totals", () => {
+	test.each(["open-pipeline", "weighted-pipeline"] as const)(
+		"includes the source watermark for %s",
+		async (report) => {
+			const lastSyncAt = new Date("2026-09-01T08:49:51.000Z");
+			const db = {
+				dataSource: {
+					findUnique: async () => ({ id: "hubspot", lastSyncAt }),
+				},
+				sourceRecord: { findMany: async () => [] },
+				company: { findMany: async () => [] },
+			} as unknown as Parameters<typeof executeHubspotSalesQuery>[0];
+
+			const result = await executeHubspotSalesQuery(db, {
+				source: "hubspot",
+				report,
+				months: 6,
+				pipelines: [],
+			});
+
+			expect(result.columns.at(-1)?.name).toBe("data_through");
+			expect(result.rows[0]?.at(-1)).toBe(lastSyncAt.toISOString());
+		},
+	);
+});
 
 describe("HubSpot active pilot summary", () => {
 	test("refuses arbitrary company selection when a deal has multiple domains", () => {

@@ -1275,9 +1275,14 @@ export async function executeHubspotSalesQuery(
 			columns: [
 				column("month", "Month", "type/DateTime"),
 				column("open_pipeline_amount", "Open pipeline", "type/Decimal"),
+				column("data_through", "Data through", "type/DateTime"),
 			],
 			rows: [
-				[currentPeriod, openDeals.reduce((sum, deal) => sum + deal.amount, 0)],
+				[
+					currentPeriod,
+					openDeals.reduce((sum, deal) => sum + deal.amount, 0),
+					(source.lastSyncAt ?? new Date(0)).toISOString(),
+				],
 			],
 		};
 	}
@@ -1286,11 +1291,13 @@ export async function executeHubspotSalesQuery(
 			columns: [
 				column("month", "Month", "type/DateTime"),
 				column("weighted_pipeline_amount", "Weighted pipeline", "type/Decimal"),
+				column("data_through", "Data through", "type/DateTime"),
 			],
 			rows: [
 				[
 					currentPeriod,
 					openDeals.reduce((sum, deal) => sum + deal.weightedAmount, 0),
+					(source.lastSyncAt ?? new Date(0)).toISOString(),
 				],
 			],
 		};

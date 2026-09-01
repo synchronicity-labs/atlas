@@ -3988,7 +3988,7 @@ export function declaredQuestionIdentityPolicy(
 	return null;
 }
 
-function inferQuestionGrain(name: string, queryText: string): FactGrain {
+export function inferQuestionGrain(name: string, queryText: string): FactGrain {
 	const text = `${name}\n${queryText}`.toLowerCase();
 	if (/quarter|date_trunc\s*\(\s*'quarter'/.test(text))
 		return FactGrain.QUARTER;
@@ -3996,7 +3996,11 @@ function inferQuestionGrain(name: string, queryText: string): FactGrain {
 		return FactGrain.WEEK;
 	if (/daily|\btoday\b|\bday\b|date_trunc\s*\(\s*'day'/.test(text))
 		return FactGrain.DAY;
-	if (/monthly|\bmonth\b|date_trunc\s*\(\s*'month'/.test(text))
+	if (
+		/monthly|yearmonth|6_months_and_mtd|\bmonth\b|date_trunc\s*\(\s*'month'/.test(
+			text,
+		)
+	)
 		return FactGrain.MONTH;
 	return FactGrain.EVENT;
 }
@@ -4534,14 +4538,17 @@ export function inferMetricWindow(
 	const latest = dates.length
 		? new Date(Math.max(...dates.map((date) => date.getTime())))
 		: capturedAt;
-	const periodEnd = explicitEnds.length
+	const inferredPeriodEnd = explicitEnds.length
 		? new Date(Math.max(...explicitEnds.map((date) => date.getTime())))
 		: dates.length
 			? incrementPeriod(latest, grain)
 			: capturedAt;
 	const dataThrough = explicitDataThrough.length
 		? new Date(Math.min(...explicitDataThrough.map((date) => date.getTime())))
-		: new Date(Math.min(capturedAt.getTime(), periodEnd.getTime()));
+		: new Date(Math.min(capturedAt.getTime(), inferredPeriodEnd.getTime()));
+	const periodEnd = explicitDataThrough.length
+		? new Date(Math.max(inferredPeriodEnd.getTime(), dataThrough.getTime()))
+		: inferredPeriodEnd;
 	const labelInstant = new Date(
 		Math.max(
 			periodStart.getTime(),

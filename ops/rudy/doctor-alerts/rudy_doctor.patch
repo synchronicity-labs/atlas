@@ -10,8 +10,8 @@
      else:
 -        add("routing", "paid OpenAI fallback active", "OK", "no direct API use in 10 minutes")
 +        add("routing", "paid OpenAI fallback used recently", "OK", "no paid API use observed in the last 10 minutes; not a primary-route health test")
- 
- 
+
+
  def check_remi_inference_safety():
 @@ -2337,7 +2338,8 @@
          detail = (proc.stderr or proc.stdout or f"exit={proc.returncode}").strip()
@@ -32,8 +32,8 @@
 +            add("atlas", "report readiness", status, detail)
 +        else:
 +            add("creds", f"integration {name}", status, detail)
- 
- 
+
+
  # ---------------- RUN / REPORT ----------------
 -def alert_slack(fails):
 +def alert_slack(fails, *, notice=False):
@@ -61,10 +61,27 @@
      data = json.dumps({"channel": channel, "text": text, "unfurl_links": False}).encode()
      _status, body = http(
          "https://slack.com/api/chat.postMessage",
-@@ -2696,9 +2701,16 @@
+@@ -2679,61 +2684,69 @@
+     fd, tmp = tempfile.mkstemp(prefix=".rudy_doctor_alert_", suffix=".tmp", dir=path.parent)
+     try:
+         with os.fdopen(fd, "w", encoding="utf-8") as handle:
+             json.dump(
+                 {
+                     "fingerprint": fingerprint,
+                     "names": names,
+                     "updated_at": time.time(),
+                 },
+                 handle,
+             )
+             handle.flush()
+             os.fsync(handle.fileno())
+         os.chmod(tmp, 0o600)
+         os.replace(tmp, path)
+     finally:
+         if os.path.exists(tmp):
              os.unlink(tmp)
- 
- 
+
+
 -def handle_alerts(fails, scope="default"):
 +def handle_alerts(fails, scope="default", *, notice=False):
      """Deduplicate unchanged failures and announce recovery once."""
@@ -79,7 +96,12 @@
      names = [f"[{cat}] {name}" for cat, name, _status, _detail in fails]
      canonical = json.dumps(
          sorted((cat, name) for cat, name, _status, _detail in fails),
-@@ -2711,12 +2723,13 @@
+         separators=(",", ":"),
+     )
+     fingerprint = hashlib.sha256(canonical.encode()).hexdigest() if fails else ""
+     previous = str(state.get("fingerprint") or "")
+
+     if fails:
          if fingerprint == previous:
              print("alert suppressed: failure set unchanged", file=sys.stderr)
              return
@@ -87,25 +109,38 @@
 +        if alert_slack(fails, notice=notice):
              _write_alert_state(fingerprint, names, scope)
          return
- 
+
 -    if previous and alert_slack_recovery(list(state.get("names") or [])):
 -        _write_alert_state("", [], scope)
 +    if previous:
 +        if notice or alert_slack_recovery(previous_names):
 +            _write_alert_state("", [], scope)
- 
- 
- 
-@@ -3370,6 +3383,13 @@
+
+
+
+ def check_cron_logs():
+     """WARN if the most recent output in a cron log looks like a failure.
+     Looks only at the tail so old/recovered errors don't linger as false alarms."""
+     try:
+         cron = subprocess.run(["crontab", "-l"], capture_output=True, text=True).stdout
+     except Exception:
+         return
+     logs = sorted(set(re.findall(r'>> ?([A-Za-z0-9_./-]+\.log)', cron)))
+     sig = re.compile(r'Traceback \(most recent call last\)|^ERROR:|HTTPError|ModuleNotFoundError|ImportError', re.M)
+     for lg in logs:
          try:
-             alert_scope = args.only or ("deep" if args.deep else "default")
-             handle_alerts(fails, alert_scope)
-+            notices = [
-+                result for result in results
-+                if result[0] == "routing"
-+                and result[1] == "paid OpenAI fallback used recently"
-+                and result[2] == "WARN"
-+            ]
-+            handle_alerts(notices, alert_scope + "-notices", notice=True)
-         except Exception as e:
-             print("alert failed:", e, file=sys.stderr)
+             with open(lg) as fh:
+                 tail = "".join(fh.readlines()[-8:])
+         except Exception:
+             continue
+         if sig.search(tail):
+             hit = next((l for l in tail.splitlines() if sig.search(l)), "")
+@@ -3215,7 +3228,7 @@
+         add(
+             "update",
+             "gBrain upstream freshness",
+-            "FAIL",
++            "WARN",
+             f"current={current}; latest={latest}; run sudo rudy-gbrain-upgrade",
+         )
+     else:

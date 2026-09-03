@@ -57,6 +57,7 @@ describe("API adoption weekly report", () => {
 
 	test("attributes asset-backed generations through the qualifying asset key", async () => {
 		let generationQuery = "";
+		let usageQuery = "";
 		await apiAdoptionWeeklyReport({
 			query,
 			now: new Date("2026-08-26T12:00:00.000Z"),
@@ -64,6 +65,7 @@ describe("API adoption weekly report", () => {
 				if (queryText.includes("from public.generations")) {
 					generationQuery = queryText;
 				}
+				if (queryText.includes("sync_usage3")) usageQuery = queryText;
 			}),
 		});
 
@@ -72,6 +74,12 @@ describe("API adoption weekly report", () => {
 		expect(generationQuery).toContain("__IDENTITY_CONFLICT__");
 		expect(generationQuery.indexOf("video.api_key_id::text")).toBeLessThan(
 			generationQuery.indexOf("g.api_key_id::text"),
+		);
+		expect(usageQuery).toContain(
+			"JSONExtractBool(generationRecord, 'metadata', 'provenance', 'usedApiUploadedAsset') = 1",
+		);
+		expect(usageQuery).not.toContain(
+			"generationRecord like '%usedApiUploadedAsset%true%'",
 		);
 	});
 });

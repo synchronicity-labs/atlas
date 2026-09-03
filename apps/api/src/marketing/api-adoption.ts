@@ -441,7 +441,7 @@ function generationUsageSql(start: Date, end: Date) {
 from sync_prod.sync_usage3
 where generationEndedAt >= toDateTime('${clickhouseDate(start)}', 'UTC')
   and generationEndedAt < toDateTime('${clickhouseDate(end)}', 'UTC')
-  and generationRecord like '%usedApiUploadedAsset%true%'
+  and JSONExtractBool(generationRecord, 'metadata', 'provenance', 'usedApiUploadedAsset') = 1
 group by week_start, user_id, api_key_id, organization_id
 order by week_start, organization_id, api_key_id, user_id
 limit 10001`;

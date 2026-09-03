@@ -121,6 +121,20 @@ class DoctorAlertsTest(unittest.TestCase):
         self.assertTrue(detail.startswith("Atlas report readiness: Q243 stale"))
         self.assertIn("see canary output", detail)
 
+    def test_gbrain_update_is_a_maintenance_warning(self):
+        result = subprocess.CompletedProcess(
+            [],
+            0,
+            json.dumps({"current_version": "1.0.0", "latest_version": "1.1.0", "update_available": True}),
+            "",
+        )
+        with patch.object(self.doctor, "run", return_value=result):
+            self.doctor.check_gbrain_update_freshness()
+        self.assertEqual(
+            self.doctor.results,
+            [("update", "gBrain upstream freshness", "WARN", "current=1.0.0; latest=1.1.0; run sudo rudy-gbrain-upgrade")],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

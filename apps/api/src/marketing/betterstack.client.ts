@@ -1,6 +1,7 @@
 type BetterStackConfig = {
 	telemetryApiKey: string;
 	sqlEuHost: string;
+	sqlEuRegion: string;
 	sqlEuUser: string;
 	sqlEuPass: string;
 };
@@ -27,10 +28,11 @@ const MAX_SQL_BYTES = 50_000;
 export function betterStackConfig(): BetterStackConfig | null {
 	const telemetryApiKey = env("BETTERSTACK_TELEMETRY_API_KEY");
 	const sqlEuHost = env("BETTERSTACK_SQL_EU_HOST");
+	const sqlEuRegion = betterStackConnectionRegion(sqlEuHost);
 	const sqlEuUser = env("BETTERSTACK_SQL_EU_USER");
 	const sqlEuPass = env("BETTERSTACK_SQL_EU_PASS");
-	return telemetryApiKey && sqlEuHost && sqlEuUser && sqlEuPass
-		? { telemetryApiKey, sqlEuHost, sqlEuUser, sqlEuPass }
+	return telemetryApiKey && sqlEuHost && sqlEuRegion && sqlEuUser && sqlEuPass
+		? { telemetryApiKey, sqlEuHost, sqlEuRegion, sqlEuUser, sqlEuPass }
 		: null;
 }
 
@@ -62,7 +64,7 @@ export class BetterStackClient {
 				};
 				if (
 					!source.id ||
-					source.dataRegion !== "eu-fsn-3" ||
+					source.dataRegion !== this.config.sqlEuRegion ||
 					!/^[a-zA-Z0-9_]+$/.test(source.tableName) ||
 					!/^\d+$/.test(source.teamId)
 				) {
@@ -80,9 +82,9 @@ export class BetterStackClient {
 
 	async sql(source: BetterStackSource, query: string) {
 		assertReadOnlySql(query);
-		if (source.dataRegion !== "eu-fsn-3") {
+		if (source.dataRegion !== this.config.sqlEuRegion) {
 			throw new Error(
-				"BetterStack source is outside the configured EU region.",
+				"BetterStack source does not match the configured SQL region.",
 			);
 		}
 		const authorization = Buffer.from(
@@ -125,6 +127,11 @@ export class BetterStackClient {
 		}
 		throw new Error("BetterStack request failed after retries.");
 	}
+}
+
+export function betterStackConnectionRegion(host: string): string {
+	const match = /^([a-z0-9-]+)-connect\.betterstackdata\.com$/.exec(host);
+	return match?.[1] ?? "";
 }
 
 function assertReadOnlySql(query: string) {

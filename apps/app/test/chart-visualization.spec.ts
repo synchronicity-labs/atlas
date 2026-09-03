@@ -1,5 +1,10 @@
 import { describe, expect, it } from "bun:test";
-import { buildChartData, isPercentMetric } from "../lib/chart-visualization";
+import {
+	buildChartData,
+	columnVisualization,
+	explicitRightAxisMetrics,
+	isPercentMetric,
+} from "../lib/chart-visualization";
 
 const columns = [
 	{ name: "model" },
@@ -25,7 +30,10 @@ describe("saved chart visualization settings", () => {
 		});
 
 		expect(result.xKey).toBe("model");
-		expect(result.series).toEqual(["coverage_of_completed_pct", "upvote_pct"]);
+		expect(result.series.map((series) => series.metric)).toEqual([
+			"coverage_of_completed_pct",
+			"upvote_pct",
+		]);
 		expect(result.data[0]?.terminal_generations).toBe(261_000);
 	});
 
@@ -43,9 +51,65 @@ describe("saved chart visualization settings", () => {
 			"graph.dimensions": ["model"],
 		});
 
-		expect(result.series).toEqual(
+		expect(result.series.map((series) => series.metric)).toEqual(
 			columns.slice(1).map((column) => column.name),
 		);
+	});
+
+	it("pivots a second dimension into separate chart series", () => {
+		const result = buildChartData(
+			[{ name: "week" }, { name: "surface" }, { name: "coverage_pct" }],
+			[
+				["2026-08-24", "app", 4.2],
+				["2026-08-24", "api", 1.1],
+				["2026-08-31", "app", 4.5],
+				["2026-08-31", "api", 1.3],
+			],
+			{
+				"graph.dimensions": ["week", "surface"],
+				"graph.metrics": ["coverage_pct"],
+			},
+		);
+
+		expect(result.series.map((series) => series.label)).toEqual(["app", "api"]);
+		expect(result.data).toEqual([
+			{
+				week: "2026-08-24",
+				'["coverage_pct","app"]': 4.2,
+				'["coverage_pct","api"]': 1.1,
+			},
+			{
+				week: "2026-08-31",
+				'["coverage_pct","app"]': 4.5,
+				'["coverage_pct","api"]': 1.3,
+			},
+		]);
+	});
+
+	it("reads saved titles, suffixes, precision, and explicit axes", () => {
+		const visualization = {
+			column_settings: {
+				'["name","coverage_pct"]': {
+					column_title: "Coverage",
+					decimals: 3,
+					suffix: "%",
+				},
+			},
+			series_settings: {
+				coverage_pct: { axis: "right" },
+				completed: { axis: null },
+			},
+		};
+
+		expect(columnVisualization(visualization, "coverage_pct")).toEqual({
+			title: "Coverage",
+			suffix: "%",
+			decimals: 3,
+			numberStyle: null,
+		});
+		expect([...explicitRightAxisMetrics(visualization)]).toEqual([
+			"coverage_pct",
+		]);
 	});
 
 	it("recognizes Atlas percentage field names", () => {

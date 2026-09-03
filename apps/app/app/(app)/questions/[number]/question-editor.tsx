@@ -55,6 +55,7 @@ import {
 import { RudyChatTrigger } from "@/components/rudy-chat";
 import {
 	buildChartData,
+	columnVisualization,
 	isPercentMetric,
 	visualizationRecord,
 } from "@/lib/chart-visualization";
@@ -172,8 +173,27 @@ const PREVIEW_NUMBER_FORMAT = new Intl.NumberFormat("en-US", {
 	maximumFractionDigits: 2,
 });
 
-function formatPreviewMetric(value: number, name: string): string {
-	const formatted = PREVIEW_NUMBER_FORMAT.format(value);
+function formatPreviewMetric(
+	value: number,
+	name: string,
+	visualization: unknown,
+): string {
+	const setting = columnVisualization(visualization, name);
+	if (setting.numberStyle === "percent") {
+		return value.toLocaleString("en-US", {
+			style: "percent",
+			minimumFractionDigits: setting.decimals ?? 0,
+			maximumFractionDigits: setting.decimals ?? 2,
+		});
+	}
+	const formatted =
+		setting.decimals === null
+			? PREVIEW_NUMBER_FORMAT.format(value)
+			: value.toLocaleString("en-US", {
+					minimumFractionDigits: setting.decimals,
+					maximumFractionDigits: setting.decimals,
+				});
+	if (setting.suffix !== null) return `${formatted}${setting.suffix}`;
 	return isPercentMetric(name) ? `${formatted}%` : formatted;
 }
 
@@ -211,11 +231,12 @@ function QuestionPreview({
 	);
 	if (scalar && numericIndex >= 0) {
 		const value = data.rows.at(-1)?.[numericIndex];
+		const metricName = data.columns[numericIndex]?.name ?? name;
 		return (
 			<div className="flex min-h-64 flex-col items-center justify-center p-8 text-center">
 				<p className="font-medium text-5xl tracking-tight tabular-nums">
 					{typeof value === "number"
-						? value.toLocaleString(undefined, { maximumFractionDigits: 2 })
+						? formatPreviewMetric(value, metricName, visualization)
 						: String(value ?? "—")}
 				</p>
 				<p className="mt-2 text-muted-foreground text-sm">{name}</p>
@@ -227,19 +248,14 @@ function QuestionPreview({
 	const chart =
 		["line", "area", "bar"].includes(chartDisplay) && source.series.length > 0;
 	if (chart) {
-		const columnByName = new Map(
-			data.columns.map((column) => [column.name, column]),
-		);
-		const series = source.series.flatMap((seriesName) => {
-			const column = columnByName.get(seriesName);
-			return column ? [column] : [];
-		});
+		const series = source.series;
+		const seriesByKey = new Map(series.map((item) => [item.key, item]));
 		const colors = ["green", "blue", "orange", "purple"] as const;
 		const config = Object.fromEntries(
-			series.map((column, index) => [
-				column.name,
+			series.map((item, index) => [
+				item.key,
 				{
-					label: humanize(column.displayName ?? column.name),
+					label: item.label,
 					color: colors[index % colors.length] ?? "grey",
 				},
 			]),
@@ -256,28 +272,32 @@ function QuestionPreview({
 				/>
 				<YAxis
 					tickFormatter={(value) =>
-						formatPreviewMetric(value, series[0]?.name ?? "")
+						formatPreviewMetric(value, series[0]?.metric ?? "", visualization)
 					}
 				/>
 				<Legend isClickable align="left" />
 				<Tooltip
 					labelKey={source.xKey}
-					valueFormatter={(value, seriesName) =>
-						formatPreviewMetric(value, seriesName)
+					valueFormatter={(value, seriesKey) =>
+						formatPreviewMetric(
+							value,
+							seriesByKey.get(seriesKey)?.metric ?? seriesKey,
+							visualization,
+						)
 					}
 				/>
-				{series.map((column, index) =>
+				{series.map((item, index) =>
 					chartDisplay === "bar" ? (
 						<Bar
-							key={column.name}
-							dataKey={column.name}
+							key={item.key}
+							dataKey={item.key}
 							variant={index % 2 === 0 ? "gradient" : "hatched"}
 							isClickable
 						/>
 					) : (
 						<Line
-							key={column.name}
-							dataKey={column.name}
+							key={item.key}
+							dataKey={item.key}
 							variant={index % 2 === 0 ? "gradient" : "hatched"}
 							isClickable
 						/>
@@ -322,7 +342,8 @@ function QuestionPreview({
 								key={column.name}
 								className="border-b px-3 py-2 font-normal text-muted-foreground"
 							>
-								{humanize(column.displayName ?? column.name)}
+								{columnVisualization(visualization, column.name).title ??
+									humanize(column.displayName ?? column.name)}
 							</th>
 						))}
 					</tr>
@@ -332,7 +353,13 @@ function QuestionPreview({
 						<tr key={JSON.stringify(row)} className="border-b last:border-0">
 							{data.columns.map((column, columnIndex) => (
 								<td key={column.name} className="max-w-72 truncate px-3 py-2">
-									{String(row[columnIndex] ?? "—")}
+									{typeof row[columnIndex] === "number"
+										? formatPreviewMetric(
+												row[columnIndex],
+												column.name,
+												visualization,
+											)
+										: String(row[columnIndex] ?? "—")}
 								</td>
 							))}
 						</tr>

@@ -55,7 +55,13 @@ import {
 	useReportingPeriod,
 } from "@/components/reporting-period";
 import { RudyChatTrigger } from "@/components/rudy-chat";
-import { buildChartData, isPercentMetric } from "@/lib/chart-visualization";
+import {
+	buildChartData,
+	type ChartSeries,
+	columnVisualization,
+	explicitRightAxisMetrics,
+	isPercentMetric,
+} from "@/lib/chart-visualization";
 import { useTRPC } from "@/lib/trpc/client";
 import type { RouterOutputs } from "@/lib/trpc/types";
 
@@ -365,8 +371,18 @@ function isCurrency(name: string): boolean {
 	);
 }
 
-function formatCell(value: unknown, column: Column): string {
-	if (typeof value === "number") return formatMetric(value, column.name);
+function displaySettings(card: DashboardCard): unknown {
+	return (card as unknown as { displaySettings: unknown }).displaySettings;
+}
+
+function formatCell(
+	value: unknown,
+	column: Column,
+	visualization: unknown,
+): string {
+	if (typeof value === "number") {
+		return formatMetric(value, column.name, visualization);
+	}
 	if (
 		typeof value === "string" &&
 		(column.name === "month" || column.name.endsWith("_month"))
@@ -386,46 +402,73 @@ function formatCell(value: unknown, column: Column): string {
 	return String(value ?? "—");
 }
 
-function formatMetric(value: number, name: string): string {
+function formatMetric(
+	value: number,
+	name: string,
+	visualization?: unknown,
+): string {
+	const setting = columnVisualization(visualization, name);
+	if (setting.numberStyle === "percent") {
+		return value.toLocaleString("en-US", {
+			style: "percent",
+			minimumFractionDigits: setting.decimals ?? 0,
+			maximumFractionDigits: setting.decimals ?? 2,
+		});
+	}
+	const formatted =
+		setting.decimals === null
+			? METRIC_NUMBER_FORMAT.format(value)
+			: value.toLocaleString("en-US", {
+					minimumFractionDigits: setting.decimals,
+					maximumFractionDigits: setting.decimals,
+				});
+	if (setting.suffix !== null) return `${formatted}${setting.suffix}`;
 	if (isPercentMetric(name)) return `${METRIC_NUMBER_FORMAT.format(value)}%`;
 	if (isCurrency(name)) return METRIC_CURRENCY_FORMAT.format(value);
-	return METRIC_NUMBER_FORMAT.format(value);
+	return formatted;
 }
 
-function formatAxisMetric(value: number, name: string): string {
-	if (metricFamily(name) === "number") {
+function formatAxisMetric(
+	value: number,
+	name: string,
+	visualization: unknown,
+): string {
+	if (metricFamily(name, visualization) === "number") {
 		return METRIC_AXIS_NUMBER_FORMAT.format(value);
 	}
-	return formatMetric(value, name);
+	return formatMetric(value, name, visualization);
 }
 
 function chartData(card: DashboardCard): {
 	data: Datum[];
 	xKey: string;
-	series: string[];
+	series: ChartSeries[];
 } {
 	const cardColumns = columns(card.snapshot);
 	const sourceRows = rows(card.snapshot);
-	const displaySettings = (card as unknown as { displaySettings: unknown })
-		.displaySettings;
-	return buildChartData(cardColumns, sourceRows, displaySettings);
+	return buildChartData(cardColumns, sourceRows, displaySettings(card));
 }
 
 function ScalarCard({ card }: { card: DashboardCard }) {
 	const sourceRows = rows(card.snapshot);
 	const current = sourceRows.at(-1);
 	const previous = sourceRows.at(-2);
-	const currentValue = current?.find((cell) => typeof cell === "number");
-	const previousValue = previous?.find((cell) => typeof cell === "number");
+	const metricIndex =
+		current?.findIndex((cell) => typeof cell === "number") ?? -1;
+	const metricName =
+		columns(card.snapshot)[metricIndex]?.name ?? card.question.name;
+	const currentValue = metricIndex >= 0 ? current?.[metricIndex] : null;
+	const previousValue = metricIndex >= 0 ? previous?.[metricIndex] : null;
 	const period = current?.find((cell) => typeof cell === "string");
 	const previousPeriod = previous?.find((cell) => typeof cell === "string");
+	const visualization = displaySettings(card);
 	const isCurrentMonth =
 		typeof period === "string" &&
 		period.slice(0, 7) === new Date().toISOString().slice(0, 7);
-	const percentMetric = isPercentMetric(card.question.name);
+	const percentMetric = metricFamily(metricName, visualization) === "percent";
 	const formattedCurrent =
 		typeof currentValue === "number"
-			? formatMetric(currentValue, card.question.name)
+			? formatMetric(currentValue, metricName, visualization)
 			: null;
 	const change =
 		typeof currentValue === "number" &&
@@ -530,7 +573,7 @@ function ScalarCard({ card }: { card: DashboardCard }) {
 							{runRateComparison ? (
 								<>
 									{previousPeriodLabel}:{" "}
-									{formatMetric(previousValue, card.question.name)} ·{" "}
+									{formatMetric(previousValue, metricName, visualization)} ·{" "}
 									{change >= 0 ? "+" : ""}
 									{change.toFixed(2)}
 									{percentMetric ? " pts" : "%"}
@@ -540,7 +583,7 @@ function ScalarCard({ card }: { card: DashboardCard }) {
 									{change >= 0 ? "+" : ""}
 									{change.toFixed(2)}
 									{percentMetric ? " pts" : "%"} · previous{" "}
-									{formatMetric(previousValue, card.question.name)}
+									{formatMetric(previousValue, metricName, visualization)}
 								</>
 							)}
 						</p>
@@ -553,24 +596,29 @@ function ScalarCard({ card }: { card: DashboardCard }) {
 	);
 }
 
-function metricFamily(name: string): "percent" | "currency" | "number" {
-	if (isPercentMetric(name)) return "percent";
+function metricFamily(
+	name: string,
+	visualization?: unknown,
+): "percent" | "currency" | "number" {
+	const setting = columnVisualization(visualization, name);
+	if (
+		setting.numberStyle === "percent" ||
+		setting.suffix?.trim() === "%" ||
+		isPercentMetric(name)
+	) {
+		return "percent";
+	}
+	if (setting.suffix?.toLowerCase().includes("usd")) return "currency";
 	if (isCurrency(name)) return "currency";
 	return "number";
 }
 
-function rightAxisSeries(card: DashboardCard, series: string[]): string[] {
-	if (
-		/professional orgs \+ activated pool/i.test(card.question.name) &&
-		series.length === 2
-	) {
-		return series.slice(1);
-	}
-	const leftFamily = metricFamily(series[0] ?? "");
-	const rightSeries = series.filter(
-		(seriesName) => metricFamily(seriesName) !== leftFamily,
-	);
-	return rightSeries.length < series.length ? rightSeries : [];
+function rightAxisSeries(
+	card: DashboardCard,
+	series: ChartSeries[],
+): ChartSeries[] {
+	const rightMetrics = explicitRightAxisMetrics(displaySettings(card));
+	return series.filter((item) => rightMetrics.has(item.metric));
 }
 
 function cardStackType(card: object): "default" | "stacked" | "percent" {
@@ -578,34 +626,49 @@ function cardStackType(card: object): "default" | "stacked" | "percent" {
 	if (!settings || typeof settings !== "object" || Array.isArray(settings)) {
 		return "default";
 	}
-	const value = "stackType" in settings ? settings.stackType : null;
+	const value =
+		("stackType" in settings ? settings.stackType : null) ??
+		("stackable.stack_type" in settings
+			? settings["stackable.stack_type"]
+			: null);
 	return value === "stacked" || value === "percent" ? value : "default";
 }
 
-function chartConfig(series: string[]): ChartConfig {
+function chartConfig(series: ChartSeries[]): ChartConfig {
 	return Object.fromEntries(
-		series.map((key, index) => [
-			key,
-			{ label: humanize(key), color: COLORS[index % COLORS.length] ?? "grey" },
+		series.map((item, index) => [
+			item.key,
+			{
+				label: item.label,
+				color: COLORS[index % COLORS.length] ?? "grey",
+			},
 		]),
 	) as ChartConfig;
 }
 
-function orderedSeries(card: DashboardCard, data: Datum[], series: string[]) {
+function orderedSeries(
+	card: DashboardCard,
+	data: Datum[],
+	series: ChartSeries[],
+) {
 	if (setting(card, "seriesOrder") !== "total-desc") return series;
-	const position = new Map(series.map((key, index) => [key, index]));
+	const position = new Map(series.map((item, index) => [item.key, index]));
 	const totals = new Map(
-		series.map((key) => [
-			key,
+		series.map((item) => [
+			item.key,
 			data.reduce((sum, point) => {
-				const value = Number(point[key]);
+				const value = Number(point[item.key]);
 				return Number.isFinite(value) ? sum + value : sum;
 			}, 0),
 		]),
 	);
 	return [...series].sort((left, right) => {
-		const difference = (totals.get(right) ?? 0) - (totals.get(left) ?? 0);
-		return difference || (position.get(left) ?? 0) - (position.get(right) ?? 0);
+		const difference =
+			(totals.get(right.key) ?? 0) - (totals.get(left.key) ?? 0);
+		return (
+			difference ||
+			(position.get(left.key) ?? 0) - (position.get(right.key) ?? 0)
+		);
 	});
 }
 
@@ -616,6 +679,8 @@ function BarSeriesChart({ card }: { card: DashboardCard }) {
 	}
 	const series = orderedSeries(card, source.data, source.series);
 	const config = chartConfig(series);
+	const seriesByKey = new Map(series.map((item) => [item.key, item]));
+	const visualization = displaySettings(card);
 
 	return (
 		<div
@@ -643,17 +708,25 @@ function BarSeriesChart({ card }: { card: DashboardCard }) {
 							maxTicks={7}
 						/>
 						<YAxis
-							tickFormatter={(value) => formatMetric(value, series[0] ?? "")}
+							tickFormatter={(value) =>
+								formatMetric(value, series[0]?.metric ?? "", visualization)
+							}
 						/>
 						<Tooltip
 							labelKey={source.xKey}
 							labelFormatter={(value) => chartPeriod(value)}
-							valueFormatter={(value, name) => formatMetric(value, name)}
+							valueFormatter={(value, name) =>
+								formatMetric(
+									value,
+									seriesByKey.get(name)?.metric ?? name,
+									visualization,
+								)
+							}
 						/>
-						{series.map((key, index) => (
+						{series.map((item, index) => (
 							<Bar
-								key={key}
-								dataKey={key}
+								key={item.key}
+								dataKey={item.key}
 								variant={index % 2 === 0 ? "gradient" : "hatched"}
 								isClickable
 							/>
@@ -669,10 +742,11 @@ function SeriesChart({ card }: { card: DashboardCard }) {
 	const source = chartData(card);
 	if (source.data.length === 0 || source.series.length === 0)
 		return <CardUnavailable message={setting(card, "unavailableMessage")} />;
-	const candidateRightKeys = rightAxisSeries(card, source.series);
+	const candidateRightSeries = rightAxisSeries(card, source.series);
+	const candidateRightKeys = candidateRightSeries.map((item) => item.key);
 	const candidateRightKeySet = new Set(candidateRightKeys);
 	const candidateLeftKeys = source.series.filter(
-		(key) => !candidateRightKeySet.has(key),
+		(item) => !candidateRightKeySet.has(item.key),
 	);
 	let data = source.data;
 	let rightKeys: string[] = [];
@@ -687,8 +761,8 @@ function SeriesChart({ card }: { card: DashboardCard }) {
 		const leftValues: number[] = [];
 		const rightValues: number[] = [];
 		for (const point of data) {
-			for (const key of candidateLeftKeys) {
-				const value = Number(point[key]);
+			for (const item of candidateLeftKeys) {
+				const value = Number(point[item.key]);
 				if (Number.isFinite(value)) leftValues.push(value);
 			}
 			for (const key of candidateRightKeys) {
@@ -723,8 +797,10 @@ function SeriesChart({ card }: { card: DashboardCard }) {
 	const config = chartConfig(source.series);
 	const dual = rightKeys.length > 0;
 	const rightKeySet = new Set(rightKeys);
-	const leftKey = source.series.find((key) => !rightKeySet.has(key));
-	const rightKey = rightKeys[0];
+	const seriesByKey = new Map(source.series.map((item) => [item.key, item]));
+	const leftSeries = source.series.find((item) => !rightKeySet.has(item.key));
+	const rightSeries = seriesByKey.get(rightKeys[0] ?? "");
+	const visualization = displaySettings(card);
 	const inverseRight = (value: number) => {
 		if (!rightScale) return value;
 		const leftRange = Math.max(1, rightScale.leftMax - rightScale.leftMin);
@@ -759,12 +835,18 @@ function SeriesChart({ card }: { card: DashboardCard }) {
 							maxTicks={5}
 						/>
 						<YAxis
-							tickFormatter={(value) => formatAxisMetric(value, leftKey ?? "")}
+							tickFormatter={(value) =>
+								formatAxisMetric(value, leftSeries?.metric ?? "", visualization)
+							}
 						/>
 						{dual ? (
 							<RightYAxis
 								tickFormatter={(value) =>
-									formatAxisMetric(inverseRight(value), rightKey ?? "")
+									formatAxisMetric(
+										inverseRight(value),
+										rightSeries?.metric ?? "",
+										visualization,
+									)
 								}
 							/>
 						) : null}
@@ -774,14 +856,15 @@ function SeriesChart({ card }: { card: DashboardCard }) {
 							valueFormatter={(value, name) =>
 								formatMetric(
 									rightKeySet.has(name) ? inverseRight(value) : value,
-									name,
+									seriesByKey.get(name)?.metric ?? name,
+									visualization,
 								)
 							}
 						/>
-						{source.series.map((key, index) => (
+						{source.series.map((item, index) => (
 							<Line
-								key={key}
-								dataKey={key}
+								key={item.key}
+								dataKey={item.key}
 								variant={index % 2 === 0 ? "gradient" : "hatched"}
 								isClickable
 							/>
@@ -798,6 +881,7 @@ function TableCard({ card }: { card: DashboardCard }) {
 	const allRows = rows(card.snapshot);
 	const sourceRows =
 		setting(card, "visibleRows") === "all" ? allRows : allRows.slice(0, 8);
+	const visualization = displaySettings(card);
 	if (columnEntries.length === 0) return <CardUnavailable />;
 	return (
 		<div
@@ -812,7 +896,8 @@ function TableCard({ card }: { card: DashboardCard }) {
 					<tr>
 						{columnEntries.map(({ column }) => (
 							<th key={column.name} className="border-b px-3 py-2 font-normal">
-								{humanize(column.displayName ?? column.name)}
+								{columnVisualization(visualization, column.name).title ??
+									humanize(column.displayName ?? column.name)}
 							</th>
 						))}
 					</tr>
@@ -825,7 +910,7 @@ function TableCard({ card }: { card: DashboardCard }) {
 						>
 							{columnEntries.map(({ column, index }) => (
 								<td key={column.name} className="max-w-48 truncate px-3 py-2">
-									{formatCell(row[index], column)}
+									{formatCell(row[index], column, visualization)}
 								</td>
 							))}
 						</tr>

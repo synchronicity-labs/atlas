@@ -25,6 +25,8 @@ The API builds its KPI schedules in `apps/api/scripts/build-func.mjs`. The inges
 
 The native Sales dashboard refresh runs at 00:40, 06:40, 12:40, and 18:40 UTC, after the normal ingestion window. It republishes Q243 and the other governed Sales answers within their ten-hour freshness limit. Raw HubSpot ingestion and the Metabase comparison refresh do not replace this publication step. Keep this cadence shorter than the question freshness limit; do not extend that limit to hide a missing refresh.
 
+All other eight-hour source-backed dashboard refreshes run every six hours. The two-hour margin absorbs normal scheduler delay and gives the next refresh time to recover before a verified result becomes stale. A failed verification is stored as an attempt. It does not revoke an existing certification, replace the latest verified answer, or advance the question's last successful check time.
+
 The Modal cost collector on Rudy is a separate host-side integration. Vercel deployments do not update that collector. Changes to its host scripts or timer still require an explicit deployment to Rudy; the resulting snapshots are imported by Atlas.
 
 ## Source snapshots and verified answers

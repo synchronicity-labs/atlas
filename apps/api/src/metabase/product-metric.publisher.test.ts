@@ -1,5 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { FactGrain, MetricReadinessStatus, MetricTrustStatus } from "@crm/db";
+import {
+	FactGrain,
+	MetricLifecycleStatus,
+	MetricReadinessStatus,
+	MetricTrustStatus,
+	QuestionPurpose,
+} from "@crm/db";
 import {
 	CUSTOMER_ECONOMICS_METRIC_SPECS,
 	declaredQuestionIdentityPolicy,
@@ -11,9 +17,57 @@ import {
 	needsApprovedMetricDefinitionCheck,
 	PRODUCT_METRIC_SPECS,
 	preferredAtlasQuestionNumber,
+	publicationCertification,
 	REVENUE_CLOSE_METRIC_SPECS,
 	REVENUE_METRIC_SPECS,
 } from "./product-metric.publisher";
+
+describe("publication certification", () => {
+	test("keeps a certified question on its approved version after a transient failed check", () => {
+		expect(
+			publicationCertification({
+				runVerified: false,
+				currentPurpose: QuestionPurpose.CERTIFIED,
+				currentMetricStatus: MetricLifecycleStatus.CERTIFIED,
+				currentMetricVersionId: "approved-v1",
+			}),
+		).toEqual({
+			metricStatus: MetricLifecycleStatus.CERTIFIED,
+			questionPurpose: QuestionPurpose.CERTIFIED,
+			retainedMetricVersionId: "approved-v1",
+		});
+	});
+
+	test("keeps an unverified draft in reconciliation", () => {
+		expect(
+			publicationCertification({
+				runVerified: false,
+				currentPurpose: QuestionPurpose.RECONCILIATION,
+				currentMetricStatus: MetricLifecycleStatus.DRAFT,
+				currentMetricVersionId: "draft-v1",
+			}),
+		).toEqual({
+			metricStatus: MetricLifecycleStatus.DRAFT,
+			questionPurpose: QuestionPurpose.RECONCILIATION,
+			retainedMetricVersionId: null,
+		});
+	});
+
+	test("promotes a question only after the current run passes", () => {
+		expect(
+			publicationCertification({
+				runVerified: true,
+				currentPurpose: QuestionPurpose.RECONCILIATION,
+				currentMetricStatus: MetricLifecycleStatus.DRAFT,
+				currentMetricVersionId: "draft-v1",
+			}),
+		).toEqual({
+			metricStatus: MetricLifecycleStatus.CERTIFIED,
+			questionPurpose: QuestionPurpose.CERTIFIED,
+			retainedMetricVersionId: null,
+		});
+	});
+});
 
 describe("saved question grain", () => {
 	test("recognizes GA4 yearMonth queries as monthly metrics", () => {

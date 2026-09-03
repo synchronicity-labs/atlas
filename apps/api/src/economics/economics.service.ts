@@ -292,10 +292,6 @@ export class EconomicsService {
 						scope: eligibility.scope,
 					},
 				});
-				await this.db.question.update({
-					where: { id: question.id },
-					data: { lastCheckedAt: capturedAt },
-				});
 				cardsProcessed += 1;
 				snapshotsCreated += created.count;
 			}

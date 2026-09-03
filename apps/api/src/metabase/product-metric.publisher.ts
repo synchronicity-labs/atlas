@@ -4035,6 +4035,32 @@ export function preferredAtlasQuestionNumber(
 	return specsBySourceExternalId.get(sourceExternalId)?.questionNumber ?? null;
 }
 
+export function publicationCertification(input: {
+	runVerified: boolean;
+	currentPurpose?: QuestionPurpose | null;
+	currentMetricStatus?: MetricLifecycleStatus | null;
+	currentMetricVersionId?: string | null;
+}) {
+	const retainCurrent =
+		!input.runVerified &&
+		input.currentPurpose === QuestionPurpose.CERTIFIED &&
+		input.currentMetricStatus === MetricLifecycleStatus.CERTIFIED &&
+		Boolean(input.currentMetricVersionId);
+	return {
+		metricStatus:
+			input.runVerified || retainCurrent
+				? MetricLifecycleStatus.CERTIFIED
+				: MetricLifecycleStatus.DRAFT,
+		questionPurpose:
+			input.runVerified || retainCurrent
+				? QuestionPurpose.CERTIFIED
+				: QuestionPurpose.RECONCILIATION,
+		retainedMetricVersionId: retainCurrent
+			? (input.currentMetricVersionId ?? null)
+			: null,
+	};
+}
+
 @Injectable()
 export class ProductMetricPublisher {
 	constructor(@InjectDatabase() private readonly db: Db) {}
@@ -4044,7 +4070,7 @@ export class ProductMetricPublisher {
 			(input.question.sourceExternalId
 				? specsBySourceExternalId.get(input.question.sourceExternalId)
 				: undefined) ?? specsByQuestion.get(input.question.number);
-		const [linkedMetric, catalogEntry] = await Promise.all([
+		const [linkedMetric, catalogEntry, currentQuestion] = await Promise.all([
 			!registeredSpec && input.question.metricVersionId
 				? this.db.metricVersion.findUnique({
 						where: { id: input.question.metricVersionId },
@@ -4072,6 +4098,16 @@ export class ProductMetricPublisher {
 						select: { readiness: true },
 					})
 				: null,
+			this.db.question.findUnique({
+				where: { id: input.question.id },
+				select: {
+					purpose: true,
+					metricVersionId: true,
+					metricVersion: {
+						select: { metric: { select: { status: true } } },
+					},
+				},
+			}),
 		]);
 		const spec =
 			registeredSpec ??
@@ -4112,10 +4148,12 @@ export class ProductMetricPublisher {
 			(check) =>
 				checkResults.get(check.name)?.status === VerificationStatus.FAILED,
 		);
-		const lifecycleStatus =
-			governanceVerified && definitionVerified
-				? MetricLifecycleStatus.CERTIFIED
-				: MetricLifecycleStatus.DRAFT;
+		const certification = publicationCertification({
+			runVerified: governanceVerified && definitionVerified,
+			currentPurpose: currentQuestion?.purpose,
+			currentMetricStatus: currentQuestion?.metricVersion?.metric.status,
+			currentMetricVersionId: currentQuestion?.metricVersionId,
+		});
 		const source = await this.db.dataSource.upsert({
 			where: { key: spec.source.key },
 			create: {
@@ -4235,13 +4273,13 @@ export class ProductMetricPublisher {
 				name: spec.name,
 				description: spec.description,
 				ownerTeam,
-				status: lifecycleStatus,
+				status: certification.metricStatus,
 			},
 			update: {
 				name: spec.name,
 				description: spec.description,
 				ownerTeam,
-				status: lifecycleStatus,
+				status: certification.metricStatus,
 			},
 		});
 		let metricVersion = await this.db.metricVersion.findFirst({
@@ -4290,11 +4328,9 @@ export class ProductMetricPublisher {
 		await this.db.question.update({
 			where: { id: input.question.id },
 			data: {
-				metricVersionId: metricVersion.id,
-				purpose:
-					governanceVerified && definitionVerified
-						? QuestionPurpose.CERTIFIED
-						: QuestionPurpose.RECONCILIATION,
+				metricVersionId:
+					certification.retainedMetricVersionId ?? metricVersion.id,
+				purpose: certification.questionPurpose,
 			},
 		});
 
@@ -4356,9 +4392,8 @@ export class ProductMetricPublisher {
 		const snapshotKey = `${metricVersion.id}:${window.reportingPeriod}:${outputHash}:${verificationHash}`;
 		const existing = await this.db.metricSnapshot.findUnique({
 			where: { idempotencyKey: snapshotKey },
-			select: { id: true },
+			select: { id: true, trustStatus: true },
 		});
-		if (existing) return existing;
 
 		const resultPresent = input.result.rows.length > 0;
 		const trustStatus = metricTrustStatus({
@@ -4367,6 +4402,15 @@ export class ProductMetricPublisher {
 			governanceVerified,
 			definitionVerified,
 		});
+		if (existing) {
+			if (existing.trustStatus === MetricTrustStatus.VERIFIED) {
+				await this.db.question.update({
+					where: { id: input.question.id },
+					data: { lastCheckedAt: input.capturedAt },
+				});
+			}
+			return existing;
+		}
 		const metricRun = await this.db.metricRun.create({
 			data: {
 				runKey: `${metricVersion.id}:${input.capturedAt.toISOString()}:${outputHash}`,
@@ -4413,7 +4457,7 @@ export class ProductMetricPublisher {
 				},
 			},
 		});
-		return this.db.metricSnapshot.create({
+		const snapshot = await this.db.metricSnapshot.create({
 			data: {
 				idempotencyKey: snapshotKey,
 				metricVersionId: metricVersion.id,
@@ -4430,6 +4474,13 @@ export class ProductMetricPublisher {
 				rowCount: input.result.rows.length,
 			},
 		});
+		if (snapshot.trustStatus === MetricTrustStatus.VERIFIED) {
+			await this.db.question.update({
+				where: { id: input.question.id },
+				data: { lastCheckedAt: input.capturedAt },
+			});
+		}
+		return snapshot;
 	}
 
 	private async persistFacts(input: {

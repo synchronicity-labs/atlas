@@ -166,7 +166,7 @@ writeFileSync(
 			},
 			{
 				path: "/internal/sync/metabase/incremental",
-				schedule: "17 */8 * * *",
+				schedule: "17 */6 * * *",
 			},
 			{
 				path: "/internal/sync/atlas/1/native",
@@ -182,7 +182,7 @@ writeFileSync(
 			},
 			{
 				path: "/internal/sync/atlas/4/metabase",
-				schedule: "31 */8 * * *",
+				schedule: "31 */6 * * *",
 			},
 			{
 				path: "/internal/sync/atlas/4/native",
@@ -194,7 +194,7 @@ writeFileSync(
 			},
 			{
 				path: "/internal/sync/marketing",
-				schedule: "37 */8 * * *",
+				schedule: "37 */6 * * *",
 			},
 			{
 				path: "/internal/sync/metric-catalog",
@@ -206,7 +206,7 @@ writeFileSync(
 			},
 			{
 				path: "/internal/sync/atlas/6",
-				schedule: "53 */8 * * *",
+				schedule: "53 */6 * * *",
 			},
 			{
 				path: "/internal/sync/atlas/7/metabase",
@@ -214,15 +214,15 @@ writeFileSync(
 			},
 			{
 				path: "/internal/sync/atlas/9/native",
-				schedule: "43 */8 * * *",
+				schedule: "43 */6 * * *",
 			},
 			{
 				path: "/internal/sync/atlas/10/native",
-				schedule: "19 */8 * * *",
+				schedule: "19 */6 * * *",
 			},
 			{
 				path: "/internal/sync/atlas/11/native",
-				schedule: "29 */8 * * *",
+				schedule: "29 */6 * * *",
 			},
 			{
 				path: "/internal/sync/atlas/13/native",
@@ -230,23 +230,23 @@ writeFileSync(
 			},
 			{
 				path: "/internal/sync/atlas/14/native",
-				schedule: "23 */8 * * *",
+				schedule: "23 */6 * * *",
 			},
 			{
 				path: "/internal/sync/atlas/15/native",
-				schedule: "27 */8 * * *",
+				schedule: "27 */6 * * *",
 			},
 			{
 				path: "/internal/sync/atlas/16/native",
-				schedule: "37 */8 * * *",
+				schedule: "37 */6 * * *",
 			},
 			{
 				path: "/internal/sync/atlas/17/native",
-				schedule: "33 */8 * * *",
+				schedule: "33 */6 * * *",
 			},
 			{
 				path: "/internal/sync/atlas/18/native",
-				schedule: "49 */8 * * *",
+				schedule: "49 */6 * * *",
 			},
 			{
 				path: "/internal/sync/atlas/18/metabase",

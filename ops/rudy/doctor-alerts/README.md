@@ -2,8 +2,9 @@
 
 `rudy_doctor.patch` is the narrow patch for the separately managed host file `/opt/rudy/ops/rudy_doctor.py`. It does not include credentials or the rest of the host's configuration.
 
-- Paid fallback use is a `WARN` usage notice, not a failed service check. Each active ten-minute window is deduplicated. A quiet window clears the notice state without a recovery post or a claim that the primary was tested.
-- Invalid routing configuration, OAuth failures, and subscription-limit failures remain `FAIL` checks. Paid fallback still costs money; its notice is not suppressed.
+- Paid fallback use is a `WARN` in manual and JSON output, not a failed service check. It is excluded from Slack alerts. A quiet window does not claim that the primary route was tested.
+- A newer gBrain release is a `WARN` maintenance item. It stays visible in manual and JSON output, but it does not create a Slack service-failure alert.
+- Invalid routing configuration, OAuth failures, and subscription-limit failures remain `FAIL` checks. Paid fallback still costs money, so it remains visible during manual diagnosis.
 - Atlas report readiness has its own `atlas` category. Stale, unavailable, unverified, or failed-source answers still fail. Error summaries retain their beginning and report truncation explicitly.
 - Recovery messages say that the current checks pass, not that a permanent repair occurred.
 

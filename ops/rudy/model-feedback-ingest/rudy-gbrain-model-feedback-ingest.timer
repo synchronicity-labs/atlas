@@ -1,0 +1,11 @@
+[Unit]
+Description=Publish weekly gBrain model feedback evidence before the Rudy report
+
+[Timer]
+OnCalendar=Mon *-*-* 00:05:00 UTC
+Persistent=true
+RandomizedDelaySec=0
+Unit=rudy-gbrain-model-feedback-ingest.service
+
+[Install]
+WantedBy=timers.target

@@ -63,6 +63,43 @@ describe("MarketingClient scoped Google weeks", () => {
 		]);
 	});
 
+	test("requests six complete Search Console months without current-month partials", async () => {
+		spyOn(
+			GoogleServiceAccountClient.prototype,
+			"accessToken",
+		).mockResolvedValue("test-only");
+		const fetchMock = mock().mockResolvedValue(
+			new Response(JSON.stringify({ rows: [] })),
+		);
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+		await new MarketingClient({
+			...config,
+			searchConsole: { sync: "sc-domain:sync.so" },
+		}).execute({
+			source: "search_console",
+			site: "sync",
+			dateRange: "6_months_and_mtd",
+			completeMonthsOnly: true,
+			dimensions: ["date"],
+			aggregate: "month",
+			metrics: ["clicks", "impressions"],
+			limit: 25000,
+		});
+		const [, init] = fetchMock.mock.calls[0] as unknown as [
+			string,
+			RequestInit,
+		];
+		const now = new Date();
+		const start = new Date(
+			Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 6, 1),
+		);
+		const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 0));
+		expect(JSON.parse(String(init.body))).toMatchObject({
+			startDate: start.toISOString().slice(0, 10),
+			endDate: end.toISOString().slice(0, 10),
+		});
+	});
+
 	test("preserves the GA4 property time zone and half-open date range", async () => {
 		spyOn(
 			GoogleServiceAccountClient.prototype,

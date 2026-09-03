@@ -32,6 +32,7 @@ export const searchConsoleQuery = z.object({
 	source: z.literal("search_console"),
 	site: z.enum(["sync", "lipsync"]),
 	dateRange,
+	completeMonthsOnly: z.boolean().optional(),
 	dimensions: z
 		.array(
 			z.enum([

@@ -346,7 +346,7 @@ export class MarketingClient {
 					"Content-Type": "application/json",
 				},
 				body: JSON.stringify({
-					...(range ?? dates(query.dateRange)),
+					...(range ?? dates(query.dateRange, query.completeMonthsOnly)),
 					dimensions: query.dimensions,
 					rowLimit: query.limit,
 					dataState: range ? "final" : "all",

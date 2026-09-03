@@ -1237,9 +1237,9 @@ export const PRODUCT_METRIC_SPECS: ProductMetricSpec[] = [
 		requiresCrossSourceEligibility: true,
 		pendingChecks: [
 			{
-				name: "approved_feedback_instrument_rule",
+				name: "approved_feedback_deduplication_rule",
 				reason:
-					"Confirm whether positive means thumbs-up, 4-5 stars, or both, and whether one generation with more than one rating counts once or more than once.",
+					"Thumb and star instrument rules are defined by the governed weekly feedback contract. Confirm how multiple approved feedback events on one generation collapse into this legacy generation-level rate, or retire this metric in favor of the event-level contract.",
 			},
 		],
 	},
@@ -1268,13 +1268,6 @@ export const PRODUCT_METRIC_SPECS: ProductMetricSpec[] = [
 			output: "feedback_coverage_rate_pct",
 		},
 		requiresCrossSourceEligibility: true,
-		pendingChecks: [
-			{
-				name: "approved_feedback_coverage_denominator",
-				reason:
-					"Confirm whether the official coverage denominator is first generations, all clean COMPLETED generations, or all clean terminal generations.",
-			},
-		],
 	},
 	{
 		questionNumber: 7004,

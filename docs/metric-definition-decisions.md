@@ -8,12 +8,15 @@ Atlas then stores that meaning in an immutable metric version.
 
 - Calendar periods use UTC and half-open boundaries.
 - A multi-source result stops at the oldest complete source watermark.
-- Banned, anonymous, `@sync.so`, and `@sync.labs` identities are excluded from
-  recalculated operating metrics.
+- Anonymous, `@sync.so`, and `@sync.labs` identities are excluded from recalculated
+  operating metrics.
+- Product activity excludes banned identities that never subscribed. A customer who
+  subscribed or paid remains in historical product and money results after a later ban.
 - Disabled identities remain in historical populations. Atlas reports deletion after
   qualification as a separate retention signal.
-- A later ban can change a live historical dashboard. A report already sent keeps its
-  original immutable snapshot.
+- A later eligibility change can alter current-clean history when the metric's versioned
+  population policy allows it. A report already sent keeps its original immutable
+  snapshot.
 - A metric is not verified because its query ran. Its required source, snapshot,
   population, freshness, and result checks must pass.
 - Metabase cards are reconciliation references. Canonical metrics read the underlying
@@ -57,10 +60,10 @@ different ways. A published metric should not use a loose word such as `users`,
 | Term | Atlas meaning | Status or remaining question |
 | --- | --- | --- |
 | Raw product user | One authentication account in the Product database, before eligibility filters or identity joins. | Use only for source auditing, not as an operating KPI. |
-| Eligible product user | A raw product user who is not banned, anonymous, an approved test identity, or an internal Sync identity. | Agreed company default. Metric names should say `eligible users` rather than only `users`. |
+| Eligible product user | A raw product user who is not anonymous, an approved test identity, or an internal Sync identity, with the metric's versioned ban policy applied. | Product activity excludes banned users who never subscribed. Historical activity from customers who subscribed or paid remains visible. Metric names should say `eligible users` rather than only `users`. |
 | Canonical person | One human after known accounts and identities are joined. One person can have several product users. | The join and deduplication rules must be versioned. |
 | Internal user | An identity owned by Sync staff, currently including `@sync.so` and `@sync.labs`. | Agreed exclusion from operating KPIs. The domain list must be versioned. |
-| Banned user | An admin-identified abusive account. Current-clean metrics remove its full history. | Agreed. Published reports remain unchanged and preserve the value known at send time. |
+| Banned user | An admin-identified abusive account. | Product activity excludes banned users who never subscribed. Historical customer and money results retain users who subscribed or paid. Published reports remain unchanged and preserve the value known at send time. |
 | Disabled user | A user who chose to disable or delete the account. This is not an abuse flag. Valid activity before deletion stays in historical metrics. | Agreed. Atlas also reports organizations that qualified before a user later deleted the account. |
 | Anonymous user | Activity that is explicitly marked anonymous and is not resolved to an eligible person, API key owner, or organization. | Excluded by default. Unresolved attribution must fail closed for a certified person-level metric. |
 | Active user or organization | An eligible entity with a named qualifying event inside a named window. | `Active` alone is not a definition. The metric must name the entity, event, minimum frequency, and UTC window. |
@@ -149,7 +152,7 @@ is called certified.
 | V2 price and discount timing | The current Stripe price can still be resolved when successful usage is reported after completion | Freeze the price and discount when the generation starts | A user can change subscription price or discount while a generation is running. This decision is still open. |
 | V3 credit settlement | Reserve at generation start, capture actual usage after success, and release the hold after failure | Charge immediately or price again at completion | The persisted hold and billing source keep the accepted billing path stable through the generation lifecycle. |
 | V3 revenue event | Successful one-time Stripe top-up payments plus recurring V3 subscription value | V3 credit consumption or usage value | V3 consumption spends prepaid credits and is not new revenue. The top-up payment is the variable revenue event. |
-| V3 paid-qualified month | V3 subscription invoices plus successful top-up payments in the same UTC month | Subscription invoices only, top-up payments only, or another threshold | V3 does not produce postpaid usage invoices. The Product owner must confirm the paid-qualified guardrail. |
+| V3 paid-qualified month | V3 subscription invoices plus successful top-up payments in the same UTC month | Confirmed Product rule | V3 does not produce postpaid usage invoices. Credit consumption spends prepaid value and is not a second paid event. |
 | Stripe reconciliation line | Cash from invoices whose Stripe `paid_at` is inside the cutoff | Invoice creation, invoice finalization, due date, service period, or payment settlement | “Created,” “billed,” and “paid” answer different questions. If invoice creation is wanted, Atlas should add an `invoice billings` metric instead of changing `cash collected`. |
 | Enterprise and Studio bookings date | HubSpot stage-entry history is used for CRM verification | Contract signature timestamp or work-start timestamp | A contract can be signed before Sales moves the deal, and work can start later. |
 | Signed amount precedence | HubSpot amount is accepted only as CRM evidence; a conflicting signed amount remains partial | Signed contract always wins, HubSpot always wins, or a named reconciliation owner resolves conflicts | USC is `$292` in HubSpot and `$334.25` in the cited source thread. |
@@ -180,24 +183,30 @@ verification evidence, not in an open-question list.
 | M3 | The same fixed starting cohort two calendar months after the starting month. It is not 90 elapsed days. |
 | Completion rate | Weekly `COMPLETED` non-deleted generation records divided by all non-deleted generation records, using final Product status. |
 
-Two feedback decisions remain open because the Product sheet defines upvote rate and
-coverage as separate measures:
+Product feedback now uses separate governed measures:
 
-1. For generation upvote rate, does positive mean thumbs-up, 4–5 stars, or both? If a
-   generation has more than one rating, does it count once or more than once?
-2. For feedback coverage, which denominator is the official scorecard measure: first
-   generation per organization, all eligible `COMPLETED` generations, or all eligible
-   terminal generations?
+- Product sentiment combines thumb-up and thumb-down events with star scores. Four or
+  five stars are positive; lower scores are negative. The weekly model-feedback metric
+  reports feedback events, so more than one approved event on a generation remains more
+  than one sentiment observation.
+- Feedback coverage is the number of distinct eligible `COMPLETED` generations with at
+  least one approved feedback event divided by eligible `COMPLETED` generations.
+- First-generation coverage remains a separate measure. It does not replace the overall
+  completed-generation denominator.
 
-Two billing decisions remain open:
+The legacy generation-level upvote question still needs one narrow decision: when one
+generation has more than one approved feedback event, define which event wins or retire
+that question in favor of the event-level sentiment contract.
 
-3. If an organization changes its Stripe price or discount while a V2 generation is
-   running, should the generation use the price from start time or the price visible
-   when successful usage is reported? The plan and billing source are already fixed at
-   start, but the price can still be resolved at completion.
-4. For the V3 paid-qualified guardrail, should the monthly paid amount include the V3
-   subscription invoice plus successful top-up payments, subscription invoices only,
-   or another approved amount?
+One billing decision remains open. If an organization changes its Stripe price or
+discount while a V2 generation is running, decide whether the generation uses the price
+from start time or the price visible when successful usage is reported. The plan and
+billing source are already fixed at start, but the price can still be resolved at
+completion.
+
+The V3 paid-qualified guardrail is settled. It uses V3 subscription invoices plus
+successful top-up payments in the same UTC month. It does not count credit consumption
+as another paid event.
 
 The approved self-serve revenue model is:
 

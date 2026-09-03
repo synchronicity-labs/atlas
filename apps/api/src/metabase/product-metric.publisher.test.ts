@@ -232,15 +232,12 @@ describe("product feedback metric registry", () => {
 		expect(preferredAtlasQuestionNumber("8252")).toBe(39);
 	});
 
-	test("computes feedback metrics without silently approving their remaining definition decisions", () => {
+	test("keeps only the legacy generation-level feedback deduplication decision open", () => {
 		const checks = PRODUCT_METRIC_SPECS.filter((spec) =>
 			[39, 42].includes(spec.questionNumber),
 		).flatMap((spec) => spec.pendingChecks?.map((check) => check.name) ?? []);
 
-		expect(checks).toEqual([
-			"approved_feedback_instrument_rule",
-			"approved_feedback_coverage_denominator",
-		]);
+		expect(checks).toEqual(["approved_feedback_deduplication_rule"]);
 	});
 
 	test("registers the governed exit-survey cancellation contract", () => {

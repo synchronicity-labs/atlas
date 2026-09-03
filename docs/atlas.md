@@ -66,6 +66,9 @@ The workbook-wide inventory, readiness stages, and verification rollout are in
 [`docs/kpi-catalog-rollout.md`](./kpi-catalog-rollout.md).
 Business ambiguity remains a pending decision; it is never resolved by silently
 changing a timestamp or relabeling an amount.
+These documents record definitions and decisions. They do not mirror runtime trust;
+the latest Atlas question snapshot is authoritative for verified, stale, pending, or
+failed status.
 
 ## Reporting time policy
 

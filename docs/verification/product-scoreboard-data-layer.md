@@ -13,18 +13,33 @@ the value rendered on a Metabase dashboard.
 
 ## KPI map
 
-| Atlas | KPI | Direct source | Grain | Current trust | Remaining work |
+This table records the current definitions. It does not copy a live trust label into a
+document. The latest Atlas snapshot is the source of truth for whether a question is
+verified, stale, pending, or failed.
+
+| Atlas | KPI | Direct source | Grain | Recorded contract | Runtime note |
 | --- | --- | --- | --- | --- | --- |
-| [Q15](https://atlas.pr.sync.so/questions/15) | Monthly professional organizations | TinyBird `sync_prod.sync_usage3`; [Metabase reference 8164](https://sync-labs.metabaseapp.com/question/8164) | Month | Certified | Confirm created-time versus completed-time policy. |
-| [Q16](https://atlas.pr.sync.so/questions/16) | Monthly activated organizations | TinyBird `sync_prod.sync_usage3`; [Metabase reference 8165](https://sync-labs.metabaseapp.com/question/8165) | Month | Draft | Complete the governed principal join. |
-| [Q21](https://atlas.pr.sync.so/questions/21) | 14-day return and activation | Product Postgres; [Metabase reference 8170](https://sync-labs.metabaseapp.com/question/8170) | Week | Certified | Stakeholder sign-off on completed-generation semantics. |
-| [Q22](https://atlas.pr.sync.so/questions/22) | Activated-to-professional rate | TinyBird `sync_prod.sync_usage3`; [Metabase reference 8172](https://sync-labs.metabaseapp.com/question/8172) | Month | Draft | Complete the governed principal join. |
-| [Q23](https://atlas.pr.sync.so/questions/23) | 30-day product-led subscription conversion | Product Postgres; [Metabase reference 8173](https://sync-labs.metabaseapp.com/question/8173) | Week | Certified | Stakeholder sign-off on subscription start event. |
-| [Q17](https://atlas.pr.sync.so/questions/17) | M3 professional requalification | TinyBird `sync_prod.sync_usage3`; [Metabase reference 8166](https://sync-labs.metabaseapp.com/question/8166) | Month | Draft | Complete the governed principal join and confirm M3 meaning. |
-| [Q24](https://atlas.pr.sync.so/questions/24) | Accrued value from professional organizations | TinyBird `sync_prod.sync_usage3`; [Metabase reference 8175](https://sync-labs.metabaseapp.com/question/8175) | Month | Draft | Confirm accrued-value allocation and complete eligibility. |
-| [Q18](https://atlas.pr.sync.so/questions/18) | M3 accrued NDR | TinyBird `sync_prod.sync_usage3`; [Metabase reference 8167](https://sync-labs.metabaseapp.com/question/8167) | Month | Draft | Complete the governed principal join. |
-| [Q8](https://atlas.pr.sync.so/questions/8) | Generation completion rate | Product Postgres; [Metabase reference 8177](https://sync-labs.metabaseapp.com/question/8177) | Week | Certified | Stakeholder sign-off on denominator statuses. |
-| [Q9](https://atlas.pr.sync.so/questions/9) | Paid-qualified professional organization-months | TinyBird usage and Stripe mirrors; [Metabase reference 8178](https://sync-labs.metabaseapp.com/question/8178) | Month | Draft | Confirm invoice event basis and complete eligibility. |
+| [Q15](https://atlas.pr.sync.so/questions/15) | Monthly professional organizations | TinyBird `sync_prod.sync_usage3`; [Metabase reference 8164](https://sync-labs.metabaseapp.com/question/8164) | Month | Generation start time in UTC; `COMPLETED`; non-free plan at admission; `$100+`, 3+ generations, and 2+ active days | Read current trust in Atlas. |
+| [Q16](https://atlas.pr.sync.so/questions/16) | Monthly activated organizations | TinyBird `sync_prod.sync_usage3`; [Metabase reference 8165](https://sync-labs.metabaseapp.com/question/8165) | Month | The Q15 generation and activity rules before the `$100` gate | Read current trust in Atlas. |
+| [Q21](https://atlas.pr.sync.so/questions/21) | 14-day return and activation | Product Postgres; [Metabase reference 8170](https://sync-labs.metabaseapp.com/question/8170) | Week | First completed generation, distinct-day return, and 14-day maturity window | Read current trust in Atlas. |
+| [Q22](https://atlas.pr.sync.so/questions/22) | Activated-to-professional rate | TinyBird `sync_prod.sync_usage3`; [Metabase reference 8172](https://sync-labs.metabaseapp.com/question/8172) | Month | Professional organization-months divided by activated organization-months | Read current trust in Atlas. |
+| [Q23](https://atlas.pr.sync.so/questions/23) | 30-day product-led subscription conversion | Product Postgres; [Metabase reference 8173](https://sync-labs.metabaseapp.com/question/8173) | Week | Subscription starts within 30 days after the first completed generation | Read current trust in Atlas. |
+| [Q17](https://atlas.pr.sync.so/questions/17) | M3 professional requalification | TinyBird `sync_prod.sync_usage3`; [Metabase reference 8166](https://sync-labs.metabaseapp.com/question/8166) | Month | The fixed starting cohort must meet the full professional definition two calendar months later | A cohort cannot verify until its third calendar month is complete. |
+| [Q24](https://atlas.pr.sync.so/questions/24) | Accrued value from professional organizations | TinyBird `sync_prod.sync_usage3`; [Metabase reference 8175](https://sync-labs.metabaseapp.com/question/8175) | Month | Allocated subscription value plus consumed usage from the Q15 professional population | Read current trust in Atlas. |
+| [Q18](https://atlas.pr.sync.so/questions/18) | M3 accrued NDR | TinyBird `sync_prod.sync_usage3`; [Metabase reference 8167](https://sync-labs.metabaseapp.com/question/8167) | Month | Same-cohort month-three accrued value divided by starting-month accrued value | A cohort cannot verify until its third calendar month is complete. |
+| [Q8](https://atlas.pr.sync.so/questions/8) | Generation completion rate | Product Postgres; [Metabase reference 8177](https://sync-labs.metabaseapp.com/question/8177) | Week | Final `COMPLETED` non-deleted generations divided by all non-deleted generations | Read current trust in Atlas. |
+| [Q9](https://atlas.pr.sync.so/questions/9) | Paid-qualified professional organization-months | TinyBird usage and Stripe mirrors; [Metabase reference 8178](https://sync-labs.metabaseapp.com/question/8178) | Month | V2 uses subscription and usage invoices; V3 uses subscription invoices and successful top-up payments | Read current trust in Atlas. |
+
+## Feedback definitions
+
+The governed weekly model-feedback metric combines thumb events and star scores. Four
+or five stars are positive. Coverage counts distinct completed generations with at least
+one approved feedback event and divides by completed generations. First-generation
+coverage is a separate view.
+
+The older generation-level upvote question still needs a deduplication rule when one
+generation has more than one approved feedback event. Its broad instrument-definition
+question is no longer open.
 
 ## Stored layers
 

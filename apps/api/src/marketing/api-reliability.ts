@@ -183,7 +183,7 @@ export function apiReliabilityVerificationChecks(
 		query.report === "weekly-reliability" &&
 		query.version === 1 &&
 		text(first.source_id).length > 0 &&
-		text(first.source_region) === "eu-fsn-3" &&
+		/^eu-[a-z0-9-]+$/.test(text(first.source_region)) &&
 		number(first.source_request_rows) > 0 &&
 		rows.every(
 			(row) =>

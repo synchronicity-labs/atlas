@@ -16,7 +16,7 @@ describe("API reliability weekly report", () => {
 		const source = mock().mockResolvedValue({
 			id: "1018705",
 			name: "[Prod] Sync API V2",
-			dataRegion: "eu-fsn-3",
+			dataRegion: "eu-central-1a",
 			tableName: "prod_sync_api_v2",
 			teamId: "202575",
 		});
@@ -68,6 +68,12 @@ describe("API reliability weekly report", () => {
 			["latency_population_review", "PASSED"],
 			["oldest_complete_watermark", "PASSED"],
 		]);
+		for (const row of result.rows) row[27] = "us-west-2";
+		expect(
+			apiReliabilityVerificationChecks(result, query).find(
+				(check) => check.name === "betterstack_adapter",
+			)?.status,
+		).toBe("FAILED");
 	});
 
 	test("fails closed when BetterStack has no covered source window", async () => {
@@ -75,7 +81,7 @@ describe("API reliability weekly report", () => {
 			source: mock().mockResolvedValue({
 				id: "1018705",
 				name: "[Prod] Sync API V2",
-				dataRegion: "eu-fsn-3",
+				dataRegion: "eu-central-1a",
 				tableName: "prod_sync_api_v2",
 				teamId: "202575",
 			}),
@@ -96,7 +102,7 @@ describe("API reliability weekly report", () => {
 			source: mock().mockResolvedValue({
 				id: "1018705",
 				name: "[Prod] Sync API V2",
-				dataRegion: "eu-fsn-3",
+				dataRegion: "eu-central-1a",
 				tableName: "prod_sync_api_v2",
 				teamId: "202575",
 			}),

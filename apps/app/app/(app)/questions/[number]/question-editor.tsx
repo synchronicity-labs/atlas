@@ -53,6 +53,11 @@ import {
 	useReportingPeriod,
 } from "@/components/reporting-period";
 import { RudyChatTrigger } from "@/components/rudy-chat";
+import {
+	buildChartData,
+	isPercentMetric,
+	visualizationRecord,
+} from "@/lib/chart-visualization";
 import { useTRPC } from "@/lib/trpc/client";
 
 type QueryLanguage = "SQL" | "MBQL" | "API";
@@ -78,6 +83,7 @@ type QuestionVersion = {
 	queryLanguage: QueryLanguage;
 	queryText: string;
 	display: string;
+	visualization: unknown;
 	createdAt: string;
 };
 type QuestionData = {
@@ -162,14 +168,25 @@ function humanize(value: string): string {
 		.replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
+const PREVIEW_NUMBER_FORMAT = new Intl.NumberFormat("en-US", {
+	maximumFractionDigits: 2,
+});
+
+function formatPreviewMetric(value: number, name: string): string {
+	const formatted = PREVIEW_NUMBER_FORMAT.format(value);
+	return isPercentMetric(name) ? `${formatted}%` : formatted;
+}
+
 function QuestionPreview({
 	data,
 	display,
 	name,
+	visualization,
 }: {
 	data: PreviewData | null;
 	display: string;
 	name: string;
+	visualization: unknown;
 }) {
 	if (!data || data.columns.length === 0) {
 		return (
@@ -206,26 +223,17 @@ function QuestionPreview({
 		);
 	}
 	const chartDisplay = display.toLowerCase();
+	const source = buildChartData(data.columns, data.rows, visualization);
 	const chart =
-		["line", "area", "bar"].includes(chartDisplay) && numericIndex >= 0;
+		["line", "area", "bar"].includes(chartDisplay) && source.series.length > 0;
 	if (chart) {
-		const xKey = data.columns[0]?.name ?? "period";
-		const series = data.columns
-			.slice(1)
-			.filter((_column, index) =>
-				data.rows.some((row) => typeof row[index + 1] === "number"),
-			);
-		const rows = data.rows.map(
-			(row) =>
-				Object.fromEntries(
-					data.columns.flatMap((column, index) => {
-						const cell = row[index];
-						return typeof cell === "number" || typeof cell === "string"
-							? [[column.name, cell]]
-							: [];
-					}),
-				) as Record<string, string | number>,
+		const columnByName = new Map(
+			data.columns.map((column) => [column.name, column]),
 		);
+		const series = source.series.flatMap((seriesName) => {
+			const column = columnByName.get(seriesName);
+			return column ? [column] : [];
+		});
 		const colors = ["green", "blue", "orange", "purple"] as const;
 		const config = Object.fromEntries(
 			series.map((column, index) => [
@@ -240,15 +248,24 @@ function QuestionPreview({
 			<>
 				<Grid strokeDasharray="2 4" />
 				<XAxis
-					dataKey={xKey}
+					dataKey={source.xKey}
 					tickFormatter={(value) =>
 						formatMonthPeriod(value, { includeMtd: true, compact: true })
 					}
 					maxTicks={7}
 				/>
-				<YAxis />
+				<YAxis
+					tickFormatter={(value) =>
+						formatPreviewMetric(value, series[0]?.name ?? "")
+					}
+				/>
 				<Legend isClickable align="left" />
-				<Tooltip labelKey={xKey} />
+				<Tooltip
+					labelKey={source.xKey}
+					valueFormatter={(value, seriesName) =>
+						formatPreviewMetric(value, seriesName)
+					}
+				/>
 				{series.map((column, index) =>
 					chartDisplay === "bar" ? (
 						<Bar
@@ -272,7 +289,7 @@ function QuestionPreview({
 			<div className="h-80 p-4">
 				{chartDisplay === "bar" ? (
 					<BarChart
-						data={rows}
+						data={source.data}
 						config={config}
 						bloom="low"
 						bloomOnHover
@@ -282,7 +299,7 @@ function QuestionPreview({
 					</BarChart>
 				) : (
 					<LineChart
-						data={rows}
+						data={source.data}
 						config={config}
 						bloom="low"
 						bloomOnHover
@@ -343,6 +360,7 @@ export function QuestionEditor({ number }: { number: number }) {
 	const [language, setLanguage] = useState<QueryLanguage>("SQL");
 	const [queryText, setQueryText] = useState("");
 	const [display, setDisplay] = useState("table");
+	const [visualization, setVisualization] = useState<unknown>({});
 	const [preview, setPreview] = useState<PreviewData | null>(null);
 	const reportingPeriod = useReportingPeriod();
 	const [lastPreviewedQuery, setLastPreviewedQuery] = useState<string | null>(
@@ -361,6 +379,7 @@ export function QuestionEditor({ number }: { number: number }) {
 			setLanguage(proposed.queryLanguage);
 			setQueryText(proposed.queryText);
 			setDisplay(proposed.display);
+			setVisualization(latest.visualization);
 			setPreview(null);
 			setLastPreviewedQuery(null);
 			return;
@@ -370,6 +389,7 @@ export function QuestionEditor({ number }: { number: number }) {
 		setLanguage(latest.queryLanguage);
 		setQueryText(latest.queryText);
 		setDisplay(latest.display);
+		setVisualization(latest.visualization);
 		setPreview(snapshotPreview(data.snapshots[0] ?? null));
 	}, [data, latest, number, proposed]);
 
@@ -439,6 +459,7 @@ export function QuestionEditor({ number }: { number: number }) {
 		setLanguage(version.queryLanguage);
 		setQueryText(version.queryText);
 		setDisplay(version.display);
+		setVisualization(version.visualization);
 	}
 	const sourceTypeLabel =
 		data.connector === "METABASE"
@@ -540,7 +561,7 @@ export function QuestionEditor({ number }: { number: number }) {
 								queryLanguage: language,
 								queryText,
 								display,
-								visualization: {},
+								visualization: visualizationRecord(visualization),
 								...(proposalId ? { proposalId } : {}),
 							})
 						}
@@ -655,6 +676,7 @@ export function QuestionEditor({ number }: { number: number }) {
 								data={visiblePreview}
 								display={display}
 								name={name}
+								visualization={visualization}
 							/>
 						</CardContent>
 					</Card>

@@ -55,6 +55,7 @@ import {
 	useReportingPeriod,
 } from "@/components/reporting-period";
 import { RudyChatTrigger } from "@/components/rudy-chat";
+import { buildChartData, isPercentMetric } from "@/lib/chart-visualization";
 import { useTRPC } from "@/lib/trpc/client";
 import type { RouterOutputs } from "@/lib/trpc/types";
 
@@ -350,15 +351,6 @@ function CardHeading({ card }: { card: DashboardCard }) {
 	);
 }
 
-function isPercent(name: string): boolean {
-	if (/cohort spend|spend_usd/i.test(name)) return false;
-	return (
-		/percent|pct|requalification|ndr|conversion/i.test(name) ||
-		(/margin/i.test(name) && !/margin_usd|margin usd/i.test(name)) ||
-		(/rate/i.test(name) && !/run.?rate/i.test(name))
-	);
-}
-
 function isCurrency(name: string): boolean {
 	if (/cash|collect|usage.*incurred|invoice.*raised/i.test(name)) return true;
 	if (
@@ -395,7 +387,7 @@ function formatCell(value: unknown, column: Column): string {
 }
 
 function formatMetric(value: number, name: string): string {
-	if (isPercent(name)) return `${METRIC_NUMBER_FORMAT.format(value)}%`;
+	if (isPercentMetric(name)) return `${METRIC_NUMBER_FORMAT.format(value)}%`;
 	if (isCurrency(name)) return METRIC_CURRENCY_FORMAT.format(value);
 	return METRIC_NUMBER_FORMAT.format(value);
 }
@@ -414,34 +406,9 @@ function chartData(card: DashboardCard): {
 } {
 	const cardColumns = columns(card.snapshot);
 	const sourceRows = rows(card.snapshot);
-	const xKey = cardColumns[0]?.name ?? "period";
-	const series: string[] = [];
-	for (let index = 1; index < cardColumns.length; index += 1) {
-		const column = cardColumns[index];
-		if (
-			column &&
-			!/(^|_)(period_end|window_end|data_through|captured_at)$/i.test(
-				column.name,
-			)
-		) {
-			series.push(column.name);
-		}
-	}
-	return {
-		xKey,
-		series,
-		data: sourceRows.map(
-			(row) =>
-				Object.fromEntries(
-					cardColumns.flatMap((column, index) => {
-						const cell = row[index];
-						return typeof cell === "number" || typeof cell === "string"
-							? [[column.name, cell]]
-							: [];
-					}),
-				) as Datum,
-		),
-	};
+	const displaySettings = (card as unknown as { displaySettings: unknown })
+		.displaySettings;
+	return buildChartData(cardColumns, sourceRows, displaySettings);
 }
 
 function ScalarCard({ card }: { card: DashboardCard }) {
@@ -455,7 +422,7 @@ function ScalarCard({ card }: { card: DashboardCard }) {
 	const isCurrentMonth =
 		typeof period === "string" &&
 		period.slice(0, 7) === new Date().toISOString().slice(0, 7);
-	const percentMetric = isPercent(card.question.name);
+	const percentMetric = isPercentMetric(card.question.name);
 	const formattedCurrent =
 		typeof currentValue === "number"
 			? formatMetric(currentValue, card.question.name)
@@ -587,7 +554,7 @@ function ScalarCard({ card }: { card: DashboardCard }) {
 }
 
 function metricFamily(name: string): "percent" | "currency" | "number" {
-	if (isPercent(name)) return "percent";
+	if (isPercentMetric(name)) return "percent";
 	if (isCurrency(name)) return "currency";
 	return "number";
 }

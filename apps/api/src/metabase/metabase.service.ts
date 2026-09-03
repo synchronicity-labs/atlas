@@ -115,6 +115,22 @@ function stableHash(value: unknown): string {
 	return createHash("sha256").update(JSON.stringify(value)).digest("hex");
 }
 
+function settingsObject(value: unknown): Record<string, unknown> {
+	return value && typeof value === "object" && !Array.isArray(value)
+		? (value as Record<string, unknown>)
+		: {};
+}
+
+function mergedVisualizationSettings(
+	cardSettings: unknown,
+	placementSettings: unknown,
+): Record<string, unknown> {
+	return {
+		...settingsObject(cardSettings),
+		...settingsObject(placementSettings),
+	};
+}
+
 function checkpointObject(value: unknown): Record<string, unknown> {
 	return value && typeof value === "object" && !Array.isArray(value)
 		? (value as Record<string, unknown>)
@@ -1463,9 +1479,10 @@ export class MetabaseService {
 				metadata: json({
 					datasetQuery: placement.card.dataset_query,
 					resultMetadata: placement.card.result_metadata,
-					visualizationSettings:
-						placement.visualization_settings ??
+					visualizationSettings: mergedVisualizationSettings(
 						placement.card.visualization_settings,
+						placement.visualization_settings,
+					),
 					layout: {
 						row: placement.row ?? 0,
 						col: placement.col ?? 0,
@@ -1491,9 +1508,10 @@ export class MetabaseService {
 				metadata: json({
 					datasetQuery: placement.card.dataset_query,
 					resultMetadata: placement.card.result_metadata,
-					visualizationSettings:
-						placement.visualization_settings ??
+					visualizationSettings: mergedVisualizationSettings(
 						placement.card.visualization_settings,
+						placement.visualization_settings,
+					),
 					layout: {
 						row: placement.row ?? 0,
 						col: placement.col ?? 0,
@@ -1572,7 +1590,18 @@ export class MetabaseService {
 			if (
 				latest?.createdBy === "metabase" &&
 				definition.queryText.trim() &&
-				latest.queryText.trim() !== definition.queryText.trim()
+				stableHash({
+					queryLanguage: latest.queryLanguage,
+					queryText: latest.queryText.trim(),
+					display: latest.display,
+					visualization: latest.visualization,
+				}) !==
+					stableHash({
+						queryLanguage: definition.queryLanguage,
+						queryText: definition.queryText.trim(),
+						display: definition.display,
+						visualization: definition.visualization,
+					})
 			) {
 				await this.db.questionVersion.create({
 					data: {
@@ -1659,9 +1688,10 @@ export class MetabaseService {
 			height: placement.size_y ?? 4,
 			visualization: visualization(placement.card.display),
 			displaySettings: json(
-				placement.visualization_settings ??
-					placement.card.visualization_settings ??
-					{},
+				mergedVisualizationSettings(
+					placement.card.visualization_settings,
+					placement.visualization_settings,
+				),
 			),
 		};
 

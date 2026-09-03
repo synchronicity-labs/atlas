@@ -389,10 +389,6 @@ export class MarketingService {
 							: undefined,
 						verificationChecks,
 					});
-					await this.db.question.update({
-						where: { id: question.id },
-						data: { lastCheckedAt: capturedAt },
-					});
 					sourceCardsProcessed += 1;
 					sourceSnapshotsCreated += created.count;
 				} catch (error) {

@@ -334,10 +334,6 @@ export class ProductEligibilityService {
 						scope: "SUBSCRIBED_ORGANIZATIONS",
 					},
 				});
-				await this.db.question.update({
-					where: { id: question.id },
-					data: { lastCheckedAt: analysis.capturedAt },
-				});
 				cardsProcessed += 1;
 				snapshotsCreated += created.count;
 				checkpoint = {

@@ -1260,10 +1260,6 @@ export class MetabaseService {
 								revenueDoorPolicy: revenueDoor?.evidence,
 								verificationChecks,
 							});
-							await this.db.question.update({
-								where: { id: question.id },
-								data: { lastCheckedAt: capturedAt },
-							});
 							return created.count;
 						} catch (error) {
 							errors.push({

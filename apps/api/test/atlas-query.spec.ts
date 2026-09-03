@@ -92,10 +92,11 @@ describe("Atlas agent query freshness", () => {
 		).toEqual(new Date("2026-08-25T08:00:00.000Z"));
 	});
 
-	test("explains freshness using the latest check, not an older identical snapshot", async () => {
+	test("uses the latest successful check with the latest verified snapshot", async () => {
 		const checkedAt = new Date(Date.now() - 60_000);
 		const computedAt = new Date(checkedAt.getTime() - 86_400_000);
 		const deadline = new Date(checkedAt.getTime() + 36_000_000);
+		let metricSnapshotWhere: unknown;
 		const db = {
 			question: {
 				findFirst: async () => ({
@@ -119,14 +120,17 @@ describe("Atlas agent query freshness", () => {
 			},
 			resultSnapshot: { findFirst: async () => null },
 			metricSnapshot: {
-				findFirst: async () => ({
-					computedAt,
-					periodStart: computedAt,
-					periodEnd: checkedAt,
-					dataThrough: checkedAt,
-					trustStatus: MetricTrustStatus.VERIFIED,
-					metricRun: { verifications: [] },
-				}),
+				findFirst: async (input: { where: unknown }) => {
+					metricSnapshotWhere = input.where;
+					return {
+						computedAt,
+						periodStart: computedAt,
+						periodEnd: checkedAt,
+						dataThrough: checkedAt,
+						trustStatus: MetricTrustStatus.VERIFIED,
+						metricRun: { verifications: [] },
+					};
+				},
 			},
 		} as unknown as Db;
 		const service = new AtlasQueryService(db);
@@ -136,6 +140,9 @@ describe("Atlas agent query freshness", () => {
 			checkedAt: checkedAt.toISOString(),
 			deadlineAt: deadline.toISOString(),
 		});
+		expect(metricSnapshotWhere).toEqual(
+			expect.objectContaining({ trustStatus: MetricTrustStatus.VERIFIED }),
+		);
 		expect(
 			(await service.question(243, { reportingPeriod: "2026-08" })).freshness,
 		).toEqual({

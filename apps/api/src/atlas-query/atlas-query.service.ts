@@ -384,6 +384,7 @@ export class AtlasQueryService {
 				? this.db.metricSnapshot.findFirst({
 						where: {
 							metricVersionId: question.metricVersionId,
+							trustStatus: MetricTrustStatus.VERIFIED,
 							reportingPeriod: input.reportingPeriod,
 							computedAt: input.asOf
 								? { lte: new Date(input.asOf) }

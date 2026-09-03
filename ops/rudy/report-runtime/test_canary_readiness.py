@@ -17,8 +17,8 @@ class CanaryReadinessTest(unittest.TestCase):
             "provenance": {"source": {"state": "HEALTHY"}},
         }
 
-    def test_fresh_snapshot_remains_usable_while_source_syncs(self):
-        for state in ("HEALTHY", "SYNCING"):
+    def test_fresh_snapshot_remains_usable_during_refresh_attempts(self):
+        for state in ("HEALTHY", "SYNCING", "ERROR"):
             self.payload["provenance"]["source"]["state"] = state
             self.assertEqual(canonical_readiness_failures({243: self.payload}, {243}), [])
 
@@ -34,11 +34,6 @@ class CanaryReadinessTest(unittest.TestCase):
             payload = copy.deepcopy(self.payload)
             payload["result"] = result
             self.assertEqual(len(canonical_readiness_failures({243: payload}, {243})), 1)
-
-    def test_source_failure_still_fails_with_a_fresh_snapshot(self):
-        self.payload["provenance"]["source"]["state"] = "ERROR"
-        self.assertEqual(len(canonical_readiness_failures({243: self.payload}, {243})), 1)
-
 
 if __name__ == "__main__":
     unittest.main()

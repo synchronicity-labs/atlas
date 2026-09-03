@@ -47,7 +47,7 @@ def updates_for(jobs, question):
     adobe["prompt"] = replace_required(
         adobe["prompt"],
         "If Q235 is unavailable or not VERIFIED and fresh, use only the approved scoped readers as a clearly labeled fallback. Cite Q235 as the Atlas coverage gap.",
-        "Require CERTIFIED, VERIFIED, fresh, and a HEALTHY source. If Q235 fails a check, omit metrics and report the Atlas blocker. Do not use a raw fallback.",
+        "Require CERTIFIED, VERIFIED, and fresh. A failed latest refresh does not invalidate a verified answer before its freshness deadline. If Q235 fails a check, omit metrics and report the Atlas blocker. Do not use a raw fallback.",
     )
     for job_id in ("6d5d35907a5b", "b1ff759d416d"):
         updates[job_id]["prompt"] = replace_required(
@@ -59,7 +59,7 @@ def updates_for(jobs, question):
 
 Canonical Lipsync traffic question: Q{question}
 Read Q{question}, named Lipsync weekly traffic and search, source key cron:lipsync:weekly-traffic.
-Require CERTIFIED, VERIFIED, fresh, and a HEALTHY source.
+Require CERTIFIED, VERIFIED, and fresh. A failed latest refresh does not invalidate a verified answer before its freshness deadline.
 Use the lipsync-com-weekly-traffic-report and atlas-company-intelligence skills.
 
 Produce the weekly lipsync.com traffic report for C0AD87S7YN6.
@@ -80,7 +80,7 @@ If Q{question} fails a check, report the Atlas blocker instead of raw headline m
 
 Use atlas-company-intelligence and lipsync-weekly-funnel-report.
 Q236 is the only governed Lipsync-attributed product-user funnel source.
-Require CERTIFIED, VERIFIED, fresh, and a HEALTHY source.
+Require CERTIFIED, VERIFIED, and fresh. A failed latest refresh does not invalidate a verified answer before its freshness deadline.
 Run exactly: sudo -n /usr/local/sbin/rudy-hermes-cron-run lipsync-weekly-report
 Parse the JSON and keep its message text unchanged.
 Append MEDIA: /root/.hermes/cache/documents/outbound/lipsync_weekly_funnel.png
@@ -94,7 +94,7 @@ not raw stderr or replacement metrics."""
         raise RuntimeError("Exit survey fallback changed; review before applying")
     updates["165f3db78c17"] = {
         "prompt": exit_prompt.partition(fallback)[0]
-        + "Require CERTIFIED, VERIFIED, fresh, and a HEALTHY source. If Q239 fails, "
+        + "Require CERTIFIED, VERIFIED, and fresh. A failed latest refresh does not invalidate a verified answer before its freshness deadline. If Q239 fails, "
         "omit metrics and report the Atlas blocker. Do not use a raw fallback. "
         "Stage the chart under /root/.hermes/cache/documents/outbound with readable permissions. "
         "Use a MEDIA: absolute path, never a sandbox: link. Keep the existing configured destination."

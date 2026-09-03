@@ -16,7 +16,7 @@ metadata:
         ATLAS-FIRST CANONICAL
         Use Q271, Q273, Q275, and Q276 for the monthly Studio KPI report.
         Use Q247 only as a separate bookings and delivery-commitment measure.
-        Require CERTIFIED, VERIFIED, fresh, and a HEALTHY source.
+        Require CERTIFIED, VERIFIED, and fresh. A failed latest refresh does not invalidate a verified answer before its freshness deadline.
         Never replace an unavailable Atlas value with a raw PostHog value.
         Return one final report. The gateway delivers it to C0ACTQRBFAT.
 ---
@@ -33,7 +33,7 @@ Use these governed questions:
 - Q276 for mature week-two generation-retention cohorts.
 - Q247 only for separate bookings and delivery commitments.
 
-Use a question only when it is `CERTIFIED`, `VERIFIED`, fresh, and backed by a `HEALTHY` source. If it is not ready, omit the section and state the Atlas blocker. Do not query PostHog, Metabase, or another raw source as a replacement.
+Use a question only when it is `CERTIFIED`, `VERIFIED`, and fresh. A failed latest refresh does not invalidate a verified answer before its freshness deadline. If it is not ready, omit the section and state the Atlas blocker. Do not query PostHog, Metabase, or another raw source as a replacement.
 
 Q275 has a six-week observation window. Q276 has a three-week observation window. Show each section's own period labels. Do not present those mature cohorts as the latest Q271 delivery months.
 

@@ -64,7 +64,7 @@ describe("Atlas agent query freshness", () => {
 		).toEqual({ status: "fresh", reason: null });
 	});
 
-	test("does not call a verified metric fresh when its source is failing", () => {
+	test("keeps a verified metric fresh through its deadline after a source failure", () => {
 		expect(
 			resolveMetricFreshness({
 				hasResult: true,
@@ -73,9 +73,21 @@ describe("Atlas agent query freshness", () => {
 				state: SourceStatus.ERROR,
 				deadline: new Date(Date.now() + 60_000),
 			}),
+		).toEqual({ status: "fresh", reason: null });
+	});
+
+	test("marks the last verified metric stale when its deadline passes", () => {
+		expect(
+			resolveMetricFreshness({
+				hasResult: true,
+				historical: false,
+				trustStatus: MetricTrustStatus.VERIFIED,
+				state: SourceStatus.ERROR,
+				deadline: new Date(Date.now() - 1),
+			}),
 		).toEqual({
-			status: "error",
-			reason: "The source sync is failing.",
+			status: "stale",
+			reason: "The freshness deadline passed.",
 		});
 	});
 

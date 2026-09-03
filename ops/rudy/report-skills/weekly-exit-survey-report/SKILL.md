@@ -19,7 +19,7 @@ metadata:
 
 Use the `atlas-company-intelligence` skill and read Q239 first.
 
-Q239 is canonical only when it is `CERTIFIED`, `VERIFIED`, fresh, and backed by a `HEALTHY` source.
+Q239 is canonical only when it is `CERTIFIED`, `VERIFIED`, and fresh. A failed latest refresh does not invalidate a verified answer before its freshness deadline.
 
 - `cancellation_requests` counts unique server events emitted after Stripe accepts a scheduled cancellation request.
 - `responses` counts those events with the server-joined `survey_completed=true` value.

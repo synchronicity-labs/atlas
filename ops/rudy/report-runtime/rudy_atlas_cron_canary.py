@@ -179,7 +179,7 @@ def canonical_readiness_failures(responses, numbers):
         source = (payload.get("provenance") or {}).get("source") or {}
         state = source.get("state")
         status = freshness.get("status")
-        if status == "fresh" and trust == "VERIFIED" and purpose == "CERTIFIED" and state in {"HEALTHY", "SYNCING"}:
+        if status == "fresh" and trust == "VERIFIED" and purpose == "CERTIFIED":
             continue
         detail = f"Q{number}: {status}, trust={trust}, purpose={purpose}, source={state}"
         if freshness.get("checkedAt"):

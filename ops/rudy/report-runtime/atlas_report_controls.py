@@ -29,7 +29,7 @@ def canonical(number):
     trust = (payload.get("result") or {}).get("trustStatus")
     purpose = payload.get("question", {}).get("purpose")
     source = payload.get("provenance", {}).get("source", {}).get("state")
-    if freshness != "fresh" or trust != "VERIFIED" or purpose != "CERTIFIED" or source not in {"HEALTHY", "SYNCING"}:
+    if freshness != "fresh" or trust != "VERIFIED" or purpose != "CERTIFIED":
         raise RuntimeError(f"Atlas Q{number} is {purpose}/{freshness}/{trust}, source={source}")
     return payload
 

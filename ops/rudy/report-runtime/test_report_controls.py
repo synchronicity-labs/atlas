@@ -24,7 +24,6 @@ class ReportControlsTest(unittest.TestCase):
             (("freshness", "status"), "stale"),
             (("result", "trustStatus"), "PENDING"),
             (("result", "trustStatus"), "FAILED"),
-            (("provenance", "source", "state"), "ERROR"),
         ]:
             payload = copy.deepcopy(self.payload)
             target = payload
@@ -37,10 +36,12 @@ class ReportControlsTest(unittest.TestCase):
                         controls.canonical(237)
 
     def test_refresh_does_not_hide_an_existing_fresh_snapshot(self):
-        self.payload["provenance"]["source"]["state"] = "SYNCING"
+        for state in ("SYNCING", "ERROR"):
+            self.payload["provenance"]["source"]["state"] = state
+            with patch.object(controls, "question", return_value=self.payload):
+                self.assertEqual(controls.canonical(237), self.payload)
+        self.payload["freshness"]["status"] = "stale"
         with patch.object(controls, "question", return_value=self.payload):
-            self.assertEqual(controls.canonical(237), self.payload)
-            self.payload["freshness"]["status"] = "stale"
             with self.assertRaises(RuntimeError):
                 controls.canonical(237)
 

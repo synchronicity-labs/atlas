@@ -37,7 +37,6 @@ def verified_rows(payload: dict) -> list[dict]:
     question = payload.get("question", {})
     result = payload.get("result", {})
     freshness = payload.get("freshness", {})
-    source = payload.get("provenance", {}).get("source", {})
     if question.get("number") != QUESTION_NUMBER:
         raise RuntimeError("Atlas returned the wrong question")
     if question.get("purpose") != "CERTIFIED":
@@ -46,11 +45,11 @@ def verified_rows(payload: dict) -> list[dict]:
         raise RuntimeError("Atlas Q236 is not verified")
     if freshness.get("status") != "fresh":
         raise RuntimeError("Atlas Q236 is not fresh")
-    if source.get("state") != "HEALTHY":
-        raise RuntimeError("Atlas Q236 source is not healthy")
-
     names = [column["name"] for column in result.get("columns", [])]
-    rows = [dict(zip(names, values, strict=True)) for values in result.get("rows", [])]
+    values = result.get("rows", [])
+    if any(len(row) != len(names) for row in values):
+        raise ValueError("Atlas Q236 result row does not match its columns")
+    rows = [dict(zip(names, row)) for row in values]
     if len(rows) < 2:
         raise RuntimeError("Atlas Q236 needs at least two complete cohorts")
     return rows

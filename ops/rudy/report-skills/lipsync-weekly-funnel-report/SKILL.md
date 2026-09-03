@@ -5,7 +5,7 @@ version: 3.0.0
 license: MIT
 ---
 
-Use atlas-company-intelligence first. Q236 must be CERTIFIED, VERIFIED, fresh, and backed by a HEALTHY source.
+Use atlas-company-intelligence first. Q236 must be CERTIFIED, VERIFIED, and fresh. A failed latest refresh does not invalidate a verified answer before its freshness deadline.
 
 Run exactly: sudo -n /usr/local/sbin/rudy-hermes-cron-run lipsync-weekly-report
 

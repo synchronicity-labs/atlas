@@ -289,16 +289,6 @@ export async function reconcileContracts(): Promise<{
 	const pendingDocuments = await db.contractDocument.count({
 		where: { textStatus: "EXTRACTED", parseStatus: "PENDING" },
 	});
-	if (pendingDocuments > 0) {
-		return {
-			configured: metabaseConfigured(),
-			deferred: true,
-			pendingDocuments,
-			findings: 0,
-			resolved: 0,
-		};
-	}
-
 	const customers = await db.contractCustomer.findMany({
 		where: { sourceDeletedAt: null },
 		select: {
@@ -375,6 +365,15 @@ export async function reconcileContracts(): Promise<{
 				});
 			}),
 	);
+	if (pendingDocuments > 0) {
+		return {
+			configured: metabaseConfigured(),
+			deferred: true,
+			pendingDocuments,
+			findings: 0,
+			resolved: 0,
+		};
+	}
 	const verified = preparedCustomers.flatMap((customer) =>
 		customer.kind === ContractCustomerKind.ENTERPRISE
 			? customer.productOrganizations.filter(

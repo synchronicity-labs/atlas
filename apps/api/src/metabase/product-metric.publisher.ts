@@ -3503,7 +3503,7 @@ export const REVENUE_METRIC_SPECS: ProductMetricSpec[] = [
 		key: "company.complete_month_usage_ndr",
 		name: "Latest complete-month usage NDR",
 		description:
-			"Current-period accrued usage from the fixed prior-month organization cohort divided by that cohort's starting accrued usage.",
+			"Total next-month accrued usage from one fixed prior-month organization cohort divided by that cohort's total starting accrued usage. This is an aggregate cohort ratio, not an average of customer-level percentages.",
 		grain: FactGrain.MONTH,
 		source: {
 			key: "tinybird:revenue",
@@ -3796,11 +3796,61 @@ export const CUSTOMER_ECONOMICS_METRIC_SPECS: ProductMetricSpec[] = [
 	},
 ];
 
+export const CONTRACT_METRIC_SPECS: ProductMetricSpec[] = [
+	{
+		questionNumber: 7510,
+		sourceExternalId: "atlas:contracts:enterprise-contract-value",
+		key: "company.enterprise_known_annual_contract_value_usd",
+		name: "Known active enterprise annual contract value (USD)",
+		description:
+			"Sums the annualized active USD commercial baselines selected from parsed enterprise contracts. Non-USD and missing baselines are reported as coverage counts and are not added to the USD total.",
+		grain: FactGrain.MONTH,
+		source: {
+			key: "atlas:contracts",
+			kind: DataSourceKind.ATLAS,
+			label: "Contract reconciliation",
+		},
+		eventTimeField: "commercialBaselineUpdatedAt",
+		businessDefinition: {
+			included:
+				"active enterprise commercial baselines whose contract currency is USD",
+			excluded:
+				"production customers, channel partners, expired baselines, non-USD baselines, and customers without a parsed commitment",
+			currencyPolicy:
+				"non-USD commitments remain separate until Finance approves an exchange-rate policy",
+			coverage:
+				"included USD customers, active non-USD customers, missing baselines, expired baselines, and all active enterprise customer folders",
+		},
+		computation: {
+			aggregate: "sum",
+			input: "stored annualized commercial baseline minor units",
+			output: "annual_contract_value_usd",
+		},
+		requiresCrossSourceEligibility: false,
+		pendingChecks: [
+			{
+				name: "stored_commercial_baselines",
+				reason:
+					"The result must contain a numeric USD total and explicit enterprise customer coverage.",
+			},
+			{
+				name: "currency_separation",
+				reason:
+					"Only active USD baselines may enter the USD total. Non-USD baselines must remain separate.",
+			},
+		],
+		ownerTeam: "Company",
+		createdBy: "atlas-contract-reconciliation",
+		cadenceMinutes: 6 * 60,
+	},
+];
+
 const ALL_METRIC_SPECS = [
 	...PRODUCT_METRIC_SPECS,
 	...REVENUE_CLOSE_METRIC_SPECS,
 	...REVENUE_METRIC_SPECS,
 	...CUSTOMER_ECONOMICS_METRIC_SPECS,
+	...CONTRACT_METRIC_SPECS,
 ];
 const specsByQuestion = new Map(
 	ALL_METRIC_SPECS.flatMap((spec) =>

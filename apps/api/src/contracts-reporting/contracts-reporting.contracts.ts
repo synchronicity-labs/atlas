@@ -10,6 +10,8 @@ export const contractsReportingQuery = z.object({
 		"open-findings",
 		"ingestion-health",
 		"customer-coverage",
+		"enterprise-contract-value",
+		"enterprise-contract-commitments",
 	]),
 	definitionVersion: z.literal("contract-reconciliation-v1"),
 });

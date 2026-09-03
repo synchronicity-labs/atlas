@@ -154,6 +154,8 @@ const EXPLANATIONS_BY_NAME: Record<string, string> = {
 		"Sums Stripe invoice amount due after keeping one latest state per invoice id, grouped by invoice creation month. This is invoices raised, not cash collected. Why it matters: It shows what was billed during the month.",
 	"Usage-spend NDR":
 		"Divides next-month usage from the fixed prior-month organization cohort by that cohort’s starting usage. Organizations with no next-month usage count as zero. Why it matters: It shows whether usage from the same customer cohort grew or shrank.",
+	"Latest complete-month usage NDR":
+		"Divides the total next-month usage of one fixed prior-month self-serve organization cohort by that same cohort’s total starting usage. It is an aggregate cohort ratio, not an average of customer-level percentages. Organizations with no next-month usage count as zero. Why it matters: It shows whether usage from the same customer cohort grew or shrank.",
 	"Product run-rate composition · history + MTD":
 		"Shows monthly usage incurred and the licensed invoice-item proxy as separate parts of the product run-rate reconstruction. The current month is month to date.",
 	"Revenue reconciliation · history + MTD":

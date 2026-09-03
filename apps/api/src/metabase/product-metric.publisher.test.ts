@@ -7,6 +7,7 @@ import {
 	QuestionPurpose,
 } from "@crm/db";
 import {
+	CONTRACT_METRIC_SPECS,
 	CUSTOMER_ECONOMICS_METRIC_SPECS,
 	declaredQuestionIdentityPolicy,
 	emptyCohortResultReason,
@@ -751,6 +752,18 @@ describe("product feedback metric registry", () => {
 			"Invoice collection by revenue type",
 			"Uncollected invoices",
 		]);
+	});
+
+	test("registers the governed enterprise contract value metric", () => {
+		expect(CONTRACT_METRIC_SPECS).toHaveLength(1);
+		expect(CONTRACT_METRIC_SPECS[0]).toMatchObject({
+			questionNumber: 7510,
+			sourceExternalId: "atlas:contracts:enterprise-contract-value",
+			requiresCrossSourceEligibility: false,
+		});
+		expect(
+			CONTRACT_METRIC_SPECS[0]?.pendingChecks?.map((check) => check.name),
+		).toEqual(["stored_commercial_baselines", "currency_separation"]);
 	});
 
 	test("keeps successful empty results in review instead of marking them failed", () => {

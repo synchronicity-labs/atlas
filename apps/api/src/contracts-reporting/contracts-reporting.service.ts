@@ -11,9 +11,14 @@ import {
 	SourceStatus,
 	SyncMode,
 	SyncRunStatus,
+	VerificationStatus,
 } from "@crm/db";
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { InjectDatabase } from "../database/database.constants";
+import {
+	ProductMetricPublisher,
+	type PublishVerificationCheck,
+} from "../metabase/product-metric.publisher";
 import {
 	type ContractsReportingQuery,
 	contractsReportingQuery,
@@ -101,9 +106,85 @@ function paymentStatus(value: unknown): string | null {
 	return null;
 }
 
+type StoredCommercialBaseline = {
+	documentName: string;
+	documentDate: string | null;
+	documentType: string | null;
+	currency: string;
+	monthlyAmountMinor: number;
+	annualizedAmountMinor: number;
+	basis: string;
+	serviceEndDate: string | null;
+	autoRenews: boolean | null;
+	isCurrent: boolean;
+};
+
+function storedCommercialBaseline(
+	value: unknown,
+): StoredCommercialBaseline | null {
+	const payload = record(value);
+	const documentName = stringValue(payload.documentName);
+	const currency = stringValue(payload.currency)?.toUpperCase();
+	const monthlyAmountMinor = numberValue(payload.monthlyAmountMinor);
+	const annualizedAmountMinor = numberValue(payload.annualizedAmountMinor);
+	const basis = stringValue(payload.basis);
+	if (
+		!documentName ||
+		!currency ||
+		monthlyAmountMinor == null ||
+		annualizedAmountMinor == null ||
+		!basis ||
+		typeof payload.isCurrent !== "boolean"
+	) {
+		return null;
+	}
+	return {
+		documentName,
+		documentDate: stringValue(payload.documentDate),
+		documentType: stringValue(payload.documentType),
+		currency,
+		monthlyAmountMinor,
+		annualizedAmountMinor,
+		basis,
+		serviceEndDate: stringValue(payload.serviceEndDate),
+		autoRenews:
+			typeof payload.autoRenews === "boolean" ? payload.autoRenews : null,
+		isCurrent: payload.isCurrent,
+	};
+}
+
+export function enterpriseContractValueVerificationChecks(
+	result: Result,
+): PublishVerificationCheck[] {
+	const row = result.rows[0] ?? [];
+	const value = numberValue(row[1]);
+	const enterpriseCustomers = numberValue(row[6]);
+	const coveragePresent = value != null && enterpriseCustomers != null;
+	return [
+		{
+			name: "stored_commercial_baselines",
+			status: coveragePresent
+				? VerificationStatus.PASSED
+				: VerificationStatus.FAILED,
+			reason: coveragePresent
+				? "The report contains a numeric USD total and explicit enterprise customer coverage."
+				: "The report is missing the USD total or enterprise customer coverage.",
+		},
+		{
+			name: "currency_separation",
+			status: VerificationStatus.PASSED,
+			reason:
+				"Only active USD baselines enter the USD total. Active non-USD baselines are counted separately.",
+		},
+	];
+}
+
 @Injectable()
 export class ContractsReportingService {
-	constructor(@InjectDatabase() private readonly db: Db) {}
+	constructor(
+		@InjectDatabase() private readonly db: Db,
+		private readonly metricPublisher: ProductMetricPublisher,
+	) {}
 
 	async preview(queryText: string): Promise<Result> {
 		return this.execute(contractsReportingQuery.parse(JSON.parse(queryText)));
@@ -120,12 +201,18 @@ export class ContractsReportingService {
 							select: {
 								id: true,
 								number: true,
+								name: true,
+								description: true,
+								connector: true,
 								sourceId: true,
 								sourceExternalId: true,
+								databaseExternalId: true,
+								metricVersionId: true,
 								versions: {
 									orderBy: { version: "desc" },
 									take: 1,
 									select: {
+										id: true,
 										version: true,
 										queryLanguage: true,
 										queryText: true,
@@ -214,6 +301,17 @@ export class ContractsReportingService {
 					where: { id: question.id },
 					data: { lastCheckedAt: capturedAt },
 				});
+				if (externalId === "atlas:contracts:enterprise-contract-value") {
+					await this.metricPublisher.publish({
+						question,
+						version,
+						result,
+						syncRunId: run.id,
+						capturedAt,
+						verificationChecks:
+							enterpriseContractValueVerificationChecks(result),
+					});
+				}
 				cardsProcessed += 1;
 				snapshotsCreated += created.count;
 			}
@@ -278,7 +376,143 @@ export class ContractsReportingService {
 				return this.ingestionHealth();
 			case "customer-coverage":
 				return this.customerCoverage();
+			case "enterprise-contract-value":
+				return this.enterpriseContractValue();
+			case "enterprise-contract-commitments":
+				return this.enterpriseContractCommitments();
 		}
+	}
+
+	private async enterpriseContractValue(): Promise<Result> {
+		const customers = await this.db.contractCustomer.findMany({
+			where: {
+				kind: ContractCustomerKind.ENTERPRISE,
+				sourceDeletedAt: null,
+			},
+			select: {
+				commercialBaseline: true,
+				commercialBaselineUpdatedAt: true,
+			},
+		});
+		const baselines = customers.map((customer) => ({
+			baseline: storedCommercialBaseline(customer.commercialBaseline),
+			updatedAt: customer.commercialBaselineUpdatedAt,
+		}));
+		const active = baselines.filter((entry) => entry.baseline?.isCurrent);
+		const activeUsd = active.filter(
+			(entry) => entry.baseline?.currency === "USD",
+		);
+		const dataThrough = baselines.reduce<Date | null>(
+			(latest, entry) =>
+				entry.updatedAt && (!latest || entry.updatedAt > latest)
+					? entry.updatedAt
+					: latest,
+			null,
+		);
+		const periodStart = new Date();
+		periodStart.setUTCDate(1);
+		periodStart.setUTCHours(0, 0, 0, 0);
+		return {
+			columns: [
+				column("period_start", "Period start", "type/Date"),
+				column(
+					"annual_contract_value_usd",
+					"Known active annual contract value USD",
+					"type/Decimal",
+				),
+				column(
+					"included_usd_customers",
+					"Included USD customers",
+					"type/Integer",
+				),
+				column(
+					"active_non_usd_customers",
+					"Active non-USD customers",
+					"type/Integer",
+				),
+				column(
+					"missing_baseline_customers",
+					"Missing commitment customers",
+					"type/Integer",
+				),
+				column(
+					"expired_baseline_customers",
+					"Expired commitment customers",
+					"type/Integer",
+				),
+				column("enterprise_customers", "Enterprise customers", "type/Integer"),
+				column("data_through", "Data through", "type/DateTime"),
+			],
+			rows: [
+				[
+					periodStart.toISOString(),
+					round(
+						activeUsd.reduce(
+							(total, entry) =>
+								total + (entry.baseline?.annualizedAmountMinor ?? 0),
+							0,
+						) / 100,
+						2,
+					),
+					activeUsd.length,
+					active.filter((entry) => entry.baseline?.currency !== "USD").length,
+					baselines.filter((entry) => entry.baseline == null).length,
+					baselines.filter(
+						(entry) => entry.baseline && !entry.baseline.isCurrent,
+					).length,
+					customers.length,
+					dataThrough?.toISOString() ?? null,
+				],
+			],
+		};
+	}
+
+	private async enterpriseContractCommitments(): Promise<Result> {
+		const customers = await this.db.contractCustomer.findMany({
+			where: {
+				kind: ContractCustomerKind.ENTERPRISE,
+				sourceDeletedAt: null,
+			},
+			orderBy: { folderName: "asc" },
+			select: {
+				folderName: true,
+				commercialBaseline: true,
+				commercialBaselineUpdatedAt: true,
+			},
+		});
+		return {
+			columns: [
+				column("customer", "Customer"),
+				column(
+					"annual_contract_value",
+					"Annual contract value",
+					"type/Decimal",
+				),
+				column("currency", "Currency"),
+				column("monthly_baseline", "Monthly baseline", "type/Decimal"),
+				column("basis", "Basis"),
+				column("source_document", "Source document"),
+				column("document_date", "Document date", "type/Date"),
+				column("service_end_date", "Service end date", "type/Date"),
+				column("current", "Current", "type/Boolean"),
+				column("data_through", "Data through", "type/DateTime"),
+			],
+			rows: customers.map((customer) => {
+				const baseline = storedCommercialBaseline(customer.commercialBaseline);
+				return [
+					customer.folderName,
+					baseline ? round(baseline.annualizedAmountMinor / 100, 2) : null,
+					baseline?.currency ?? null,
+					baseline ? round(baseline.monthlyAmountMinor / 100, 2) : null,
+					baseline?.basis ?? null,
+					baseline?.documentName ?? null,
+					baseline?.documentDate ?? null,
+					baseline?.serviceEndDate ?? null,
+					baseline?.isCurrent ?? null,
+					customer.commercialBaselineUpdatedAt?.toISOString() ?? null,
+				];
+			}),
+		};
 	}
 
 	private async actionSummary(): Promise<Result> {

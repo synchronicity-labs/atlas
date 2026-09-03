@@ -178,4 +178,12 @@ describe("question explanations", () => {
 			expect(explanation).toContain("Why it matters:");
 		}
 	});
+
+	test("states that complete-month usage NDR is not a customer average", () => {
+		const explanation = questionExplanation({
+			name: "Latest complete-month usage NDR",
+		});
+		expect(explanation).toContain("aggregate cohort ratio");
+		expect(explanation).toContain("not an average");
+	});
 });

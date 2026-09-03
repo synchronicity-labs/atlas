@@ -5,6 +5,7 @@ import {
 	ContractFindingStatus,
 	ContractMappingStatus,
 	db,
+	Prisma,
 } from "@crm/db";
 import { inputJson } from "./customer-source";
 
@@ -49,6 +50,11 @@ export type ContractCommercialBaseline = {
 	basis: string;
 	serviceEndDate: string | null;
 	autoRenews: boolean | null;
+};
+
+export type StoredContractCommercialBaseline = ContractCommercialBaseline & {
+	annualizedAmountMinor: number;
+	isCurrent: boolean;
 };
 
 export type ContractFramePrice = {
@@ -198,6 +204,17 @@ export function contractCommercialBaseline(
 	return baseline;
 }
 
+export function commercialBaselineSnapshot(
+	baseline: ContractCommercialBaseline,
+	now = new Date(),
+): StoredContractCommercialBaseline {
+	return {
+		...baseline,
+		annualizedAmountMinor: baseline.monthlyAmountMinor * 12,
+		isCurrent: contractIsCurrent(baseline, now),
+	};
+}
+
 export function contractFramePrices(
 	documents: readonly ReconciliationDocument[],
 ): ContractFramePrice[] {
@@ -319,7 +336,46 @@ export async function reconcileContracts(): Promise<{
 			},
 		},
 	});
-	const verified = customers.flatMap((customer) =>
+	const dataThrough = new Date();
+	const preparedCustomers = customers.map((customer) => ({
+		...customer,
+		parsedDocuments: customer.documents.flatMap((document) => {
+			if (
+				document.parseStatus !== "PARSED" ||
+				!document.parsed ||
+				typeof document.parsed !== "object" ||
+				Array.isArray(document.parsed)
+			) {
+				return [];
+			}
+			const payload = document.sourceRecord.payload as { name?: unknown };
+			return [
+				{
+					sourceRecordId: document.sourceRecordId,
+					name: stringValue(payload.name) ?? document.sourceRecordId,
+					sourceUpdatedAt: document.sourceRecord.sourceUpdatedAt,
+					parsed: document.parsed as ParsedContract,
+				},
+			];
+		}),
+	}));
+	await Promise.all(
+		preparedCustomers
+			.filter((customer) => customer.kind === ContractCustomerKind.ENTERPRISE)
+			.map((customer) => {
+				const baseline = contractCommercialBaseline(customer.parsedDocuments);
+				return db.contractCustomer.update({
+					where: { id: customer.id },
+					data: {
+						commercialBaseline: baseline
+							? inputJson(commercialBaselineSnapshot(baseline, dataThrough))
+							: Prisma.DbNull,
+						commercialBaselineUpdatedAt: dataThrough,
+					},
+				});
+			}),
+	);
+	const verified = preparedCustomers.flatMap((customer) =>
 		customer.kind === ContractCustomerKind.ENTERPRISE
 			? customer.productOrganizations.filter(
 					(mapping) => mapping.status === ContractMappingStatus.VERIFIED,
@@ -343,28 +399,9 @@ export async function reconcileContracts(): Promise<{
 		};
 	}
 
-	const dataThrough = new Date();
 	const drafts: FindingDraft[] = [];
-	for (const customer of customers) {
-		const documents = customer.documents.flatMap((document) => {
-			if (
-				document.parseStatus !== "PARSED" ||
-				!document.parsed ||
-				typeof document.parsed !== "object" ||
-				Array.isArray(document.parsed)
-			) {
-				return [];
-			}
-			const payload = document.sourceRecord.payload as { name?: unknown };
-			return [
-				{
-					sourceRecordId: document.sourceRecordId,
-					name: stringValue(payload.name) ?? document.sourceRecordId,
-					sourceUpdatedAt: document.sourceRecord.sourceUpdatedAt,
-					parsed: document.parsed as ParsedContract,
-				},
-			];
-		});
+	for (const customer of preparedCustomers) {
+		const documents = customer.parsedDocuments;
 		const verifiedMappings = customer.productOrganizations.filter(
 			(mapping) => mapping.status === ContractMappingStatus.VERIFIED,
 		);
@@ -921,9 +958,12 @@ function baselineRank(
 	return timestamp + typePriority * 10_000 + termPriority;
 }
 
-function contractIsCurrent(baseline: ContractCommercialBaseline): boolean {
+function contractIsCurrent(
+	baseline: ContractCommercialBaseline,
+	now = new Date(),
+): boolean {
 	if (!baseline.serviceEndDate || baseline.autoRenews === true) return true;
-	return Date.parse(`${baseline.serviceEndDate}T23:59:59Z`) >= Date.now();
+	return Date.parse(`${baseline.serviceEndDate}T23:59:59Z`) >= now.getTime();
 }
 
 function materiallyDifferent(left: number, right: number): boolean {

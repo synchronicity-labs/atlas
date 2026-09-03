@@ -11,6 +11,8 @@ describe("contractsReportingQuery", () => {
 			"open-findings",
 			"ingestion-health",
 			"customer-coverage",
+			"enterprise-contract-value",
+			"enterprise-contract-commitments",
 		] as const) {
 			expect(
 				contractsReportingQuery.parse({

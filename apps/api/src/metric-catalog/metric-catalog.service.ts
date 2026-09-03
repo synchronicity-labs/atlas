@@ -50,27 +50,45 @@ export const ALL_HANDS_DASHBOARD_CONFIGURATION = {
 		{
 			number: 1,
 			name: "Executive pulse",
-			questionNumbers: [15, 13, 152, 76, 238],
+			cards: [
+				{ questionNumber: 15, visualization: null },
+				{ questionNumber: 13, visualization: null },
+				{ questionNumber: 13, visualization: VisualizationType.LINE },
+				{ questionNumber: 152, visualization: null },
+				{ questionNumber: 76, visualization: null },
+				{ questionNumber: 238, visualization: null },
+			],
 		},
 		{
 			number: 2,
 			name: "Product and retention",
-			questionNumbers: [15, 16, 21, 22, 23, 8],
+			cards: [15, 16, 21, 22, 23, 8].map((questionNumber) => ({
+				questionNumber,
+				visualization: null,
+			})),
 		},
 		{
 			number: 3,
 			name: "Revenue by business line",
-			questionNumbers: [13, 155, 210, 199, 198, 197],
+			cards: [13, 155, 156, 295, 210, 199, 198, 197].map((questionNumber) => ({
+				questionNumber,
+				visualization: null,
+			})),
 		},
 		{
 			number: 4,
 			name: "Acquisition",
-			questionNumbers: [38, 39, 35, 25],
+			cards: [38, 39, 35, 25].map((questionNumber) => ({
+				questionNumber,
+				visualization: null,
+			})),
 		},
 		{
 			number: 5,
 			name: "Pipeline and delivery",
-			questionNumbers: [76, 84, 71, 73, 80, 82, 238, 243, 247, 248],
+			cards: [76, 84, 71, 73, 80, 82, 238, 243, 247, 248].map(
+				(questionNumber) => ({ questionNumber, visualization: null }),
+			),
 		},
 	],
 } as const;
@@ -1414,8 +1432,8 @@ export class MetricCatalogService {
 	private async syncAllHandsDashboard() {
 		const questionNumbers = [
 			...new Set(
-				ALL_HANDS_DASHBOARD_CONFIGURATION.tabs.flatMap(
-					(tab) => tab.questionNumbers,
+				ALL_HANDS_DASHBOARD_CONFIGURATION.tabs.flatMap((tab) =>
+					tab.cards.map((card) => card.questionNumber),
 				),
 			),
 		];
@@ -1494,33 +1512,36 @@ export class MetricCatalogService {
 				update: { name: configuration.name, position: tabPosition },
 				select: { id: true },
 			});
-			const tabQuestions = configuration.questionNumbers.flatMap(
-				(questionNumber) => {
-					const question = questionByNumber.get(questionNumber);
-					return question ? [question] : [];
-				},
-			);
+			const tabCards = configuration.cards.flatMap((card) => {
+				const question = questionByNumber.get(card.questionNumber);
+				return question ? [{ configuration: card, question }] : [];
+			});
 			const existingCards = await this.db.dashboardCard.findMany({
 				where: { tabId: tab.id },
+				orderBy: { position: "asc" },
 				select: { id: true, questionId: true },
 			});
-			await this.db.dashboardCard.deleteMany({
-				where: {
-					tabId: tab.id,
-					questionId: { notIn: tabQuestions.map((question) => question.id) },
-				},
-			});
-			const existingByQuestionId = new Map(
-				existingCards.map((card) => [card.questionId, card]),
-			);
+			const existingByQuestionId = new Map<
+				string,
+				Array<{ id: string; questionId: string }>
+			>();
+			for (const card of existingCards) {
+				const matches = existingByQuestionId.get(card.questionId) ?? [];
+				matches.push(card);
+				existingByQuestionId.set(card.questionId, matches);
+			}
+			const retainedCardIds: string[] = [];
 			let nextX = 0;
 			let nextY = 0;
 			let rowHeight = 0;
-			for (const [position, question] of tabQuestions.entries()) {
-				const visualization = catalogCardVisualization(
-					question.number,
-					question.versions[0]?.display,
-				);
+			for (const [position, entry] of tabCards.entries()) {
+				const { configuration: cardConfiguration, question } = entry;
+				const visualization =
+					cardConfiguration.visualization ??
+					catalogCardVisualization(
+						question.number,
+						question.versions[0]?.display,
+					);
 				const size = catalogCardSize(
 					visualization,
 					question.source?.key === DRAFT_SOURCE_KEY,
@@ -1530,7 +1551,7 @@ export class MetricCatalogService {
 					nextY += rowHeight;
 					rowHeight = 0;
 				}
-				const existing = existingByQuestionId.get(question.id);
+				const existing = existingByQuestionId.get(question.id)?.shift();
 				if (existing) {
 					await this.db.dashboardCard.update({
 						where: { id: existing.id },
@@ -1543,8 +1564,9 @@ export class MetricCatalogService {
 							visualization,
 						},
 					});
+					retainedCardIds.push(existing.id);
 				} else {
-					await this.db.dashboardCard.create({
+					const created = await this.db.dashboardCard.create({
 						data: {
 							dashboardId: dashboard.id,
 							tabId: tab.id,
@@ -1556,11 +1578,19 @@ export class MetricCatalogService {
 							height: size.height,
 							visualization,
 						},
+						select: { id: true },
 					});
+					retainedCardIds.push(created.id);
 				}
 				nextX += size.width;
 				rowHeight = Math.max(rowHeight, size.height);
 			}
+			await this.db.dashboardCard.deleteMany({
+				where: {
+					tabId: tab.id,
+					id: { notIn: retainedCardIds },
+				},
+			});
 		}
 	}
 

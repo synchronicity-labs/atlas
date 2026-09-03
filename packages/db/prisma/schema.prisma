@@ -1815,6 +1815,8 @@ model ContractCustomer {
   legalName       String?
   companyId       String?
   company         Company?             @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  commercialBaseline          Json?
+  commercialBaselineUpdatedAt DateTime?
   sourceDeletedAt DateTime?
   syncedAt        DateTime
   createdAt       DateTime             @default(now())

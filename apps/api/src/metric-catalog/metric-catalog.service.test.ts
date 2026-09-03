@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { MetricReadinessStatus } from "@crm/db";
+import { MetricReadinessStatus, VisualizationType } from "@crm/db";
 import {
 	ALL_HANDS_DASHBOARD_CONFIGURATION,
 	preserveMetricReadiness,
@@ -51,18 +51,38 @@ describe("All Hands dashboard configuration", () => {
 			(tab) => tab.name === "Revenue by business line",
 		);
 
-		expect(revenueTab?.questionNumbers).toContain(197);
-		expect(revenueTab?.questionNumbers).toContain(198);
-		expect(revenueTab?.questionNumbers).toContain(199);
-		expect(revenueTab?.questionNumbers).not.toContain(182);
+		const questionNumbers = revenueTab?.cards.map(
+			(card) => card.questionNumber,
+		);
+		expect(questionNumbers).toContain(197);
+		expect(questionNumbers).toContain(198);
+		expect(questionNumbers).toContain(199);
+		expect(questionNumbers).not.toContain(182);
 	});
 
 	test("contains only explicit verified question references", () => {
 		const questionNumbers = ALL_HANDS_DASHBOARD_CONFIGURATION.tabs.flatMap(
-			(tab) => tab.questionNumbers,
+			(tab) => tab.cards.map((card) => card.questionNumber),
 		);
 
 		expect(questionNumbers.length).toBeGreaterThan(0);
 		expect(questionNumbers.every((number) => number > 0)).toBe(true);
+	});
+
+	test("adds Prady's trend, self-serve history, and enterprise value views", () => {
+		const executive = ALL_HANDS_DASHBOARD_CONFIGURATION.tabs.find(
+			(tab) => tab.name === "Executive pulse",
+		);
+		const revenue = ALL_HANDS_DASHBOARD_CONFIGURATION.tabs.find(
+			(tab) => tab.name === "Revenue by business line",
+		);
+		expect(
+			executive?.cards.filter((card) => card.questionNumber === 13),
+		).toEqual([
+			{ questionNumber: 13, visualization: null },
+			{ questionNumber: 13, visualization: VisualizationType.LINE },
+		]);
+		expect(revenue?.cards.map((card) => card.questionNumber)).toContain(156);
+		expect(revenue?.cards.map((card) => card.questionNumber)).toContain(295);
 	});
 });

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import {
+	commercialBaselineSnapshot,
 	commercialFindingDrafts,
 	contractCommercialBaseline,
 	contractFramePrices,
@@ -29,6 +30,26 @@ describe("contract reconciliation", () => {
 		]);
 		expect(baseline?.monthlyAmountMinor).toBe(100_000);
 		expect(baseline?.basis).toBe("annual commitment");
+	});
+
+	it("stores an annualized current commercial baseline", () => {
+		const baseline = contractCommercialBaseline([
+			document({
+				documentType: "ORDER_FORM",
+				effectiveDate: "2026-01-01",
+				serviceEndDate: "2026-12-31",
+				currency: "USD",
+				annualCommitmentAmountMinor: 1_200_000,
+			}),
+		]);
+		expect(
+			baseline
+				? commercialBaselineSnapshot(baseline, new Date("2026-09-03T00:00:00Z"))
+				: null,
+		).toMatchObject({
+			annualizedAmountMinor: 1_200_000,
+			isCurrent: true,
+		});
 	});
 
 	it("extracts a per-frame price in Product millicents", () => {

@@ -47,6 +47,6 @@ Install the Python runtime files root-owned in `/usr/local/lib/rudy-hermes-crons
 
 The doctor checks question purpose, trust, freshness, source health, Lipsync's exact source populations and weekly calendars, governed arithmetic, active skill versions, and gateway-owned delivery. An exit-survey local archive is not evidence of a Slack post. Never infer an unknown channel or spend one of a finite cron's runs just to test it.
 
-An in-progress source refresh is not a doctor failure when the API still serves a fresh, verified, certified snapshot. Error or unavailable snapshots remain failures. The doctor must not report every Revenue question as broken during its normal refresh.
+An in-progress or failed source refresh is not a doctor failure while the API still serves a fresh, verified, certified snapshot. The source error remains visible in provenance. It becomes a report-readiness failure when the verified snapshot expires. Unavailable, stale, or unverified snapshots remain failures. The doctor must not report every Revenue question as broken during its normal refresh.
 
 Q27 and Q43 remain provisional visitor-to-signup count and rate views with incomplete surface coverage. They share a separate conversion refresh source so their query timeouts do not invalidate unrelated canonical reports. Their queries, verification status, and errors stay unchanged and visible in Atlas. Do not substitute the trial single-scan rewrite: it did not match the existing result.

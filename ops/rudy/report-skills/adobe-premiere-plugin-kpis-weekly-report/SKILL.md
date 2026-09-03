@@ -5,7 +5,7 @@ version: 3.0.0
 license: MIT
 ---
 
-Use the atlas-company-intelligence skill. Read Q235 and require CERTIFIED, VERIFIED, fresh, and a HEALTHY source. If unavailable, omit metrics and report the Atlas blocker. Do not rebuild the report from PostHog or Metabase.
+Use the atlas-company-intelligence skill. Read Q235 and require CERTIFIED, VERIFIED, and fresh. A failed latest refresh does not invalidate a verified answer before its freshness deadline. If unavailable, omit metrics and report the Atlas blocker. Do not rebuild the report from PostHog or Metabase.
 
 Use all nine Q235 sections: installs, retention, power_retention, activation, two_day_activation, post_generation, nps, nps_distribution, and nps_response.
 

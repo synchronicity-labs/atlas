@@ -619,19 +619,6 @@ export function resolveMetricFreshness(input: {
 	if (input.historical) {
 		return { status: "historical" as const, reason: null };
 	}
-	if (input.state === SourceStatus.ERROR) {
-		return { status: "error" as const, reason: "The source sync is failing." };
-	}
-	if (
-		input.state === SourceStatus.STALE ||
-		!input.deadline ||
-		input.deadline.getTime() <= Date.now()
-	) {
-		return {
-			status: "stale" as const,
-			reason: "The freshness deadline passed.",
-		};
-	}
 	if (input.trustStatus === MetricTrustStatus.FAILED) {
 		return {
 			status: "error" as const,
@@ -649,6 +636,16 @@ export function resolveMetricFreshness(input: {
 			status: "pending" as const,
 			reason:
 				"The result exists, but one or more required checks are still open.",
+		};
+	}
+	if (
+		input.state === SourceStatus.STALE ||
+		!input.deadline ||
+		input.deadline.getTime() <= Date.now()
+	) {
+		return {
+			status: "stale" as const,
+			reason: "The freshness deadline passed.",
 		};
 	}
 	return { status: "fresh" as const, reason: null };

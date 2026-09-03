@@ -5,7 +5,7 @@ version: 3.0.0
 license: MIT
 ---
 
-Use atlas-company-intelligence first. Read the question named "Lipsync weekly traffic and search" (source key cron:lipsync:weekly-traffic) named in the cron prompt. Require CERTIFIED, VERIFIED, fresh, and a HEALTHY source.
+Use atlas-company-intelligence first. Read the question named "Lipsync weekly traffic and search" (source key cron:lipsync:weekly-traffic) named in the cron prompt. Require CERTIFIED, VERIFIED, and fresh. A failed latest refresh does not invalidate a verified answer before its freshness deadline.
 
 Q28 and Q40 contain other Sync sites. They are not lipsync.com traffic sources. Q31 is a rolling search-query ranking, not a complete weekly site total.
 

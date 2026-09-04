@@ -105,11 +105,28 @@ function sourceData(columns: ChartColumn[], rows: unknown[][]): ChartDatum[] {
 }
 
 export function isPercentMetric(name: string): boolean {
-	if (/cohort spend|spend_usd/i.test(name)) return false;
+	if (/cohort spend|spend_usd|ndr_(usd|amount|value)/i.test(name)) return false;
 	return (
 		/percent|pct|requalification|ndr|conversion/i.test(name) ||
 		(/margin/i.test(name) && !/margin_usd|margin usd/i.test(name)) ||
 		(/rate/i.test(name) && !/run.?rate/i.test(name))
+	);
+}
+
+export function isCurrencyMetric(name: string): boolean {
+	if (/(^|_)(usd|eur|gbp)($|_)/i.test(name)) return true;
+	if (/cash|collect|usage.*incurred|invoice.*raised/i.test(name)) return true;
+	if (
+		/(^|_)(count|counts|customers|organizations|orgs|subscriptions|invoices|generations|contacts|users)($|_)/i.test(
+			name,
+		)
+	) {
+		return false;
+	}
+	return (
+		/revenue|spend|cost|value|amount|pipeline|booking|forecast|accrual|run.?rate|subscription|invoice|collection|billing/i.test(
+			name,
+		) || /(^|[_\s])(arr|mrr|ltv)($|[_\s])/i.test(name)
 	);
 }
 
@@ -146,6 +163,41 @@ export function explicitRightAxisMetrics(visualization: unknown): Set<string> {
 		Object.entries(seriesSettings).flatMap(([metric, value]) =>
 			settingsRecord(value)?.axis === "right" ? [metric] : [],
 		),
+	);
+}
+
+export function metricDisplayFamily(
+	name: string,
+	visualization?: unknown,
+): "percent" | "currency" | "number" {
+	const setting = columnVisualization(visualization, name);
+	if (
+		setting.numberStyle === "percent" ||
+		setting.suffix?.trim() === "%" ||
+		isPercentMetric(name)
+	) {
+		return "percent";
+	}
+	if (setting.suffix?.toLowerCase().includes("usd")) return "currency";
+	if (isCurrencyMetric(name)) return "currency";
+	return "number";
+}
+
+export function compatibleChartSeries(
+	series: ChartSeries[],
+	visualization?: unknown,
+): ChartSeries[] {
+	const families = new Set(
+		series.map((item) => metricDisplayFamily(item.metric, visualization)),
+	);
+	if (families.size <= 1) return series;
+	const preferred = families.has("percent")
+		? "percent"
+		: families.has("currency")
+			? "currency"
+			: "number";
+	return series.filter(
+		(item) => metricDisplayFamily(item.metric, visualization) === preferred,
 	);
 }
 

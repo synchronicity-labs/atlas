@@ -2,8 +2,11 @@ import { describe, expect, it } from "bun:test";
 import {
 	buildChartData,
 	columnVisualization,
+	compatibleChartSeries,
 	explicitRightAxisMetrics,
+	isCurrencyMetric,
 	isPercentMetric,
+	metricDisplayFamily,
 } from "../lib/chart-visualization";
 
 const columns = [
@@ -116,5 +119,36 @@ describe("saved chart visualization settings", () => {
 		expect(isPercentMetric("coverage_of_completed_pct")).toBe(true);
 		expect(isPercentMetric("upvote_rate")).toBe(true);
 		expect(isPercentMetric("completed_generations")).toBe(false);
+		expect(isPercentMetric("retained_ndr_usd")).toBe(false);
+	});
+
+	it("does not treat words containing arr as currency", () => {
+		expect(isCurrencyMetric("ratings_carrying_reason")).toBe(false);
+		expect(isCurrencyMetric("arr_usd")).toBe(true);
+		expect(isCurrencyMetric("retained_ndr_usd")).toBe(true);
+		expect(isCurrencyMetric("revenue_per_all_users_usd")).toBe(true);
+	});
+
+	it("uses explicit display metadata before fallback field-name rules", () => {
+		expect(
+			metricDisplayFamily("value", {
+				column_settings: {
+					'["name","value"]': { suffix: "%" },
+				},
+			}),
+		).toBe("percent");
+		expect(metricDisplayFamily("ratings_carrying_reason")).toBe("number");
+	});
+
+	it("keeps one compatible unit family in single-axis charts", () => {
+		const series = [
+			{ key: "completed", metric: "completed_generations", label: "Completed" },
+			{ key: "coverage", metric: "coverage_pct", label: "Coverage" },
+			{ key: "upvote", metric: "upvote_pct", label: "Upvote" },
+		];
+		expect(compatibleChartSeries(series).map((item) => item.metric)).toEqual([
+			"coverage_pct",
+			"upvote_pct",
+		]);
 	});
 });

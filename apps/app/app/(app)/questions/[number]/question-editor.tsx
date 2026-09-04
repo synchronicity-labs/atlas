@@ -16,9 +16,9 @@ import { Line } from "@crm/ui/components/dither-kit/area";
 import { LineChart } from "@crm/ui/components/dither-kit/area-chart";
 import { Bar } from "@crm/ui/components/dither-kit/bar";
 import { BarChart } from "@crm/ui/components/dither-kit/bar-chart";
+import { BlockLegend } from "@crm/ui/components/dither-kit/block-legend";
 import type { ChartConfig } from "@crm/ui/components/dither-kit/chart-context";
 import { Grid } from "@crm/ui/components/dither-kit/grid";
-import { Legend } from "@crm/ui/components/dither-kit/legend";
 import { Tooltip } from "@crm/ui/components/dither-kit/tooltip";
 import { XAxis } from "@crm/ui/components/dither-kit/x-axis";
 import { YAxis } from "@crm/ui/components/dither-kit/y-axis";
@@ -56,6 +56,7 @@ import { RudyChatTrigger } from "@/components/rudy-chat";
 import {
 	buildChartData,
 	columnVisualization,
+	compatibleChartSeries,
 	isPercentMetric,
 	visualizationRecord,
 } from "@/lib/chart-visualization";
@@ -248,7 +249,7 @@ function QuestionPreview({
 	const chart =
 		["line", "area", "bar"].includes(chartDisplay) && source.series.length > 0;
 	if (chart) {
-		const series = source.series;
+		const series = compatibleChartSeries(source.series, visualization);
 		const seriesByKey = new Map(series.map((item) => [item.key, item]));
 		const colors = ["green", "blue", "orange", "purple"] as const;
 		const config = Object.fromEntries(
@@ -275,7 +276,6 @@ function QuestionPreview({
 						formatPreviewMetric(value, series[0]?.metric ?? "", visualization)
 					}
 				/>
-				<Legend isClickable align="left" />
 				<Tooltip
 					labelKey={source.xKey}
 					valueFormatter={(value, seriesKey) =>
@@ -306,28 +306,31 @@ function QuestionPreview({
 			</>
 		);
 		return (
-			<div className="h-80 p-4">
-				{chartDisplay === "bar" ? (
-					<BarChart
-						data={source.data}
-						config={config}
-						bloom="low"
-						bloomOnHover
-						margins={{ left: 50, right: 20, top: 8, bottom: 24 }}
-					>
-						{contents}
-					</BarChart>
-				) : (
-					<LineChart
-						data={source.data}
-						config={config}
-						bloom="low"
-						bloomOnHover
-						margins={{ left: 50, right: 20, top: 8, bottom: 24 }}
-					>
-						{contents}
-					</LineChart>
-				)}
+			<div className="flex h-80 flex-col gap-2 p-4">
+				<BlockLegend config={config} className="shrink-0" />
+				<div className="min-h-0 flex-1">
+					{chartDisplay === "bar" ? (
+						<BarChart
+							data={source.data}
+							config={config}
+							bloom="low"
+							bloomOnHover
+							margins={{ left: 50, right: 20, top: 8, bottom: 24 }}
+						>
+							{contents}
+						</BarChart>
+					) : (
+						<LineChart
+							data={source.data}
+							config={config}
+							bloom="low"
+							bloomOnHover
+							margins={{ left: 50, right: 20, top: 8, bottom: 24 }}
+						>
+							{contents}
+						</LineChart>
+					)}
+				</div>
 			</div>
 		);
 	}
@@ -691,7 +694,7 @@ export function QuestionEditor({ number }: { number: number }) {
 					</Card>
 					<Card>
 						<CardHeader>
-							<CardTitle>Preview</CardTitle>
+							<CardTitle>Preview: {name}</CardTitle>
 							<CardDescription>
 								{preview && visiblePreview
 									? `${preview.rowCount.toLocaleString()} rows in the selected period${preview.truncated ? ` · showing first ${visiblePreview.rowCount.toLocaleString()}` : ""}${preview.durationMs ? ` · ${preview.durationMs} ms` : ""}`

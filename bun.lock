@@ -16,6 +16,7 @@
       "dependencies": {
         "@crm/db": "workspace:*",
         "@crm/env": "workspace:*",
+        "@crm/metrics": "workspace:*",
         "context.dev": "^2.7.0",
         "eve": "^0.29.4",
         "mammoth": "^1.12.1",

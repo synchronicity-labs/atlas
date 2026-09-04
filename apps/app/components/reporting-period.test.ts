@@ -28,6 +28,15 @@ describe("dashboard reporting periods", () => {
 		).toBe(1);
 	});
 
+	test("detects compact Metabase period aliases", () => {
+		expect(reportingDateColumnIndex([{ name: "mo" }, { name: "value" }])).toBe(
+			0,
+		);
+		expect(reportingDateColumnIndex([{ name: "wk" }, { name: "value" }])).toBe(
+			0,
+		);
+	});
+
 	test("leaves questions without a reporting date unchanged", () => {
 		const rows = [["Creator", 10]];
 		const result = filterReportingRows(

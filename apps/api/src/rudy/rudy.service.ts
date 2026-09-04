@@ -9,6 +9,7 @@ import {
 import { z } from "zod";
 import { InjectDatabase } from "../database/database.constants";
 import { questionNumberWhere } from "../questions/question-number";
+import { sanitizeQuestionResult } from "../questions/question-result-safety";
 import { assertReadOnlyQuery } from "../questions/read-only-query";
 import { RudyClient, textContent } from "./rudy.client";
 import type { RudyContext, RudySendInput } from "./rudy.contracts";
@@ -271,7 +272,9 @@ export class RudyService {
 					number: question.publicNumber,
 					publicNumber: undefined,
 				},
-				snapshots: snapshots.map(compactSnapshot),
+				snapshots: snapshots.map((snapshot) =>
+					compactSnapshot(question.publicNumber, snapshot),
+				),
 			};
 		}
 
@@ -359,7 +362,10 @@ export class RudyService {
 						publicNumber: undefined,
 					},
 					latestResult: card.question.sourceExternalId
-						? compactSnapshot(latest.get(card.question.sourceExternalId))
+						? compactSnapshot(
+								card.question.publicNumber,
+								latest.get(card.question.sourceExternalId),
+							)
 						: null,
 				})),
 			},
@@ -468,6 +474,7 @@ export class RudyService {
 }
 
 function compactSnapshot(
+	number: number,
 	snapshot:
 		| {
 				reportingPeriod: string;
@@ -479,11 +486,15 @@ function compactSnapshot(
 		| undefined,
 ) {
 	if (!snapshot) return null;
+	const result = sanitizeQuestionResult(
+		number,
+		snapshot.columns,
+		snapshot.rows,
+	);
 	return {
 		...snapshot,
-		rows: Array.isArray(snapshot.rows)
-			? snapshot.rows.slice(0, 50)
-			: snapshot.rows,
+		columns: result.columns,
+		rows: Array.isArray(result.rows) ? result.rows.slice(0, 50) : result.rows,
 		truncated: snapshot.rowCount > 50,
 	};
 }

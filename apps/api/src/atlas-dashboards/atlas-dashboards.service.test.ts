@@ -3,6 +3,100 @@ import { DataSourceKind, type Db } from "@crm/db";
 import { AtlasDashboardsService } from "./atlas-dashboards.service";
 
 describe("Atlas dashboard refresh", () => {
+	test("sanitizes cached negative-feedback snapshots in protected dashboard reads", async () => {
+		const capturedAt = new Date("2026-09-03T12:00:00.000Z");
+		const dashboard = {
+			id: "dashboard-product",
+			number: 7,
+			name: "Product",
+			description: null,
+			layoutVersion: 1,
+			updatedAt: capturedAt,
+			tabs: [],
+			cards: [
+				{
+					id: "card-141",
+					tabId: null,
+					position: 0,
+					x: 0,
+					y: 0,
+					width: 6,
+					height: 4,
+					visualization: null,
+					displaySettings: null,
+					question: {
+						number: 141,
+						publicNumber: 141,
+						name: "Negative generation feedback",
+						description: null,
+						lastCheckedAt: capturedAt,
+						connector: DataSourceKind.METABASE,
+						sourceId: null,
+						source: null,
+						sourceExternalId: "5182",
+						metricVersionId: null,
+						metricVersion: null,
+						canonicalCatalogEntries: [],
+						versions: [],
+					},
+				},
+			],
+		};
+		const db = {
+			dashboard: { findUnique: mock().mockResolvedValue(dashboard) },
+			$queryRaw: mock().mockResolvedValue([
+				{
+					id: "snapshot-141",
+					questionExternalId: "5182",
+					reportingPeriod: "all-time",
+					capturedAt,
+					columns: [
+						{ name: "created_at" },
+						{ name: "organization_id" },
+						{ name: "model_name" },
+						{ name: "text_feedback" },
+						{ name: "output_media_url" },
+					],
+					rows: [
+						[
+							"2026-09-03T11:00:00.000Z",
+							"org-customer",
+							"sync-3",
+							"bad result",
+							"https://signed.example/customer.mp4",
+						],
+					],
+					rowCount: 1,
+				},
+			]),
+			metricSnapshot: { findMany: mock().mockResolvedValue([]) },
+			dataSource: { findMany: mock().mockResolvedValue([]) },
+		} as unknown as Db;
+		const service = new AtlasDashboardsService(
+			db,
+			{ syncDashboard: mock() } as never,
+			{ syncDashboard: mock() } as never,
+			{ syncAtlasDashboard: mock() } as never,
+			{ syncDashboard: mock() } as never,
+			{ syncDashboard: mock() } as never,
+			{ syncDashboard: mock() } as never,
+			{ syncDashboard: mock() } as never,
+		);
+
+		const result = await service.byNumber(7);
+
+		expect(result.cards[0]?.snapshot).toEqual(
+			expect.objectContaining({
+				columns: [
+					{ name: "created_at" },
+					{ name: "model_name" },
+					{ name: "text_feedback" },
+				],
+				rows: [["2026-09-03T11:00:00.000Z", "sync-3", "bad result"]],
+			}),
+		);
+	});
+
 	test("continues to other sources when one Metabase batch is incomplete", async () => {
 		const findUnique = mock().mockResolvedValue({
 			cards: [

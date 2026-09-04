@@ -128,6 +128,12 @@ export const automatedReportQuery = z.object({
 	version: z.literal(1),
 });
 
+export const productAnalyticsQuery = z.object({
+	source: z.literal("product_analytics"),
+	report: z.literal("organization-lifecycle"),
+	version: z.literal(1),
+});
+
 export const marketingQuery = z.discriminatedUnion("source", [
 	ga4Query,
 	searchConsoleQuery,
@@ -140,6 +146,7 @@ export const marketingQuery = z.discriminatedUnion("source", [
 	apiReliabilityQuery,
 	modelFeedbackQuery,
 	automatedReportQuery,
+	productAnalyticsQuery,
 ]);
 
 export type MarketingQuery = z.infer<typeof marketingQuery>;

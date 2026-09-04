@@ -3838,8 +3838,256 @@ export const CONTRACT_METRIC_SPECS: ProductMetricSpec[] = [
 	},
 ];
 
+const PRODUCT_ANALYTICS_METRIC_SPECS: ProductMetricSpec[] = [
+	{
+		questionNumber: 7520,
+		sourceExternalId: "atlas:product-analytics:organization-lifecycle",
+		key: "product.organization_lifecycle",
+		name: "Organization lifecycle",
+		description:
+			"Complete monthly product-use, professional-qualification, and subscription lifecycle series for governed organizations.",
+		grain: FactGrain.MONTH,
+		source: {
+			key: "atlas:product-analytics",
+			kind: DataSourceKind.ATLAS,
+			label: "Atlas product analytics",
+		},
+		eventTimeField: "period_start",
+		businessDefinition: {
+			entity: "organization_month",
+			periodAssignment: "complete UTC calendar month",
+			series: ["product_usage", "professional_qualification", "subscription"],
+			population:
+				"governed non-internal organizations under the current money eligibility policy",
+			returnRates:
+				"return and requalification counts are published; their rates remain null until the persistent lapsed-population denominator is available",
+		},
+		computation: {
+			aggregate: "monthly_organization_lifecycle",
+			outputs: [
+				"starting_organizations",
+				"retained_organizations",
+				"churned_organizations",
+				"returned_organizations",
+				"requalified_organizations",
+				"resubscribed_organizations",
+			],
+		},
+		requiresCrossSourceEligibility: true,
+		pendingChecks: [
+			{
+				name: "lifecycle_series_separation",
+				reason: "Each lifecycle must remain a separate series.",
+			},
+			{
+				name: "population_exclusivity",
+				reason: "Retained and churned populations must reconcile.",
+			},
+			{
+				name: "bounded_rates",
+				reason: "Every published rate must remain bounded.",
+			},
+			{
+				name: "resubscription_population",
+				reason:
+					"Resubscriptions must remain inside the eligible lapsed population.",
+			},
+			{
+				name: "oldest_complete_watermark",
+				reason: "All series must share one complete watermark.",
+			},
+			{
+				name: "customer_identifier_boundary",
+				reason: "The result must not expose customer identifiers.",
+			},
+		],
+		ownerTeam: "Product",
+		createdBy: "atlas-product-analytics-registry",
+		cadenceMinutes: 8 * 60,
+	},
+	{
+		questionNumber: 7523,
+		sourceExternalId: "atlas:product-analytics-coverage:attribution-outcome",
+		key: "product.attribution_outcomes",
+		name: "Attribution to product and revenue outcomes",
+		description:
+			"Complete monthly first-touch attribution cohorts joined to governed product, professional, subscription, and revenue outcomes.",
+		grain: FactGrain.MONTH,
+		source: {
+			key: "postgres:product",
+			kind: DataSourceKind.POSTGRES,
+			label: "Product Postgres",
+		},
+		eventTimeField: "signup_cohort",
+		businessDefinition: {
+			entity: "signup_attribution_cohort",
+			periodAssignment: "organization signup month in UTC",
+			attribution: "stored organization first-touch attribution",
+			outcomes: [
+				"first_generation",
+				"activation",
+				"professional_qualification",
+				"paid_conversion",
+				"generation_retention",
+				"professional_retention",
+				"three_month_revenue_per_organization",
+			],
+		},
+		computation: {
+			aggregate: "monthly_attribution_outcome_cohort",
+			minimumCellSize: 5,
+		},
+		requiresCrossSourceEligibility: true,
+		pendingChecks: [
+			{
+				name: "attribution_provenance",
+				reason:
+					"Stored source, UTM, domain, and first-touch fields must be present.",
+			},
+			{
+				name: "population_nesting",
+				reason: "Every product and revenue outcome must remain inside signups.",
+			},
+			{
+				name: "bounded_rates",
+				reason: "Every outcome rate must remain bounded.",
+			},
+			{
+				name: "unknown_coverage",
+				reason:
+					"Unknown attribution must remain explicit and reconcile to signups.",
+			},
+			{
+				name: "oldest_complete_watermark",
+				reason: "Every row must use one complete UTC watermark.",
+			},
+			{
+				name: "customer_identifier_boundary",
+				reason: "The result must not expose customer identifiers.",
+			},
+		],
+		ownerTeam: "Product",
+		createdBy: "atlas-product-analytics-registry",
+		cadenceMinutes: 8 * 60,
+	},
+	{
+		questionNumber: 7524,
+		sourceExternalId: "atlas:product-analytics-coverage:billing-scorecard",
+		key: "product.billing_experiment_scorecard",
+		name: "Matched Billing V2 and V3 scorecard",
+		description:
+			"Governed Billing V2 control and V3 treatment conversion, cash, subscription retention, renewal, top-up, cancellation, and collection scorecard.",
+		grain: FactGrain.MONTH,
+		source: {
+			key: "atlas:billing-experiment",
+			kind: DataSourceKind.ATLAS,
+			label: "Atlas billing experiment",
+		},
+		eventTimeField: "data_through",
+		businessDefinition: {
+			entity: "billing_experiment_arm",
+			population: "immutable signup-flag assignment spine",
+			cashDenominator: "paid-organization months in the 14-day mature sample",
+			retentionHorizons: [30, 60],
+		},
+		computation: {
+			aggregate: "matched_billing_experiment_scorecard",
+			sections: ["summary", "tier", "reason"],
+		},
+		requiresCrossSourceEligibility: true,
+		pendingChecks: [
+			{
+				name: "matched_population",
+				reason: "Each arm must reconcile to its assignment spine.",
+			},
+			{
+				name: "subscription_retention_reconciliation",
+				reason: "Subscription retention and churn must reconcile.",
+			},
+			{
+				name: "renewal_maturity",
+				reason: "Renewals must remain inside the mature population.",
+			},
+			{
+				name: "failed_invoice_reconciliation",
+				reason: "Failed invoice counts and amounts must remain valid.",
+			},
+			{
+				name: "oldest_complete_watermark",
+				reason: "Every row must use one UTC watermark.",
+			},
+			{
+				name: "customer_identifier_boundary",
+				reason: "The result must not expose customer identifiers.",
+			},
+		],
+		ownerTeam: "Product",
+		createdBy: "atlas-product-analytics-registry",
+		cadenceMinutes: 8 * 60,
+	},
+	{
+		questionNumber: 7525,
+		sourceExternalId: "atlas:product-analytics-coverage:cohort-outcomes",
+		key: "product.signup_cohort_outcomes",
+		name: "Signup cohort product outcomes",
+		description:
+			"Complete monthly signup cohorts joined to first product exposure, adoption, generation and professional retention, paid conversion, and revenue outcomes.",
+		grain: FactGrain.MONTH,
+		source: {
+			key: "postgres:product",
+			kind: DataSourceKind.POSTGRES,
+			label: "Product Postgres",
+		},
+		eventTimeField: "signup_cohort",
+		businessDefinition: {
+			entity: "signup_cohort",
+			periodAssignment: "organization signup month in UTC",
+			generationRetentionHorizons: ["W1", "W2", "M1", "M3"],
+			professionalRetentionHorizons: ["M1", "M3"],
+			minimumCellSize: 5,
+		},
+		computation: {
+			aggregate: "signup_cohort_outcome_matrix",
+			matureDenominators: true,
+		},
+		requiresCrossSourceEligibility: true,
+		pendingChecks: [
+			{
+				name: "cohort_anchor_parity",
+				reason: "Every cell must remain inside one signup cohort.",
+			},
+			{
+				name: "first_generation_history",
+				reason:
+					"First product dimensions must come from the earliest completed generation.",
+			},
+			{
+				name: "mature_cohort_count",
+				reason:
+					"Every retention rate must use its explicit mature denominator.",
+			},
+			{
+				name: "bounded_rates",
+				reason: "Every cohort rate must remain bounded.",
+			},
+			{
+				name: "oldest_complete_watermark",
+				reason: "Every row must use one complete UTC watermark.",
+			},
+			{
+				name: "customer_identifier_boundary",
+				reason: "The result must not expose customer identifiers.",
+			},
+		],
+		ownerTeam: "Product",
+		createdBy: "atlas-product-analytics-registry",
+		cadenceMinutes: 8 * 60,
+	},
+];
+
 const ALL_METRIC_SPECS = [
 	...PRODUCT_METRIC_SPECS,
+	...PRODUCT_ANALYTICS_METRIC_SPECS,
 	...REVENUE_CLOSE_METRIC_SPECS,
 	...REVENUE_METRIC_SPECS,
 	...CUSTOMER_ECONOMICS_METRIC_SPECS,

@@ -100,7 +100,8 @@ export class AtlasDashboardsService {
 				sourceKeys.has("atlas:studio-product") ||
 				sourceKeys.has("atlas:api-operations") ||
 				sourceKeys.has("atlas:model-feedback-composite") ||
-				sourceKeys.has("atlas:automated-reports")
+				sourceKeys.has("atlas:automated-reports") ||
+				sourceKeys.has("atlas:product-analytics")
 			) {
 				sourceSyncs.push(this.marketing.syncDashboard(number));
 			}

@@ -16,7 +16,10 @@ import {
 	ProductMetricPublisher,
 	type PublishVerificationCheck,
 } from "../metabase/product-metric.publisher";
-import { TinybirdEligibilityService } from "../metabase/tinybird-eligibility.service";
+import {
+	TinybirdEligibilityService,
+	type TinybirdEligibilitySnapshot,
+} from "../metabase/tinybird-eligibility.service";
 import {
 	adobePluginVerificationChecks,
 	adobePluginWeeklyReport,
@@ -53,6 +56,8 @@ import {
 	modelFeedbackVerificationChecks,
 	modelFeedbackWeeklyReport,
 } from "./model-feedback";
+import { organizationLifecycleReport } from "./organization-lifecycle";
+import { organizationLifecycleVerificationChecks } from "./organization-lifecycle-verification";
 import {
 	productPagesVerificationChecks,
 	productPagesWeeklyReport,
@@ -105,11 +110,20 @@ export function requiresProductUserEligibility(
 	);
 }
 
+export function requiresRevenueEligibility(
+	query: ReturnType<typeof marketingQuery.parse>,
+): boolean {
+	return query.source === "product_analytics";
+}
+
 function sourceVerificationChecks(
 	sourceExternalId: string | null,
 	query: ReturnType<typeof marketingQuery.parse>,
 	result: MarketingResult,
 ): PublishVerificationCheck[] | undefined {
+	if (query.source === "product_analytics") {
+		return organizationLifecycleVerificationChecks(result);
+	}
 	if (
 		sourceExternalId === "cron:lipsync:weekly-traffic" &&
 		query.source === "lipsync_traffic"
@@ -218,6 +232,14 @@ export class MarketingService {
 
 	async preview(queryText: string): Promise<MarketingResult> {
 		const query = this.parse(queryText);
+		if (requiresRevenueEligibility(query)) {
+			return this.execute(
+				new MarketingClient(marketingConfig()),
+				query,
+				undefined,
+				await this.tinybirdEligibility.currentForRevenue(),
+			);
+		}
 		if (!requiresProductUserEligibility(query)) {
 			return this.execute(new MarketingClient(marketingConfig()), query);
 		}
@@ -328,6 +350,9 @@ export class MarketingService {
 					const eligibility = requiresProductUserEligibility(parsedQuery)
 						? await this.productUserEligibility()
 						: null;
+					const revenueEligibility = requiresRevenueEligibility(parsedQuery)
+						? await this.tinybirdEligibility.currentForRevenue()
+						: null;
 					const result = await this.execute(
 						client,
 						eligibility
@@ -337,6 +362,7 @@ export class MarketingService {
 								)
 							: parsedQuery,
 						eligibility?.predicate,
+						revenueEligibility ?? undefined,
 					);
 					const verificationChecks = sourceVerificationChecks(
 						question.sourceExternalId,
@@ -372,21 +398,36 @@ export class MarketingService {
 						result,
 						syncRunId: run.id,
 						capturedAt,
-						eligibility: eligibility
+						eligibility: revenueEligibility
 							? {
 									applied: true,
-									capturedAt: eligibility.capturedAt,
-									contentHash: eligibility.contentHash,
-									excludedUsers: eligibility.excludedExternalIds.length,
-									excludedOrganizations: 0,
-									excludedCustomers: 0,
-									complete: eligibility.complete,
-									sourceRows: eligibility.sourceRows,
-									returnedRows: eligibility.returnedRows,
-									scope: eligibility.scope,
-									policy: eligibility.policy,
+									capturedAt: revenueEligibility.capturedAt.toISOString(),
+									contentHash: revenueEligibility.contentHash,
+									excludedUsers: revenueEligibility.excludedUserIds.length,
+									excludedOrganizations:
+										revenueEligibility.excludedOrganizationIds.length,
+									excludedCustomers:
+										revenueEligibility.excludedCustomerIds.length,
+									complete: revenueEligibility.complete,
+									sourceRows: revenueEligibility.sourceRows,
+									returnedRows: revenueEligibility.returnedRows,
+									scope: revenueEligibility.scope,
 								}
-							: undefined,
+							: eligibility
+								? {
+										applied: true,
+										capturedAt: eligibility.capturedAt,
+										contentHash: eligibility.contentHash,
+										excludedUsers: eligibility.excludedExternalIds.length,
+										excludedOrganizations: 0,
+										excludedCustomers: 0,
+										complete: eligibility.complete,
+										sourceRows: eligibility.sourceRows,
+										returnedRows: eligibility.returnedRows,
+										scope: eligibility.scope,
+										policy: eligibility.policy,
+									}
+								: undefined,
 						verificationChecks,
 					});
 					sourceCardsProcessed += 1;
@@ -458,6 +499,7 @@ export class MarketingService {
 		client: MarketingClient,
 		query: ReturnType<typeof marketingQuery.parse>,
 		productUserPredicate?: string,
+		revenueEligibility?: TinybirdEligibilitySnapshot,
 	): Promise<MarketingResult> {
 		if (query.source === "lipsync_traffic") {
 			return lipsyncTrafficWeeklyReport({
@@ -472,7 +514,8 @@ export class MarketingService {
 			query.source !== "api_adoption" &&
 			query.source !== "api_reliability" &&
 			query.source !== "model_feedback" &&
-			query.source !== "automated_report"
+			query.source !== "automated_report" &&
+			query.source !== "product_analytics"
 		) {
 			return client.execute(query);
 		}
@@ -487,6 +530,17 @@ export class MarketingService {
 		const config = metabaseConfig();
 		if (!config) throw new Error("Metabase is not configured.");
 		const metabase = new MetabaseClient(config);
+		if (query.source === "product_analytics") {
+			if (!revenueEligibility) {
+				throw new Error("Product analytics requires governed eligibility.");
+			}
+			return organizationLifecycleReport({
+				query,
+				metabase,
+				eligibility: revenueEligibility,
+				tinybirdEligibility: this.tinybirdEligibility,
+			});
+		}
 		if (query.source === "automated_report") {
 			if (!productUserPredicate) {
 				throw new Error(

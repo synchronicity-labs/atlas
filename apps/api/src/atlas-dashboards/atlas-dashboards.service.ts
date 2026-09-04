@@ -14,6 +14,7 @@ import {
 	summarizePendingMetricVerification,
 } from "../metric-verification";
 import { questionExplanation } from "../questions/question-explanation";
+import { sanitizeQuestionResult } from "../questions/question-result-safety";
 import { SalesService } from "../sales/sales.service";
 import type { dashboardLayoutInput } from "./atlas-dashboards.contracts";
 
@@ -375,6 +376,20 @@ export class AtlasDashboardsService {
 				: card.question.metricVersionId
 					? summarizePendingMetricVerification()
 					: null;
+			const sanitizedMetricResult = metricSnapshot
+				? sanitizeQuestionResult(
+						card.question.publicNumber,
+						metricSnapshot.columns,
+						metricSnapshot.rows,
+					)
+				: null;
+			const sanitizedSourceResult = resultSnapshot
+				? sanitizeQuestionResult(
+						card.question.publicNumber,
+						resultSnapshot.columns,
+						resultSnapshot.rows,
+					)
+				: null;
 			return {
 				...card,
 				question: {
@@ -414,13 +429,15 @@ export class AtlasDashboardsService {
 							capturedAt: metricSnapshot.computedAt.toISOString(),
 							dataThrough: metricSnapshot.dataThrough.toISOString(),
 							trustStatus: metricSnapshot.trustStatus,
-							columns: metricSnapshot.columns,
-							rows: metricSnapshot.rows,
+							columns: sanitizedMetricResult?.columns ?? [],
+							rows: sanitizedMetricResult?.rows ?? [],
 							rowCount: metricSnapshot.rowCount,
 						}
 					: resultSnapshot
 						? {
 								...resultSnapshot,
+								columns: sanitizedSourceResult?.columns ?? [],
+								rows: sanitizedSourceResult?.rows ?? [],
 								capturedAt: resultSnapshot.capturedAt.toISOString(),
 								dataThrough: null,
 								trustStatus: null,

@@ -42,4 +42,12 @@ describe("question result safety", () => {
 			rows: [["2026-09-03", "sync-3", "bad result"]],
 		});
 	});
+
+	it("fails closed for malformed negative-feedback snapshots", () => {
+		expect(
+			sanitizeQuestionResult(141, { unexpected: "columns" }, [
+				["customer identifier"],
+			]),
+		).toEqual({ columns: [], rows: [] });
+	});
 });

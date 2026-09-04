@@ -164,4 +164,68 @@ describe("Atlas agent query freshness", () => {
 			deadlineAt: null,
 		});
 	});
+
+	test("sanitizes cached negative-feedback snapshots from the protected query", async () => {
+		const capturedAt = new Date("2026-09-03T12:00:00.000Z");
+		const db = {
+			question: {
+				findFirst: async () => ({
+					number: 141,
+					publicNumber: 141,
+					name: "Negative generation feedback",
+					description: null,
+					metricVersionId: null,
+					sourceExternalId: "5182",
+					lastCheckedAt: capturedAt,
+					updatedAt: capturedAt,
+					versions: [],
+					source: {
+						state: SourceStatus.HEALTHY,
+						freshnessDeadlineAt: new Date("2026-09-04T12:00:00.000Z"),
+					},
+					metricVersion: null,
+				}),
+			},
+			resultSnapshot: {
+				findFirst: async () => ({
+					id: "snapshot-141",
+					idempotencyKey: "snapshot-key",
+					reportingPeriod: "all-time",
+					capturedAt,
+					contentHash: "snapshot-hash",
+					columns: [
+						{ name: "created_at" },
+						{ name: "organization_id" },
+						{ name: "model_name" },
+						{ name: "text_feedback" },
+						{ name: "output_media_url" },
+					],
+					rows: [
+						[
+							"2026-09-03T11:00:00.000Z",
+							"org-customer",
+							"sync-3",
+							"bad result",
+							"https://signed.example/customer.mp4",
+						],
+					],
+					rowCount: 1,
+				}),
+			},
+			metricSnapshot: { findFirst: async () => null },
+		} as unknown as Db;
+
+		const result = await new AtlasQueryService(db).question(141, {});
+
+		expect(result.result).toEqual(
+			expect.objectContaining({
+				columns: [
+					{ name: "created_at" },
+					{ name: "model_name" },
+					{ name: "text_feedback" },
+				],
+				rows: [["2026-09-03T11:00:00.000Z", "sync-3", "bad result"]],
+			}),
+		);
+	});
 });

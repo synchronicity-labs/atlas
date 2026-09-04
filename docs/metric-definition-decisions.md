@@ -208,6 +208,29 @@ The V3 paid-qualified guardrail is settled. It uses V3 subscription invoices plu
 successful top-up payments in the same UTC month. It does not count credit consumption
 as another paid event.
 
+## Product analytics segmentation decisions
+
+Noah confirmed these rules on September 3, 2026 for the Product answerability work.
+They are shared dimensions for existing metric families, not new standalone metric
+families.
+
+| Decision | Confirmed Product rule |
+| --- | --- |
+| API organization | An eligible organization is an API organization once it has used the API. A Product generation associated with a non-null API key is the evidence of use. Cohort reporting classifies the organization using activity observed by the end of the cohort period so later activity does not leak into an earlier cohort. |
+| Web app organization | An eligible organization is a web app organization once it has generated through a Product web surface. The Product persists web mode `lite` for Lite and `pro` for the Timeline experience; Atlas displays those surfaces as `lite` and `timeline`. A missing API key alone is not sufficient when the persisted mode is available. Cohort reporting applies the same end-of-period rule used for API organizations. |
+| Segment overlap | API and web app organization groups are not mutually exclusive. An organization that has used both belongs to both groups. Results must label these as overlapping usage segments and must not add the segment counts to obtain an all-organization total. Professional organization is another independent qualification and may overlap either or both usage segments. |
+| First generation | `First generation` means the first eligible, non-deleted generation started by a Product user, ordered by `created_at` and then generation ID. The flag is user-first, not organization-first. A metric may subsequently require that generation to complete, but completion does not change which attempt is first. API-key activity resolves to the owning Product user before this flag is assigned. |
+| Revenue per all users | Revenue per all users divides the metric's explicitly named revenue numerator by the count of all eligible Product users as of the end of the same reporting period. The denominator is not limited to active or paying users. The metric name must retain both the revenue basis and `all eligible users`. |
+| Revenue per subscribed users | The companion view uses the same revenue numerator and divides by eligible Product users belonging to an organization with a paid subscription at the end of the reporting period. It must be displayed separately from revenue per all users. |
+| Product surface | The governed display values are `lite` and `timeline`. Persisted Product mode `lite` maps to `lite`; persisted mode `pro` maps to `timeline`. API access is an organization usage segment or access channel, not a third web surface. Unknown or legacy values remain explicit and are not silently mapped to either surface. |
+| Workflow | Workflow values come from the workflows defined by the Product and persisted on the generation. Atlas uses that authoritative product value, preserves unknown or legacy values explicitly, and does not infer workflow from model, URL, or surface. |
+
+Questions and charts that currently say `API versus non-API surface` must either be
+renamed as generation access-channel analyses or be recalculated using the overlapping
+API-organization and web-app-organization definitions above. Retention questions fix
+segment membership at cohort entry and allow the later qualifying activity to occur on
+any surface unless the metric explicitly says `same-surface retention`.
+
 The approved self-serve revenue model is:
 
 - subscription run-rate: active V2 and V3 recurring plan value;

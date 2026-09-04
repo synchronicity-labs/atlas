@@ -53,7 +53,7 @@ describe("question explanations", () => {
 
 	test("always explains questions with no saved description", () => {
 		expect(questionExplanation({ name: "Negative generation feedback" })).toBe(
-			"Lists generations that received negative feedback so the team can inspect the affected user, model, workflow, and failure context.",
+			"Lists deidentified negative feedback with its submission time, model, and written reason. User, organization, generation, token, payload, and media URL fields are excluded. Why it matters: It supports quality review without exposing customer identifiers or signed assets.",
 		);
 	});
 

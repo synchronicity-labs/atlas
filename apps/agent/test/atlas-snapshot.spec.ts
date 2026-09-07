@@ -1,7 +1,18 @@
-import { describe, expect, test } from "bun:test";
-import { serializeAtlasSnapshot } from "../agent/lib/atlas";
+import { describe, expect, mock, test } from "bun:test";
+import type { Db } from "@crm/db";
+import { readAtlasQuestion, serializeAtlasSnapshot } from "../agent/lib/atlas";
 
 describe("Atlas agent snapshots", () => {
+	test("resolves the public question number returned by dashboard reads", async () => {
+		const lookup = mock(async (_input: unknown) => null);
+		await readAtlasQuestion(141, {
+			question: { findUnique: lookup },
+		} as unknown as Db);
+		expect(lookup).toHaveBeenCalledWith(
+			expect.objectContaining({ where: { publicNumber: 141 } }),
+		);
+	});
+
 	test("sanitizes question 141 before limiting read_atlas rows", () => {
 		const snapshot = serializeAtlasSnapshot(141, {
 			rowCount: 1,

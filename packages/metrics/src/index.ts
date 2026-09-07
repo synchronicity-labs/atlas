@@ -63,6 +63,18 @@ export function sanitizeQuestionResult(
 		}
 		return [index];
 	});
+	if (
+		number === NEGATIVE_FEEDBACK_QUESTION &&
+		rows.some(
+			(row) =>
+				row.length !== columns.length ||
+				indexes.some(
+					(index) => row[index] !== null && typeof row[index] !== "string",
+				),
+		)
+	) {
+		return { columns: [], rows: [] };
+	}
 	return {
 		columns: indexes.map((index) => columns[index]),
 		rows: rows.map((row) => indexes.map((index) => row[index])),

@@ -59,8 +59,8 @@ import {
 	buildChartData,
 	type ChartSeries,
 	columnVisualization,
-	compatibleChartSeries,
 	explicitRightAxisMetrics,
+	hasCompatibleChartUnits,
 	metricDisplayFamily,
 } from "@/lib/chart-visualization";
 import { useTRPC } from "@/lib/trpc/client";
@@ -670,11 +670,9 @@ function BarSeriesChart({ card }: { card: DashboardCard }) {
 	if (source.data.length === 0 || source.series.length === 0) {
 		return <CardUnavailable message={setting(card, "unavailableMessage")} />;
 	}
-	const series = orderedSeries(
-		card,
-		source.data,
-		compatibleChartSeries(source.series, displaySettings(card)),
-	);
+	const series = orderedSeries(card, source.data, source.series);
+	if (!hasCompatibleChartUnits(series, displaySettings(card)))
+		return <TableCard card={card} />;
 	const config = chartConfig(series);
 	const seriesByKey = new Map(series.map((item) => [item.key, item]));
 	const visualization = displaySettings(card);
@@ -745,6 +743,11 @@ function SeriesChart({ card }: { card: DashboardCard }) {
 	const candidateLeftKeys = source.series.filter(
 		(item) => !candidateRightKeySet.has(item.key),
 	);
+	if (
+		!hasCompatibleChartUnits(candidateLeftKeys, displaySettings(card)) ||
+		!hasCompatibleChartUnits(candidateRightSeries, displaySettings(card))
+	)
+		return <TableCard card={card} />;
 	let data = source.data;
 	let rightKeys: string[] = [];
 	let rightScale: {

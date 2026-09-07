@@ -1,4 +1,4 @@
-import { db } from "@crm/db";
+import { type Db, db } from "@crm/db";
 import { sanitizeQuestionResult } from "@crm/metrics";
 
 const ROW_LIMIT = 40;
@@ -149,9 +149,9 @@ export async function readAtlasDashboard(number: number) {
 	};
 }
 
-export async function readAtlasQuestion(number: number) {
-	const questionRecord = await db.question.findUnique({
-		where: { number },
+export async function readAtlasQuestion(number: number, database: Db = db) {
+	const questionRecord = await database.question.findUnique({
+		where: { publicNumber: number },
 		select: {
 			id: true,
 			number: true,
@@ -186,7 +186,7 @@ export async function readAtlasQuestion(number: number) {
 	if (!questionRecord) return null;
 
 	const snapshots = questionRecord.sourceExternalId
-		? await db.resultSnapshot.findMany({
+		? await database.resultSnapshot.findMany({
 				where: { questionExternalId: questionRecord.sourceExternalId },
 				orderBy: { capturedAt: "desc" },
 				take: 6,

@@ -12,6 +12,17 @@ const rows = [
 ];
 
 describe("filterQuestionResult", () => {
+	test("filters imported date aliases before the preview row limit", () => {
+		for (const name of ["mo", "wk", "createdAt", "finished_at"]) {
+			expect(
+				filterQuestionResult([{ name }, { name: "value" }], rows, {
+					range: "all",
+					from: "2026-05-01",
+					to: "2026-06-30",
+				}),
+			).toEqual(rows.slice(2, 4));
+		}
+	});
 	test("applies a custom UTC range even when all history is selected", () => {
 		expect(
 			filterQuestionResult(columns, rows, {

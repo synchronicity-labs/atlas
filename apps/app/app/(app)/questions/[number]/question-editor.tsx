@@ -56,8 +56,8 @@ import { RudyChatTrigger } from "@/components/rudy-chat";
 import {
 	buildChartData,
 	columnVisualization,
-	compatibleChartSeries,
-	isPercentMetric,
+	hasCompatibleChartUnits,
+	metricDisplayFamily,
 	visualizationRecord,
 } from "@/lib/chart-visualization";
 import { useTRPC } from "@/lib/trpc/client";
@@ -195,7 +195,9 @@ function formatPreviewMetric(
 					maximumFractionDigits: setting.decimals,
 				});
 	if (setting.suffix !== null) return `${formatted}${setting.suffix}`;
-	return isPercentMetric(name) ? `${formatted}%` : formatted;
+	return metricDisplayFamily(name, visualization) === "percent"
+		? `${formatted}%`
+		: formatted;
 }
 
 function QuestionPreview({
@@ -248,8 +250,8 @@ function QuestionPreview({
 	const source = buildChartData(data.columns, data.rows, visualization);
 	const chart =
 		["line", "area", "bar"].includes(chartDisplay) && source.series.length > 0;
-	if (chart) {
-		const series = compatibleChartSeries(source.series, visualization);
+	if (chart && hasCompatibleChartUnits(source.series, visualization)) {
+		const series = source.series;
 		const seriesByKey = new Map(series.map((item) => [item.key, item]));
 		const colors = ["green", "blue", "orange", "purple"] as const;
 		const config = Object.fromEntries(
@@ -337,6 +339,12 @@ function QuestionPreview({
 
 	return (
 		<div className="max-h-80 overflow-auto">
+			{chart ? (
+				<p className="p-3 text-muted-foreground text-sm">
+					These series use different units. The table keeps every selected
+					measure visible.
+				</p>
+			) : null}
 			<table className="w-full text-left text-xs">
 				<thead className="sticky top-0 bg-muted">
 					<tr>

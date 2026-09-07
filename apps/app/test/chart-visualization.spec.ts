@@ -2,8 +2,8 @@ import { describe, expect, it } from "bun:test";
 import {
 	buildChartData,
 	columnVisualization,
-	compatibleChartSeries,
 	explicitRightAxisMetrics,
+	hasCompatibleChartUnits,
 	isCurrencyMetric,
 	isPercentMetric,
 	metricDisplayFamily,
@@ -140,15 +140,52 @@ describe("saved chart visualization settings", () => {
 		expect(metricDisplayFamily("ratings_carrying_reason")).toBe("number");
 	});
 
-	it("keeps one compatible unit family in single-axis charts", () => {
+	it("requires a table instead of silently dropping mixed-unit metrics", () => {
 		const series = [
 			{ key: "completed", metric: "completed_generations", label: "Completed" },
 			{ key: "coverage", metric: "coverage_pct", label: "Coverage" },
 			{ key: "upvote", metric: "upvote_pct", label: "Upvote" },
 		];
-		expect(compatibleChartSeries(series).map((item) => item.metric)).toEqual([
-			"coverage_pct",
-			"upvote_pct",
-		]);
+		expect(hasCompatibleChartUnits(series)).toBe(false);
+		expect(hasCompatibleChartUnits(series.slice(1))).toBe(true);
+	});
+
+	it("does not label counts or version dimensions as percentages or money", () => {
+		for (const name of [
+			"requalification_count",
+			"conversion_count",
+			"cash_eligible_organizations",
+			"invoice_raised_count",
+			"billing_version",
+		]) {
+			expect(metricDisplayFamily(name)).toBe("number");
+		}
+		expect(metricDisplayFamily("conversion_pct")).toBe("percent");
+		expect(metricDisplayFamily("cash_per_paid_org_month_usd")).toBe("currency");
+	});
+
+	it("honors explicit number styles even when names imply another unit", () => {
+		const column_settings = {
+			'["name","conversion"]': { number_style: "decimal" },
+			'["name","margin"]': { number_style: "currency" },
+		};
+		expect(metricDisplayFamily("conversion", { column_settings })).toBe(
+			"number",
+		);
+		expect(metricDisplayFamily("margin", { column_settings })).toBe("currency");
+	});
+
+	it("does not mix ratio and percentage-point fields on one axis", () => {
+		const series = [
+			{ key: "coverage", metric: "coverage", label: "Coverage" },
+			{ key: "upvote_pct", metric: "upvote_pct", label: "Upvote" },
+		];
+		expect(
+			hasCompatibleChartUnits(series, {
+				column_settings: {
+					'["name","coverage"]': { number_style: "percent" },
+				},
+			}),
+		).toBe(false);
 	});
 });

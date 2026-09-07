@@ -105,6 +105,12 @@ function sourceData(columns: ChartColumn[], rows: unknown[][]): ChartDatum[] {
 }
 
 export function isPercentMetric(name: string): boolean {
+	if (
+		/(^|[_\s])(percent|pct|rate)($|[_\s])/i.test(name) &&
+		!/run.?rate/i.test(name)
+	)
+		return true;
+	if (COUNT_COLUMN.test(name)) return false;
 	if (/cohort spend|spend_usd|ndr_(usd|amount|value)/i.test(name)) return false;
 	return (
 		/percent|pct|requalification|ndr|conversion/i.test(name) ||
@@ -113,16 +119,13 @@ export function isPercentMetric(name: string): boolean {
 	);
 }
 
+const COUNT_COLUMN =
+	/(^|[_\s])(count|counts|customers|organizations|orgs|subscriptions|invoices|generations|contacts|users|version)($|[_\s])/i;
+
 export function isCurrencyMetric(name: string): boolean {
 	if (/(^|_)(usd|eur|gbp)($|_)/i.test(name)) return true;
+	if (COUNT_COLUMN.test(name)) return false;
 	if (/cash|collect|usage.*incurred|invoice.*raised/i.test(name)) return true;
-	if (
-		/(^|_)(count|counts|customers|organizations|orgs|subscriptions|invoices|generations|contacts|users)($|_)/i.test(
-			name,
-		)
-	) {
-		return false;
-	}
 	return (
 		/revenue|spend|cost|value|amount|pipeline|booking|forecast|accrual|run.?rate|subscription|invoice|collection|billing/i.test(
 			name,
@@ -171,34 +174,31 @@ export function metricDisplayFamily(
 	visualization?: unknown,
 ): "percent" | "currency" | "number" {
 	const setting = columnVisualization(visualization, name);
-	if (
-		setting.numberStyle === "percent" ||
-		setting.suffix?.trim() === "%" ||
-		isPercentMetric(name)
-	) {
+	if (setting.numberStyle === "percent" || setting.suffix?.trim() === "%")
 		return "percent";
-	}
-	if (setting.suffix?.toLowerCase().includes("usd")) return "currency";
+	if (
+		setting.numberStyle === "currency" ||
+		/usd|eur|gbp|\$|€|£/i.test(setting.suffix ?? "")
+	)
+		return "currency";
+	if (setting.numberStyle !== null) return "number";
+	if (isPercentMetric(name)) return "percent";
 	if (isCurrencyMetric(name)) return "currency";
 	return "number";
 }
 
-export function compatibleChartSeries(
+export function hasCompatibleChartUnits(
 	series: ChartSeries[],
 	visualization?: unknown,
-): ChartSeries[] {
+): boolean {
 	const families = new Set(
-		series.map((item) => metricDisplayFamily(item.metric, visualization)),
+		series.map((item) =>
+			columnVisualization(visualization, item.metric).numberStyle === "percent"
+				? "percent-ratio"
+				: metricDisplayFamily(item.metric, visualization),
+		),
 	);
-	if (families.size <= 1) return series;
-	const preferred = families.has("percent")
-		? "percent"
-		: families.has("currency")
-			? "currency"
-			: "number";
-	return series.filter(
-		(item) => metricDisplayFamily(item.metric, visualization) === preferred,
-	);
+	return families.size <= 1;
 }
 
 export function buildChartData(

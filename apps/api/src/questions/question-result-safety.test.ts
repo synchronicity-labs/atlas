@@ -50,4 +50,17 @@ describe("question result safety", () => {
 			]),
 		).toEqual({ columns: [], rows: [] });
 	});
+
+	it("rejects misaligned rows and nested payloads in allowed feedback columns", () => {
+		const columns = [{ name: "created_at" }, { name: "text_feedback" }];
+		for (const rows of [
+			[["2026-09-03", "g1", "private feedback"]],
+			[["2026-09-03", { user_id: "u1", access_token: "secret" }]],
+		]) {
+			expect(sanitizeQuestionResult(141, columns, rows)).toEqual({
+				columns: [],
+				rows: [],
+			});
+		}
+	});
 });

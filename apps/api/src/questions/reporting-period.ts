@@ -8,7 +8,9 @@ const DATE_COLUMN_NAMES = [
 	"period_end",
 	"month_start",
 	"month",
+	"mo",
 	"week_start",
+	"wk",
 	"day",
 	"date",
 	"event_date",
@@ -20,6 +22,8 @@ const DATE_COLUMN_NAMES = [
 	"reporting_period",
 	"period",
 	"created_at",
+	"createdat",
+	"finished_at",
 	"submitted_at",
 ] as const;
 

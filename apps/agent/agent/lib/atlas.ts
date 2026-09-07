@@ -1,4 +1,5 @@
-import { db } from "@crm/db";
+import { type Db, db } from "@crm/db";
+import { sanitizeQuestionResult } from "@crm/metrics";
 
 const ROW_LIMIT = 40;
 const QUERY_LIMIT = 24_000;
@@ -11,6 +12,21 @@ function query(value: string): string {
 	return value.length > QUERY_LIMIT
 		? `${value.slice(0, QUERY_LIMIT)}\n\n[query truncated]`
 		: value;
+}
+
+export function serializeAtlasSnapshot<
+	TSnapshot extends { columns: unknown; rows: unknown; rowCount: number },
+>(number: number, snapshot: TSnapshot) {
+	const result = sanitizeQuestionResult(
+		number,
+		snapshot.columns,
+		snapshot.rows,
+	);
+	return {
+		...snapshot,
+		columns: result.columns,
+		rows: rows(result.rows),
+	};
 }
 
 export async function readAtlasWorkspace() {
@@ -66,6 +82,7 @@ export async function readAtlasDashboard(number: number) {
 					question: {
 						select: {
 							number: true,
+							publicNumber: true,
 							name: true,
 							description: true,
 							connector: true,
@@ -119,23 +136,26 @@ export async function readAtlasDashboard(number: number) {
 				...card,
 				question: {
 					...card.question,
+					number: card.question.publicNumber,
+					publicNumber: undefined,
 					latestVersion: card.question.versions[0] ?? null,
 					versions: undefined,
 				},
 				latestSnapshot: snapshot
-					? { ...snapshot, rows: rows(snapshot.rows) }
+					? serializeAtlasSnapshot(card.question.publicNumber, snapshot)
 					: null,
 			};
 		}),
 	};
 }
 
-export async function readAtlasQuestion(number: number) {
-	const questionRecord = await db.question.findUnique({
-		where: { number },
+export async function readAtlasQuestion(number: number, database: Db = db) {
+	const questionRecord = await database.question.findUnique({
+		where: { publicNumber: number },
 		select: {
 			id: true,
 			number: true,
+			publicNumber: true,
 			name: true,
 			description: true,
 			connector: true,
@@ -166,7 +186,7 @@ export async function readAtlasQuestion(number: number) {
 	if (!questionRecord) return null;
 
 	const snapshots = questionRecord.sourceExternalId
-		? await db.resultSnapshot.findMany({
+		? await database.resultSnapshot.findMany({
 				where: { questionExternalId: questionRecord.sourceExternalId },
 				orderBy: { capturedAt: "desc" },
 				take: 6,
@@ -182,13 +202,14 @@ export async function readAtlasQuestion(number: number) {
 
 	return {
 		...questionRecord,
+		number: questionRecord.publicNumber,
+		publicNumber: undefined,
 		versions: questionRecord.versions.map((version, index) => ({
 			...version,
 			queryText: index === 0 ? query(version.queryText) : undefined,
 		})),
-		snapshots: snapshots.map((snapshot) => ({
-			...snapshot,
-			rows: rows(snapshot.rows),
-		})),
+		snapshots: snapshots.map((snapshot) =>
+			serializeAtlasSnapshot(questionRecord.publicNumber, snapshot),
+		),
 	};
 }

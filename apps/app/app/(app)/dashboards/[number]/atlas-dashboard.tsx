@@ -60,7 +60,8 @@ import {
 	type ChartSeries,
 	columnVisualization,
 	explicitRightAxisMetrics,
-	isPercentMetric,
+	hasCompatibleChartUnits,
+	metricDisplayFamily,
 } from "@/lib/chart-visualization";
 import { useTRPC } from "@/lib/trpc/client";
 import type { RouterOutputs } from "@/lib/trpc/types";
@@ -357,20 +358,6 @@ function CardHeading({ card }: { card: DashboardCard }) {
 	);
 }
 
-function isCurrency(name: string): boolean {
-	if (/cash|collect|usage.*incurred|invoice.*raised/i.test(name)) return true;
-	if (
-		/(^|_)(count|counts|customers|organizations|orgs|subscriptions|invoices|generations|contacts|users)($|_)/i.test(
-			name,
-		)
-	) {
-		return false;
-	}
-	return /revenue|spend|cost|value|amount|pipeline|booking|forecast|accrual|arr|ndr_usd|run.?rate|subscription|invoice|collection|billing/i.test(
-		name,
-	);
-}
-
 function displaySettings(card: DashboardCard): unknown {
 	return (card as unknown as { displaySettings: unknown }).displaySettings;
 }
@@ -423,8 +410,12 @@ function formatMetric(
 					maximumFractionDigits: setting.decimals,
 				});
 	if (setting.suffix !== null) return `${formatted}${setting.suffix}`;
-	if (isPercentMetric(name)) return `${METRIC_NUMBER_FORMAT.format(value)}%`;
-	if (isCurrency(name)) return METRIC_CURRENCY_FORMAT.format(value);
+	if (metricDisplayFamily(name, visualization) === "percent") {
+		return `${METRIC_NUMBER_FORMAT.format(value)}%`;
+	}
+	if (metricDisplayFamily(name, visualization) === "currency") {
+		return METRIC_CURRENCY_FORMAT.format(value);
+	}
 	return formatted;
 }
 
@@ -433,7 +424,7 @@ function formatAxisMetric(
 	name: string,
 	visualization: unknown,
 ): string {
-	if (metricFamily(name, visualization) === "number") {
+	if (metricDisplayFamily(name, visualization) === "number") {
 		return METRIC_AXIS_NUMBER_FORMAT.format(value);
 	}
 	return formatMetric(value, name, visualization);
@@ -465,7 +456,8 @@ function ScalarCard({ card }: { card: DashboardCard }) {
 	const isCurrentMonth =
 		typeof period === "string" &&
 		period.slice(0, 7) === new Date().toISOString().slice(0, 7);
-	const percentMetric = metricFamily(metricName, visualization) === "percent";
+	const percentMetric =
+		metricDisplayFamily(metricName, visualization) === "percent";
 	const formattedCurrent =
 		typeof currentValue === "number"
 			? formatMetric(currentValue, metricName, visualization)
@@ -596,29 +588,30 @@ function ScalarCard({ card }: { card: DashboardCard }) {
 	);
 }
 
-function metricFamily(
-	name: string,
-	visualization?: unknown,
-): "percent" | "currency" | "number" {
-	const setting = columnVisualization(visualization, name);
-	if (
-		setting.numberStyle === "percent" ||
-		setting.suffix?.trim() === "%" ||
-		isPercentMetric(name)
-	) {
-		return "percent";
-	}
-	if (setting.suffix?.toLowerCase().includes("usd")) return "currency";
-	if (isCurrency(name)) return "currency";
-	return "number";
-}
-
 function rightAxisSeries(
 	card: DashboardCard,
 	series: ChartSeries[],
 ): ChartSeries[] {
 	const rightMetrics = explicitRightAxisMetrics(displaySettings(card));
-	return series.filter((item) => rightMetrics.has(item.metric));
+	if (rightMetrics.size > 0) {
+		return series.filter((item) => rightMetrics.has(item.metric));
+	}
+	const visualization = displaySettings(card);
+	const families = new Set(
+		series.map((item) => metricDisplayFamily(item.metric, visualization)),
+	);
+	if (families.size <= 1) return [];
+	const rightFamily = families.has("percent")
+		? "percent"
+		: families.has("currency")
+			? "currency"
+			: null;
+	return rightFamily
+		? series.filter(
+				(item) =>
+					metricDisplayFamily(item.metric, visualization) === rightFamily,
+			)
+		: [];
 }
 
 function cardStackType(card: object): "default" | "stacked" | "percent" {
@@ -678,6 +671,8 @@ function BarSeriesChart({ card }: { card: DashboardCard }) {
 		return <CardUnavailable message={setting(card, "unavailableMessage")} />;
 	}
 	const series = orderedSeries(card, source.data, source.series);
+	if (!hasCompatibleChartUnits(series, displaySettings(card)))
+		return <TableCard card={card} />;
 	const config = chartConfig(series);
 	const seriesByKey = new Map(series.map((item) => [item.key, item]));
 	const visualization = displaySettings(card);
@@ -748,6 +743,11 @@ function SeriesChart({ card }: { card: DashboardCard }) {
 	const candidateLeftKeys = source.series.filter(
 		(item) => !candidateRightKeySet.has(item.key),
 	);
+	if (
+		!hasCompatibleChartUnits(candidateLeftKeys, displaySettings(card)) ||
+		!hasCompatibleChartUnits(candidateRightSeries, displaySettings(card))
+	)
+		return <TableCard card={card} />;
 	let data = source.data;
 	let rightKeys: string[] = [];
 	let rightScale: {

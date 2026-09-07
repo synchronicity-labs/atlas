@@ -8,6 +8,7 @@ import { Injectable, NotFoundException } from "@nestjs/common";
 import { InjectDatabase } from "../database/database.constants";
 import { questionExplanation } from "../questions/question-explanation";
 import { questionNumberWhere } from "../questions/question-number";
+import { sanitizeQuestionResult } from "../questions/question-result-safety";
 import type { AtlasQuestionQuery } from "./atlas-query.contracts";
 
 @Injectable()
@@ -458,6 +459,20 @@ export class AtlasQueryService {
 					state: question.source?.state,
 					deadline: freshnessDeadline,
 				});
+		const sanitizedMetricResult = metricSnapshot
+			? sanitizeQuestionResult(
+					question.publicNumber,
+					metricSnapshot.columns,
+					metricSnapshot.rows,
+				)
+			: null;
+		const sanitizedSourceResult = snapshot
+			? sanitizeQuestionResult(
+					question.publicNumber,
+					snapshot.columns,
+					snapshot.rows,
+				)
+			: null;
 
 		return {
 			schemaVersion: "atlas.query.v1",
@@ -491,8 +506,8 @@ export class AtlasQueryService {
 							dataThrough: metricSnapshot.dataThrough.toISOString(),
 							capturedAt: metricSnapshot.computedAt.toISOString(),
 							trustStatus: metricSnapshot.trustStatus,
-							columns: metricSnapshot.columns,
-							rows: metricSnapshot.rows,
+							columns: sanitizedMetricResult?.columns,
+							rows: sanitizedMetricResult?.rows,
 							rowCount: metricSnapshot.rowCount,
 							immutable: true,
 						}
@@ -506,8 +521,8 @@ export class AtlasQueryService {
 							periodEnd: null,
 							dataThrough: null,
 							trustStatus: null,
-							columns: snapshot.columns,
-							rows: snapshot.rows,
+							columns: sanitizedSourceResult?.columns,
+							rows: sanitizedSourceResult?.rows,
 							rowCount: snapshot.rowCount,
 							immutable: true,
 						}

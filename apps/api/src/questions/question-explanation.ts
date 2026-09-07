@@ -185,7 +185,7 @@ const EXPLANATIONS_BY_NAME: Record<string, string> = {
 	"Estimated self-serve variable revenue month-end":
 		"What will variable self-serve revenue be by the end of the current UTC month if the month-to-date pace continues? Atlas adds estimated V2 postpaid usage and estimated V3 top-up payments. Subscription value and V3 credit consumption are excluded. Why it matters: It compares the two variable billing paths without double counting revenue.",
 	"Negative generation feedback":
-		"Lists generations that received negative feedback so the team can inspect the affected user, model, workflow, and failure context.",
+		"Lists deidentified negative feedback with its submission time, model, and written reason. User, organization, generation, token, payload, and media URL fields are excluded. Why it matters: It supports quality review without exposing customer identifiers or signed assets.",
 	"Coverage by surface, monthly":
 		"Shows the share of generations that received feedback each month, split by product surface.",
 	"Capture rate, weekly by surface — all terminal denominator":

@@ -26,6 +26,7 @@ import { SalesService } from "../sales/sales.service";
 import { paginate, resolveOrderBy } from "../trpc/list-input";
 import { questionExplanation } from "./question-explanation";
 import { questionNumberWhere } from "./question-number";
+import { sanitizeQuestionResult } from "./question-result-safety";
 import type {
 	QuestionListInput,
 	QuestionPreviewInput,
@@ -358,11 +359,19 @@ export class QuestionsService {
 				...version,
 				createdAt: version.createdAt.toISOString(),
 			})),
-			snapshots: snapshots.map((snapshot) => ({
-				...snapshot,
-				capturedAt: snapshot.capturedAt.toISOString(),
-				dataThrough: snapshot.dataThrough?.toISOString() ?? null,
-			})),
+			snapshots: snapshots.map((snapshot) => {
+				const result = sanitizeQuestionResult(
+					number,
+					snapshot.columns,
+					snapshot.rows,
+				);
+				return {
+					...snapshot,
+					...result,
+					capturedAt: snapshot.capturedAt.toISOString(),
+					dataThrough: snapshot.dataThrough?.toISOString() ?? null,
+				};
+			}),
 			sourceUrl:
 				config &&
 				question.connector === DataSourceKind.METABASE &&
@@ -426,9 +435,15 @@ export class QuestionsService {
 			input.reportingPeriod,
 		);
 
+		const sanitized = sanitizeQuestionResult(
+			input.number,
+			result.columns,
+			rows.slice(0, limit),
+		);
+
 		return {
-			columns: result.columns,
-			rows: rows.slice(0, limit),
+			columns: sanitized.columns,
+			rows: sanitized.rows,
 			rowCount: rows.length,
 			truncated: rows.length > limit,
 			durationMs: Date.now() - startedAt,

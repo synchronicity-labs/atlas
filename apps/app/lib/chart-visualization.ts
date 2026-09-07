@@ -105,11 +105,31 @@ function sourceData(columns: ChartColumn[], rows: unknown[][]): ChartDatum[] {
 }
 
 export function isPercentMetric(name: string): boolean {
-	if (/cohort spend|spend_usd/i.test(name)) return false;
+	if (
+		/(^|[_\s])(percent|pct|rate)($|[_\s])/i.test(name) &&
+		!/run.?rate/i.test(name)
+	)
+		return true;
+	if (COUNT_COLUMN.test(name)) return false;
+	if (/cohort spend|spend_usd|ndr_(usd|amount|value)/i.test(name)) return false;
 	return (
 		/percent|pct|requalification|ndr|conversion/i.test(name) ||
 		(/margin/i.test(name) && !/margin_usd|margin usd/i.test(name)) ||
 		(/rate/i.test(name) && !/run.?rate/i.test(name))
+	);
+}
+
+const COUNT_COLUMN =
+	/(^|[_\s])(count|counts|customers|organizations|orgs|subscriptions|invoices|generations|contacts|users|version)($|[_\s])/i;
+
+export function isCurrencyMetric(name: string): boolean {
+	if (/(^|_)(usd|eur|gbp)($|_)/i.test(name)) return true;
+	if (COUNT_COLUMN.test(name)) return false;
+	if (/cash|collect|usage.*incurred|invoice.*raised/i.test(name)) return true;
+	return (
+		/revenue|spend|cost|value|amount|pipeline|booking|forecast|accrual|run.?rate|subscription|invoice|collection|billing/i.test(
+			name,
+		) || /(^|[_\s])(arr|mrr|ltv)($|[_\s])/i.test(name)
 	);
 }
 
@@ -147,6 +167,38 @@ export function explicitRightAxisMetrics(visualization: unknown): Set<string> {
 			settingsRecord(value)?.axis === "right" ? [metric] : [],
 		),
 	);
+}
+
+export function metricDisplayFamily(
+	name: string,
+	visualization?: unknown,
+): "percent" | "currency" | "number" {
+	const setting = columnVisualization(visualization, name);
+	if (setting.numberStyle === "percent" || setting.suffix?.trim() === "%")
+		return "percent";
+	if (
+		setting.numberStyle === "currency" ||
+		/usd|eur|gbp|\$|€|£/i.test(setting.suffix ?? "")
+	)
+		return "currency";
+	if (setting.numberStyle !== null) return "number";
+	if (isPercentMetric(name)) return "percent";
+	if (isCurrencyMetric(name)) return "currency";
+	return "number";
+}
+
+export function hasCompatibleChartUnits(
+	series: ChartSeries[],
+	visualization?: unknown,
+): boolean {
+	const families = new Set(
+		series.map((item) =>
+			columnVisualization(visualization, item.metric).numberStyle === "percent"
+				? "percent-ratio"
+				: metricDisplayFamily(item.metric, visualization),
+		),
+	);
+	return families.size <= 1;
 }
 
 export function buildChartData(

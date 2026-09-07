@@ -141,17 +141,23 @@ def atlas_abuse_control() -> str:
 
 
 def section_signups_blocked() -> tuple[str, int]:
-    rows = section_rows(245, "reason")
+    rows = sorted(
+        section_rows(245, "reason"),
+        key=lambda row: (-n(row.get("blocked_attempts")), str(row.get("dimension_value") or "")),
+    )
     total = sum(n(row.get("blocked_attempts")) for row in rows)
     lines = [f"*Signups blocked (last 1d): {total:,}*"]
     if rows:
-        lines.append("By reason:")
-        for row in rows[:12]:
+        lines.append("Top reasons:")
+        for row in rows[:5]:
             lines.append(
-                f"  • {row.get('dimension_value') or '(blank)'}: "
+                f"  • {compact_text(row.get('dimension_value') or '(blank)')}: "
                 f"{n(row.get('blocked_attempts')):,} "
                 f"({n(row.get('related_count')):,} domains)"
             )
+        if len(rows) > 5:
+            other = sum(n(row.get("blocked_attempts")) for row in rows[5:])
+            lines.append(f"  • Other reasons: {other:,} blocked signups across {len(rows) - 5:,} reasons")
     else:
         lines.append("  (no signup_blocked events)")
     return "\n".join(lines), total

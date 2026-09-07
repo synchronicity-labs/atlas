@@ -25,6 +25,15 @@ const source = {
 };
 
 describe("BetterStack bounded timeout retry", () => {
+	test("keeps one timeout retry after a transient HTTP failure", async () => {
+		const fetch = mock()
+			.mockResolvedValueOnce(new Response("retry", { status: 503 }))
+			.mockRejectedValueOnce(new DOMException("timed out", "TimeoutError"))
+			.mockResolvedValueOnce(new Response('{"count":1}\n'));
+		globalThis.fetch = fetch as unknown as typeof globalThis.fetch;
+		expect(await client.sql(source, "select 1")).toEqual([{ count: 1 }]);
+		expect(fetch).toHaveBeenCalledTimes(3);
+	});
 	test("retries a timed-out request once", async () => {
 		const fetch = mock()
 			.mockRejectedValueOnce(new DOMException("timed out", "TimeoutError"))

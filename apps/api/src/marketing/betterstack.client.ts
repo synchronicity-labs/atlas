@@ -113,6 +113,7 @@ export class BetterStackClient {
 	}
 
 	private async request(url: URL, init: RequestInit) {
+		let timeoutRetried = false;
 		for (let attempt = 1; attempt <= 4; attempt += 1) {
 			try {
 				const response = await fetch(url, {
@@ -128,12 +129,14 @@ export class BetterStackClient {
 				}
 			} catch (error) {
 				if (
-					attempt !== 1 ||
+					attempt === 4 ||
+					timeoutRetried ||
 					!(error instanceof Error) ||
 					!["TimeoutError", "AbortError"].includes(error.name)
 				) {
 					throw error;
 				}
+				timeoutRetried = true;
 			}
 			await sleep(250 * 2 ** (attempt - 1));
 		}

@@ -5,6 +5,18 @@ import daily_abuse_report as report
 
 
 class AbuseReportTest(unittest.TestCase):
+    def test_signup_reasons_keep_an_explicit_remainder(self):
+        rows = [
+            {"dimension_value": f"reason {i}", "blocked_attempts": i + 1, "related_count": 1}
+            for i in range(20)
+        ]
+        with patch.object(report, "section_rows", return_value=rows):
+            text, total = report.section_signups_blocked()
+        self.assertEqual(total, 210)
+        self.assertIn("reason 19: 20", text)
+        self.assertIn("120 blocked signups across 15 reasons", text)
+        self.assertEqual(len(text.splitlines()), 8)
+
     def test_top_reasons_keep_totals_and_sort_by_count(self):
         rows = [
             {"reason": f"reason {i}", "metrics": {"users": i + 1}}

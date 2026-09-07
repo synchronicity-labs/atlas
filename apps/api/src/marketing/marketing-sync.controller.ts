@@ -1,8 +1,11 @@
 import {
+	BadRequestException,
 	Controller,
 	ForbiddenException,
 	Get,
 	Headers,
+	Param,
+	ParseIntPipe,
 	Post,
 	ServiceUnavailableException,
 } from "@nestjs/common";
@@ -34,14 +37,30 @@ export class MarketingSyncController {
 		return this.run(authorization);
 	}
 
+	@Post("dashboards/:number/sources/:sourceId")
+	@AllowAnonymous()
+	async syncSource(
+		@Param("number", ParseIntPipe) number: number,
+		@Param("sourceId") sourceId: string,
+		@Headers("authorization") authorization?: string,
+	) {
+		this.authorize(authorization);
+		if (!sourceId.trim()) throw new BadRequestException("Source is required.");
+		return this.marketing.syncDashboard(number, sourceId);
+	}
+
 	private run(authorization?: string) {
+		this.authorize(authorization);
+		return this.marketing.syncDashboard(3);
+	}
+
+	private authorize(authorization?: string) {
 		if (!this.secret) {
 			throw new ServiceUnavailableException("Sync is not configured.");
 		}
 		if (!timingSafeEquals(authorization ?? "", `Bearer ${this.secret}`)) {
 			throw new ForbiddenException();
 		}
-		return this.marketing.syncDashboard(3);
 	}
 }
 

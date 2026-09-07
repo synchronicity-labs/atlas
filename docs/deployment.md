@@ -27,6 +27,8 @@ The native Sales dashboard refresh runs at 00:40, 06:40, 12:40, and 18:40 UTC, a
 
 All other eight-hour source-backed dashboard refreshes run every six hours. The two-hour margin absorbs normal scheduler delay and gives the next refresh time to recover before a verified result becomes stale. A failed verification is stored as an attempt. It does not revoke an existing certification, replace the latest verified answer, or advance the question's last successful check time. A source error also does not invalidate a verified answer before that answer's deadline. The source error stays visible in provenance and becomes a report-readiness failure when the last verified answer expires.
 
+Q241's BetterStack reader combines recent logs and archived logs using the same UTC bounds for aggregation and coverage. It still requires all 336 hours in the two completed weeks. The Product scheduler may run every 15 minutes, but Q241 reuses its verified current-week result for up to six hours. A week rollover, a newer saved query version, or a missing successful check requires another read. Timeouts during a BetterStack request or response body are retried once; they do not advance the successful check time.
+
 The Modal cost collector on Rudy is a separate host-side integration. Vercel deployments do not update that collector. Changes to its host scripts or timer still require an explicit deployment to Rudy; the resulting snapshots are imported by Atlas.
 
 ## Source snapshots and verified answers

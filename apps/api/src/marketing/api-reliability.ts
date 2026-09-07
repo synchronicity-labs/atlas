@@ -38,6 +38,24 @@ const ENDPOINTS = [
 const TRAFFIC_SCOPES = ["all", "api_key"];
 const EXCLUSION_POLICY = "health_sse_and_bot_traffic";
 
+export function canReuseApiReliability(input: {
+	lastCheckedAt?: Date | null;
+	dataThrough?: Date | null;
+	versionCreatedAt?: Date | null;
+	now?: Date;
+}) {
+	const now = input.now ?? new Date();
+	const checked = input.lastCheckedAt?.getTime();
+	return (
+		checked !== undefined &&
+		checked <= now.getTime() &&
+		now.getTime() - checked < 6 * 60 * 60 * 1000 &&
+		input.dataThrough?.getTime() === completeWeekBoundary(now).getTime() &&
+		input.versionCreatedAt != null &&
+		input.versionCreatedAt.getTime() <= checked
+	);
+}
+
 export async function apiReliabilityWeeklyReport(input: {
 	query: ApiReliabilityQuery;
 	betterstack: BetterStackClient;
@@ -243,7 +261,7 @@ export function apiReliabilityVerificationChecks(
 		check(
 			"betterstack_adapter",
 			adapterValid,
-			"The governed reader must resolve the exact production Sync API V2 source and use its EU read-only S3 log table.",
+			"The governed reader must resolve the production Sync API V2 source and combine its recent and archived EU logs.",
 			{
 				sourceId: first.source_id,
 				region: first.source_region,
@@ -300,7 +318,6 @@ export function apiReliabilityVerificationChecks(
 }
 
 function reliabilitySql(source: BetterStackSource, start: Date, end: Date) {
-	const table = s3TableName(source);
 	return `with events as (
   select
     toStartOfWeek(dt, 1) as week_start,
@@ -313,12 +330,8 @@ function reliabilitySql(source: BetterStackSource, start: Date, end: Date) {
     JSONExtractString(raw, 'failureBucket') as failure_bucket,
     lower(JSONExtractString(raw, 'errorCode')) as error_code,
     lower(JSONExtractString(raw, 'errorMessage')) as error_message
-  from s3Cluster(primary, ${table})
-  where dt >= toDateTime('${clickhouseDate(start)}', 'UTC')
-    and dt < toDateTime('${clickhouseDate(end)}', 'UTC')
-    and _row_type = 1
-    and JSONExtractString(raw, 'message') = 'api_response'
-    and JSONExtractString(raw, 'completionEvent') = 'finish'
+  from (${logWindowSql(source, start, end)})
+  where JSONExtractString(raw, 'completionEvent') = 'finish'
     and notEmpty(JSONExtractString(raw, 'routeTemplate'))
 ), classified as (
   select
@@ -424,7 +437,6 @@ limit 1001`;
 }
 
 function coverageSql(source: BetterStackSource, start: Date, end: Date) {
-	const table = s3TableName(source);
 	return `with events as (
   select
     dt,
@@ -432,11 +444,7 @@ function coverageSql(source: BetterStackSource, start: Date, end: Date) {
     JSONExtractString(raw, 'routeTemplate') as route,
     lower(JSONExtractString(raw, 'userAgent')) as user_agent,
     JSONExtractString(raw, 'completionEvent') as completion_event
-  from s3Cluster(primary, ${table})
-  where dt >= toDateTime('${clickhouseDate(start)}', 'UTC')
-    and dt < toDateTime('${clickhouseDate(end)}', 'UTC')
-    and _row_type = 1
-    and JSONExtractString(raw, 'message') = 'api_response'
+  from (${logWindowSql(source, start, end)})
 ), classified as (
   select
     *,
@@ -504,14 +512,22 @@ function parseCoverage(row: Row | undefined): Coverage {
 	};
 }
 
-function s3TableName(source: BetterStackSource) {
+function logWindowSql(source: BetterStackSource, start: Date, end: Date) {
 	if (
 		!/^\d+$/.test(source.teamId) ||
 		!/^[a-zA-Z0-9_]+$/.test(source.tableName)
 	) {
 		throw new Error("BetterStack source table metadata is unsafe.");
 	}
-	return `t${source.teamId}_${source.tableName}_s3`;
+	const prefix = `t${source.teamId}_${source.tableName}`;
+	const window = `dt >= toDateTime('${clickhouseDate(start)}', 'UTC')
+    and dt < toDateTime('${clickhouseDate(end)}', 'UTC')
+    and JSONExtractString(raw, 'message') = 'api_response'`;
+	return `select dt, raw from remote(${prefix}_logs)
+  where ${window}
+  union all
+  select dt, raw from s3Cluster(primary, ${prefix}_s3)
+  where _row_type = 1 and ${window}`;
 }
 
 function completeWeekBoundary(now: Date) {

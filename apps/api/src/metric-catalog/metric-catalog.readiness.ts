@@ -7,7 +7,9 @@ export const catalogQuestionTrustSelect = {
 		select: {
 			approvedAt: true,
 			metric: { select: { status: true } },
+			_count: { select: { snapshots: true } },
 			snapshots: {
+				where: { trustStatus: "VERIFIED" },
 				orderBy: { computedAt: "desc" },
 				take: 1,
 				select: { trustStatus: true },
@@ -38,7 +40,7 @@ export function canonicalQuestionReadiness(
 	) {
 		return MetricReadinessStatus.VERIFIED;
 	}
-	return snapshot
+	return version._count.snapshots > 0
 		? MetricReadinessStatus.RECONCILING
 		: MetricReadinessStatus.IMPLEMENTING;
 }

@@ -17,6 +17,10 @@ GitHub CI and all three Vercel preview deployments passed at commit `7a1b613`. T
 
 The Modal CLI works both with local scoped credentials and Rudy's existing credential wrapper. The import script now recognizes the wrapper and skips empty date ranges on the first day of a month. Local and production Atlas sync credentials differ; production imports must use the production integration credential. No credentials were written to the repository.
 
+After deployment, operators can refresh one native Marketing source with `POST /internal/sync/marketing/dashboards/:number/sources/:sourceId`, using the existing sync bearer credential. The source must belong to the selected dashboard. Empty or unrelated selections do not fall back to refreshing all sources. The normal scheduled dashboard refresh is unchanged.
+
+Catalog readiness keeps the newest verified snapshot of the canonical metric version. A later failed attempt does not displace that answer. Freshness and the latest source failure remain separate from certification.
+
 ## Source material that needs an owner
 
 The latest ingestion reports two contract files without usable contract text: a PDF with a removed-document notice and a document with no readable text. These files were not opened again during this takeover. Check the source documents before choosing restoration, replacement, OCR, or explicit retirement. Do not manufacture terms or certify the missing evidence.

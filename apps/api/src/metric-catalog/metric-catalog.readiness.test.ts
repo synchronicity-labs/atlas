@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { canonicalQuestionReadiness } from "./metric-catalog.readiness";
+import {
+	canonicalQuestionReadiness,
+	catalogQuestionTrustSelect,
+} from "./metric-catalog.readiness";
 
 const certified = {
 	status: "ACTIVE" as const,
@@ -7,6 +10,7 @@ const certified = {
 	metricVersion: {
 		approvedAt: new Date("2026-09-01"),
 		metric: { status: "CERTIFIED" as const },
+		_count: { snapshots: 1 },
 		snapshots: [{ trustStatus: "VERIFIED" as const }],
 	},
 };
@@ -42,13 +46,41 @@ describe("canonical question readiness", () => {
 		expect(
 			canonicalQuestionReadiness("VERIFIED", {
 				...certified,
-				metricVersion: { ...certified.metricVersion, snapshots: [] },
+				metricVersion: {
+					...certified.metricVersion,
+					_count: { snapshots: 0 },
+					snapshots: [],
+				},
 			}),
 		).toBe("IMPLEMENTING");
 		expect(
 			canonicalQuestionReadiness("VERIFIED", {
 				...certified,
 				metricVersion: null,
+			}),
+		).toBe("RECONCILING");
+	});
+
+	test("keeps the last verified answer after a failed refresh of the same version", () => {
+		expect(catalogQuestionTrustSelect.metricVersion.select.snapshots).toEqual({
+			where: { trustStatus: "VERIFIED" },
+			orderBy: { computedAt: "desc" },
+			take: 1,
+			select: { trustStatus: true },
+		});
+		expect(
+			canonicalQuestionReadiness("VERIFIED", {
+				...certified,
+				metricVersion: {
+					...certified.metricVersion,
+					_count: { snapshots: 2 },
+				},
+			}),
+		).toBe("VERIFIED");
+		expect(
+			canonicalQuestionReadiness("VERIFIED", {
+				...certified,
+				metricVersion: { ...certified.metricVersion, snapshots: [] },
 			}),
 		).toBe("RECONCILING");
 	});

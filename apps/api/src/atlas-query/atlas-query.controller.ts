@@ -43,6 +43,13 @@ export class AtlasQueryController {
 		return this.atlas.question(number, query);
 	}
 
+	@Get("sources")
+	@AllowAnonymous()
+	sources(@Headers("authorization") authorization?: string) {
+		this.authorize(authorization);
+		return this.atlas.sources();
+	}
+
 	private authorize(authorization?: string): void {
 		if (!this.secret) {
 			throw new ServiceUnavailableException(

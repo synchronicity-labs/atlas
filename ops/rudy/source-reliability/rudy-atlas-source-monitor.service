@@ -1,0 +1,20 @@
+[Unit]
+Description=Check Atlas source deadlines independently of ingestion
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+Environment=HOME=/root
+UMask=0077
+EnvironmentFile=-/etc/rudy/atlas-reliability.conf
+ExecStart=/usr/local/sbin/rudy-atlas-source-monitor
+StateDirectory=rudy-atlas-source-monitor
+StateDirectoryMode=0700
+TimeoutStartSec=300
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/run
+ProtectHome=read-only

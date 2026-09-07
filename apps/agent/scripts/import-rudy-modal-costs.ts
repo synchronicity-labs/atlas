@@ -74,8 +74,11 @@ payload = {
 json.dump(payload, sys.stdout)
 `;
 
-const secret = process.env.CRON_SECRET?.trim();
-if (!secret) throw new Error("CRON_SECRET is required.");
+const secret =
+	process.env.ATLAS_MODAL_INGEST_SECRET?.trim() ||
+	process.env.CRON_SECRET?.trim();
+if (!secret)
+	throw new Error("ATLAS_MODAL_INGEST_SECRET or CRON_SECRET is required.");
 
 const python = Bun.which("python3");
 const modal = Bun.which("modal");

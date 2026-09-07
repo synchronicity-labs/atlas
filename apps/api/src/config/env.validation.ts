@@ -87,6 +87,11 @@ export class EnvironmentVariables {
 
 	@IsOptional()
 	@IsString()
+	@MinLength(32)
+	ATLAS_MODAL_INGEST_SECRET?: string;
+
+	@IsOptional()
+	@IsString()
 	BLOB_READ_WRITE_TOKEN?: string;
 
 	@IsOptional()

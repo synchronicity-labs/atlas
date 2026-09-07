@@ -73,6 +73,12 @@ question response includes its immutable result snapshot, saved definition,
 freshness status, content hash, idempotency key, and source provenance. Historical
 reads accept `reportingPeriod=YYYY-MM` and `asOf=<ISO timestamp>`.
 
+`GET /internal/atlas/sources` uses the same read-only credential. It returns all
+source states, successful-sync timestamps, freshness deadlines, latest run IDs,
+and affected dashboard numbers. Error text is reduced to a safe error class; raw
+vendor bodies, SQL, and customer data are not returned. The independent Rudy
+monitor uses this route without invoking ingestion or changing certification.
+
 These routes are intentionally read-only and separate from `CRON_SECRET` sync
 routes. They do not execute arbitrary queries, refresh a connector, edit a question,
 or mutate CRM records. Rudy should use this surface first and reach through to a

@@ -10,10 +10,55 @@ import { questionExplanation } from "../questions/question-explanation";
 import { questionNumberWhere } from "../questions/question-number";
 import { sanitizeQuestionResult } from "../questions/question-result-safety";
 import type { AtlasQuestionQuery } from "./atlas-query.contracts";
+import { sourceErrorSummary } from "./source-health";
 
 @Injectable()
 export class AtlasQueryService {
 	constructor(@InjectDatabase() private readonly db: Db) {}
+
+	async sources() {
+		const sources = await this.db.dataSource.findMany({
+			orderBy: { key: "asc" },
+			select: {
+				key: true,
+				label: true,
+				state: true,
+				lastSyncAt: true,
+				freshnessDeadlineAt: true,
+				lastError: true,
+				syncRuns: {
+					orderBy: { startedAt: "desc" },
+					take: 1,
+					select: { id: true, status: true, startedAt: true, finishedAt: true },
+				},
+				questions: {
+					where: { status: "ACTIVE" },
+					select: {
+						dashboardCards: {
+							select: { dashboard: { select: { number: true } } },
+						},
+					},
+				},
+			},
+		});
+		return {
+			schemaVersion: 1,
+			checkedAt: new Date().toISOString(),
+			sources: sources.map(({ questions, syncRuns, lastError, ...source }) => ({
+				...source,
+				required: source.state !== "UNCONFIGURED" || questions.length > 0,
+				lastError: sourceErrorSummary(lastError),
+				latestRun: syncRuns[0] ?? null,
+				dashboards: [
+					...new Set(
+						questions.flatMap((question) =>
+							question.dashboardCards.map((card) => card.dashboard.number),
+						),
+					),
+				].sort((a, b) => a - b),
+			})),
+		};
+	}
 
 	async catalog() {
 		const [dashboards, questions, metrics] = await Promise.all([

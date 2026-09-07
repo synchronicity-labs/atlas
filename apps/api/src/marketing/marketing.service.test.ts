@@ -1,6 +1,11 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, mock, test } from "bun:test";
+import type { Db } from "@crm/db";
+import type { ProductMetricPublisher } from "../metabase/product-metric.publisher";
+import type { TinybirdEligibilityService } from "../metabase/tinybird-eligibility.service";
+import type { GbrainEvidenceService } from "./gbrain-evidence.service";
 import {
 	groupMarketingQuestionsBySource,
+	MarketingService,
 	marketingAttemptVerificationRows,
 	requiresProductUserEligibility,
 } from "./marketing.service";
@@ -25,6 +30,46 @@ describe("marketing metric attempts", () => {
 });
 
 describe("marketing source runs", () => {
+	test("a targeted refresh never starts an unrelated source", async () => {
+		const sourceLookup = mock(async () => null);
+		const db = {
+			dashboard: {
+				findUnique: async () => ({
+					cards: [
+						{
+							question: {
+								id: "other",
+								number: 241,
+								sourceId: "other-source",
+								versions: [
+									{
+										queryLanguage: "API",
+										queryText: JSON.stringify({
+											source: "api_reliability",
+											report: "weekly-performance",
+											version: 1,
+										}),
+									},
+								],
+							},
+						},
+					],
+				}),
+			},
+			dataSource: { findUnique: sourceLookup },
+		} as unknown as Db;
+		const service = new MarketingService(
+			db,
+			{} as ProductMetricPublisher,
+			{} as TinybirdEligibilityService,
+			{} as GbrainEvidenceService,
+		);
+		await expect(service.syncDashboard(1, "target-source")).rejects.toThrow(
+			"no marketing questions",
+		);
+		expect(sourceLookup).not.toHaveBeenCalled();
+	});
+
 	test("keeps each configured source in an independent run group", () => {
 		const groups = groupMarketingQuestionsBySource([
 			{ number: 240, sourceId: "api-operations" },

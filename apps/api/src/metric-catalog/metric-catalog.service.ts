@@ -34,6 +34,10 @@ import {
 	normalizedMetricName,
 } from "./metric-catalog.parser";
 import { catalogQuestionSpec } from "./metric-catalog.questions";
+import {
+	canonicalQuestionReadiness,
+	catalogQuestionTrustSelect,
+} from "./metric-catalog.readiness";
 import { resolveCatalogSources } from "./metric-catalog.sources";
 
 const DEFAULT_SPREADSHEET_ID = "17oWmJqYGxWwHEbdVhvo1OCHLAUEv03bljDuPHaqGHwU";
@@ -608,6 +612,7 @@ export class MetricCatalogService {
 					lastSeenAt: true,
 					canonicalQuestion: {
 						select: {
+							...catalogQuestionTrustSelect,
 							number: true,
 							publicNumber: true,
 							name: true,
@@ -707,11 +712,16 @@ export class MetricCatalogService {
 		}
 		return entries.map((entry) => ({
 			...entry,
+			readiness: canonicalQuestionReadiness(
+				entry.readiness,
+				entry.canonicalQuestion,
+			),
 			canonicalQuestion: entry.canonicalQuestion
 				? {
 						...entry.canonicalQuestion,
 						number: entry.canonicalQuestion.publicNumber,
 						publicNumber: undefined,
+						metricVersion: undefined,
 					}
 				: null,
 			latestAttempt: entry.attempts[0]
@@ -759,7 +769,7 @@ export class MetricCatalogService {
 	}
 
 	async summary() {
-		const [entries, source, sourceStates] = await Promise.all([
+		const [storedEntries, source, sourceStates] = await Promise.all([
 			this.db.metricCatalogEntry.findMany({
 				where: { missingAt: null },
 				select: {
@@ -771,6 +781,7 @@ export class MetricCatalogService {
 					readiness: true,
 					metricId: true,
 					canonicalQuestionId: true,
+					canonicalQuestion: { select: catalogQuestionTrustSelect },
 					ambiguities: true,
 					sourceTabName: true,
 					evidence: { select: { id: true } },
@@ -796,6 +807,13 @@ export class MetricCatalogService {
 			}),
 			this.db.dataSource.findMany({ select: { key: true, state: true } }),
 		]);
+		const entries = storedEntries.map((entry) => ({
+			...entry,
+			readiness: canonicalQuestionReadiness(
+				entry.readiness,
+				entry.canonicalQuestion,
+			),
+		}));
 		const byKind = countBy(entries.map((entry) => entry.kind));
 		const byReadiness = countBy(entries.map((entry) => entry.readiness));
 		const kpis = entries.filter(

@@ -36,11 +36,14 @@ previous_start = (month_start - timedelta(days=1)).replace(day=1)
 entries = []
 env = dict(os.environ)
 env["MODAL_PROFILE"] = os.environ.get("MODAL_PROFILE", "synchronicity-labs")
-modal_command = shlex.split(os.environ.get("ATLAS_MODAL_COMMAND", "modal"))
+default_command = "/usr/local/sbin/rudy-modal-billing" if os.path.isfile("/usr/local/sbin/rudy-modal-billing") else "modal billing report"
+modal_command = shlex.split(os.environ.get("ATLAS_MODAL_COMMAND", default_command))
 
 for start, end in [(previous_start, month_start), (month_start, today)]:
+    if start >= end:
+        continue
     result = subprocess.run(
-        [*modal_command, "billing", "report", "--start", start.isoformat(), "--end", end.isoformat(), "--json"],
+        [*modal_command, "--start", start.isoformat(), "--end", end.isoformat(), "--json"],
         capture_output=True,
         text=True,
         timeout=120,
@@ -97,7 +100,9 @@ const command = hasLocalModal
 const env = hasLocalModal
 	? {
 			...process.env,
-			ATLAS_MODAL_COMMAND: modal || `${uvx} modal`,
+			ATLAS_MODAL_COMMAND: modal
+				? `${modal} billing report`
+				: `${uvx} modal billing report`,
 		}
 	: undefined;
 const child = Bun.spawn(command, {

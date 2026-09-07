@@ -324,13 +324,13 @@ function posthogQuery(start: Date, end: Date, eligibility: string): string {
 	const weeks = Array.from(
 		{ length: WEEKS },
 		(_, index) =>
-			`parseDateTimeBestEffort('${new Date(start.getTime() + index * WEEK_MS).toISOString()}')`,
+			`'${new Date(start.getTime() + index * WEEK_MS).toISOString().slice(0, 10)}'`,
 	).join(", ");
 	return `with weeks as (
   select arrayJoin([${weeks}]) as week_start
 ), organization_weeks as (
   select
-    toStartOfWeek(toTimeZone(timestamp, 'UTC'), 1) as week_start,
+    toString(toStartOfWeek(toTimeZone(timestamp, 'UTC'), 1)) as week_start,
     toString(properties.organization_id) as organization_id,
     max(event = 'exit_survey_incentive_shown') as offer_shown,
     max(event = 'exit_survey_incentive_earned') as reward_claimed,
@@ -362,7 +362,7 @@ function posthogQuery(start: Date, end: Date, eligibility: string): string {
   group by week_start, organization_id
 )
 select
-  weeks.week_start as week_start,
+  concat(weeks.week_start, 'T00:00:00.000Z') as week_start,
   countIf(offer_shown = 1) as offer_shown_organizations,
   countIf(offer_shown = 1 and incentive_declined = 1) as incentive_declines,
   countIf(offer_shown = 1 and continued_cancellation = 1) as continued_cancellations,

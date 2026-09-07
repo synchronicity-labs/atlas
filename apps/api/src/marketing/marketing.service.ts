@@ -252,7 +252,7 @@ export class MarketingService {
 		);
 	}
 
-	async syncDashboard(number = 3) {
+	async syncDashboard(number = 3, sourceId?: string) {
 		const dashboard = await this.db.dashboard.findUnique({
 			where: { number },
 			select: {
@@ -306,6 +306,7 @@ export class MarketingService {
 			).values(),
 		];
 		const questions = dashboardQuestions.filter((question) => {
+			if (sourceId && question.sourceId !== sourceId) return false;
 			const version = question.versions[0];
 			if (version?.queryLanguage !== "API") return false;
 			try {

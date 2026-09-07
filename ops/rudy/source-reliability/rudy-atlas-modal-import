@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+umask 077
+if [[ $# -gt 1 || ($# -eq 1 && "$1" != "--dry-run") ]]; then
+  exit 64
+fi
+exec /usr/local/sbin/rudy-doppler-host-chain-exec \
+  prd_core:ATLAS_API_URL \
+  prd_ops:ATLAS_MODAL_INGEST_SECRET \
+  -- /usr/bin/python3 /usr/local/lib/rudy-atlas-reliability/modal_collector.py "$@"

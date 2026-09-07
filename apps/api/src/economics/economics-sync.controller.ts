@@ -15,12 +15,14 @@ import { EconomicsService } from "./economics.service";
 @Controller("internal/sync/modal")
 export class EconomicsSyncController {
 	private readonly secret: string | undefined;
+	private readonly modalSecret: string | undefined;
 
 	constructor(
 		private readonly economics: EconomicsService,
 		config: ConfigService<EnvironmentVariables, true>,
 	) {
 		this.secret = config.get("CRON_SECRET", { infer: true });
+		this.modalSecret = config.get("ATLAS_MODAL_INGEST_SECRET", { infer: true });
 	}
 
 	@Post()
@@ -35,10 +37,17 @@ export class EconomicsSyncController {
 	}
 
 	private authorize(authorization?: string): void {
-		if (!this.secret) {
+		if (!this.secret && !this.modalSecret) {
 			throw new ServiceUnavailableException("Sync is not configured.");
 		}
-		if (!timingSafeEquals(authorization ?? "", `Bearer ${this.secret}`)) {
+		const accepted = [this.secret, this.modalSecret].filter(
+			(secret): secret is string => Boolean(secret),
+		);
+		if (
+			!accepted.some((secret) =>
+				timingSafeEquals(authorization ?? "", `Bearer ${secret}`),
+			)
+		) {
 			throw new ForbiddenException();
 		}
 	}

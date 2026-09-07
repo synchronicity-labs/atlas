@@ -344,7 +344,10 @@ nothing, and Calendar reads from `now` onwards.
 | Variable | Required | Notes |
 | --- | --- | --- |
 | `CRON_SECRET` | in deployed environments | Bearer guard on Google, Metabase, marketing, abuse, Modal import, and economics sync routes. Vercel sends it automatically as `Authorization: Bearer $CRON_SECRET`. Minimum 16 characters; every route **fails closed** if unset. |
-| `ATLAS_QUERY_SECRET` | when an internal agent reads Atlas | Read-only bearer credential for `/internal/atlas/catalog` and `/internal/atlas/questions/:number`. It cannot invoke sync routes or mutate data and **fails closed** if unset. |
+| `ATLAS_QUERY_SECRET` | when an internal agent or monitor reads Atlas | Read-only bearer credential for `/internal/atlas/catalog`, `/internal/atlas/questions/:number`, and `/internal/atlas/sources`. It cannot invoke sync routes or mutate data and **fails closed** if unset. |
+| `ATLAS_MODAL_INGEST_SECRET` | when the scoped Rudy Modal collector runs | Minimum 32 characters. Authorizes only `POST /internal/sync/modal`. Keep it outside Hermes. The existing `CRON_SECRET` remains valid for this route. |
+| `ATLAS_ALERT_SLACK_CHANNEL` | when Rudy source alerts are enabled | Slack channel ID. This host-only setting and `SLACK_BOT_TOKEN` are both required for delivery. |
+| `ATLAS_APP_URL` | optional for Rudy source alerts | Dashboard link origin. Defaults to `https://atlas.pr.sync.so`; it is not the API origin. |
 | `ATLAS_AUTHORING_SECRET` | when trusted automation proposes missing Atlas metrics | Dedicated bearer credential for `/internal/atlas/authoring/questions`. It can create idempotent drafts and request publication of a reviewed server-owned recipe. It cannot submit query text or set trust state. Keep it outside the agent process and call it through a narrow broker. Minimum 32 characters; the routes **fail closed** if unset. |
 | `RUDY_API_URL` | when Atlas chat uses the shared Rudy | Server-only URL for Rudy's Hermes session API. Use a Tailnet endpoint in a deployed environment or a loopback SSH tunnel for local development. |
 | `RUDY_API_KEY` | with `RUDY_API_URL` | Strong bearer credential shared only by Atlas's API process and Rudy's Hermes gateway. It never reaches browser code. |
@@ -371,11 +374,16 @@ Two things to do in Google Cloud before this works:
   review, so this is a decision, not a checkbox.
 
 The generated API deployment declares Google sync every five minutes, the Atlas
-scoreboard and progressive Metabase backfill every 15 minutes, marketing and
-inference-economics sync every eight hours, and abuse sync every six hours. The
+native scoreboard and progressive Metabase backfill every 15 minutes, selected
+Metabase dashboard lanes every five minutes, and marketing, inference-economics,
+and abuse sync every six hours. The
 definitions live in `apps/api/scripts/build-func.mjs`. Minute-level schedules need
-a Pro plan; on Hobby they silently become daily. The separate aggregate Modal
-collector must run on Rudy at least daily before the economics refresh.
+a Pro plan. The separate Rudy Modal timer runs at 00:10, 06:10, 12:10, and 18:10
+UTC, before economics at minute 53. Modal retains its 30-hour freshness deadline;
+the six-hour collection interval leaves room for provider and scheduler failures.
+The independent source monitor runs every five minutes. Both are opt-in host
+services; merging the code alone does not install or enable them. See the
+[Rudy reliability runbook](../ops/rudy/source-reliability/README.md).
 
 ## Database
 

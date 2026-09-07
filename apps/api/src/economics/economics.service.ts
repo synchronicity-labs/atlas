@@ -121,49 +121,73 @@ export class EconomicsService {
 		const contentHash = hash(payload);
 		const reportingPeriod = normalized.at(-1)?.month ?? month(input.capturedAt);
 		const capturedAt = new Date(input.capturedAt);
-		const created = await this.db.resultSnapshot.createMany({
-			data: [
-				{
-					idempotencyKey: `${MODAL_SOURCE}:${reportingPeriod}:${contentHash}`,
-					sourceId: source.id,
-					dashboardExternalId: "atlas:6",
-					questionExternalId: MODAL_RAW_QUESTION,
-					reportingPeriod,
-					capturedAt,
-					contentHash,
-					columns: json([
-						column("month", "Month", "type/DateTime"),
-						column("model", "Model", "type/Text"),
-						column("cost_usd", "Modal cost"),
-					]),
-					rows: json(
-						normalized.map((row) => [row.month, row.model, row.costUsd]),
+		return this.db.$transaction(async (tx) => {
+			const created = await tx.resultSnapshot.createMany({
+				data: [
+					{
+						idempotencyKey: `${MODAL_SOURCE}:${reportingPeriod}:${contentHash}`,
+						sourceId: source.id,
+						dashboardExternalId: "atlas:6",
+						questionExternalId: MODAL_RAW_QUESTION,
+						reportingPeriod,
+						capturedAt,
+						contentHash,
+						columns: json([
+							column("month", "Month", "type/DateTime"),
+							column("model", "Model", "type/Text"),
+							column("cost_usd", "Modal cost"),
+						]),
+						rows: json(
+							normalized.map((row) => [row.month, row.model, row.costUsd]),
+						),
+						rowCount: normalized.length,
+					},
+				],
+				skipDuplicates: true,
+			});
+			await tx.question.updateMany({
+				where: { sourceId: source.id, sourceExternalId: MODAL_RAW_QUESTION },
+				data: { lastCheckedAt: capturedAt },
+			});
+			await tx.dataSource.update({
+				where: { id: source.id },
+				data: {
+					state: SourceStatus.HEALTHY,
+					lastSyncAt: capturedAt,
+					lastError: null,
+					freshnessDeadlineAt: new Date(
+						capturedAt.getTime() + MODAL_FRESHNESS_MS,
 					),
-					rowCount: normalized.length,
 				},
-			],
-			skipDuplicates: true,
+			});
+			await tx.syncCursor.upsert({
+				where: {
+					sourceId_mode_scope: {
+						sourceId: source.id,
+						mode: SyncMode.INCREMENTAL,
+						scope: MODAL_RAW_QUESTION,
+					},
+				},
+				create: {
+					sourceId: source.id,
+					mode: SyncMode.INCREMENTAL,
+					scope: MODAL_RAW_QUESTION,
+					period: reportingPeriod,
+					cursor: contentHash,
+					lastSuccessAt: capturedAt,
+				},
+				update: {
+					period: reportingPeriod,
+					cursor: contentHash,
+					lastSuccessAt: capturedAt,
+				},
+			});
+			return {
+				reportingPeriod,
+				rows: normalized.length,
+				snapshotCreated: created.count === 1,
+			};
 		});
-		await this.db.question.updateMany({
-			where: { sourceId: source.id, sourceExternalId: MODAL_RAW_QUESTION },
-			data: { lastCheckedAt: capturedAt },
-		});
-		await this.db.dataSource.update({
-			where: { id: source.id },
-			data: {
-				state: SourceStatus.HEALTHY,
-				lastSyncAt: capturedAt,
-				lastError: null,
-				freshnessDeadlineAt: new Date(
-					capturedAt.getTime() + MODAL_FRESHNESS_MS,
-				),
-			},
-		});
-		return {
-			reportingPeriod,
-			rows: normalized.length,
-			snapshotCreated: created.count === 1,
-		};
 	}
 
 	async syncDashboard(number = 6) {
@@ -350,15 +374,27 @@ export class EconomicsService {
 		query: EconomicsQuery,
 		eligibility?: TinybirdEligibilitySnapshot,
 	): Promise<Result> {
+		const cursor = await this.db.syncCursor.findFirst({
+			where: {
+				source: { key: MODAL_SOURCE },
+				mode: SyncMode.INCREMENTAL,
+				scope: MODAL_RAW_QUESTION,
+			},
+			select: { cursor: true, lastSuccessAt: true },
+		});
 		const modal = await this.db.resultSnapshot.findFirst({
-			where: { questionExternalId: MODAL_RAW_QUESTION },
+			where: {
+				questionExternalId: MODAL_RAW_QUESTION,
+				source: { key: MODAL_SOURCE },
+				...(cursor?.cursor ? { contentHash: cursor.cursor } : {}),
+			},
 			orderBy: { capturedAt: "desc" },
 			select: { capturedAt: true, rows: true },
 		});
 		if (!modal) {
 			throw new Error("Modal billing has no imported aggregate snapshot.");
 		}
-		if (Date.now() - modal.capturedAt.getTime() > MODAL_FRESHNESS_MS) {
+		if (!modalImportIsFresh(modal.capturedAt, cursor?.lastSuccessAt ?? null)) {
 			throw new Error(
 				"Modal billing aggregate is stale and must be re-imported.",
 			);
@@ -591,4 +627,20 @@ function normalizeModel(model: string): string {
 	if (value === "sync-1.9.0-beta") return "sync-1.9";
 	if (value === "sync-3.0") return "sync-3";
 	return value || "other";
+}
+
+export function modalImportIsFresh(
+	capturedAt: Date,
+	lastCheckedAt: Date | null,
+	now = new Date(),
+): boolean {
+	const checkedAt = Math.max(
+		capturedAt.getTime(),
+		lastCheckedAt?.getTime() ?? 0,
+	);
+	return (
+		Number.isFinite(checkedAt) &&
+		checkedAt <= now.getTime() + 300_000 &&
+		now.getTime() - checkedAt <= MODAL_FRESHNESS_MS
+	);
 }

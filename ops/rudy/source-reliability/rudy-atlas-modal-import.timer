@@ -1,0 +1,11 @@
+[Unit]
+Description=Refresh Modal billing every six hours before Atlas economics refresh
+
+[Timer]
+OnCalendar=*-*-* 00,06,12,18:10:00 UTC
+Persistent=true
+RandomizedDelaySec=30
+Unit=rudy-atlas-modal-import.service
+
+[Install]
+WantedBy=timers.target

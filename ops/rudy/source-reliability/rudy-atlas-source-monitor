@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+umask 077
+if [[ $# -gt 1 || ($# -eq 1 && "$1" != "--dry-run") ]]; then
+  exit 64
+fi
+exec /usr/local/sbin/rudy-doppler-host-chain-exec \
+  prd_core:ATLAS_API_URL,ATLAS_QUERY_SECRET \
+  prd_doctor:SLACK_BOT_TOKEN \
+  -- /usr/bin/env ATLAS_ALERT_SLACK_CHANNEL="${ATLAS_ALERT_SLACK_CHANNEL:-}" \
+  ATLAS_APP_URL="${ATLAS_APP_URL:-https://atlas.pr.sync.so}" \
+  /usr/bin/python3 /usr/local/lib/rudy-atlas-reliability/atlas_source_monitor.py "$@"

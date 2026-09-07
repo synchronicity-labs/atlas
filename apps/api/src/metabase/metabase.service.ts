@@ -24,6 +24,10 @@ import {
 } from "./metabase.client";
 import { type MetabaseConfig, metabaseConfig } from "./metabase.config";
 import { prepareGovernedMetabaseQuery } from "./prepare-metabase-query";
+import {
+	attributionOutcomeVerificationChecks,
+	cohortOutcomeVerificationChecks,
+} from "./product-analytics-verification";
 import { productGapVerificationChecks } from "./product-gap-verification";
 import {
 	ProductMetricPublisher,
@@ -1203,6 +1207,22 @@ export class MetabaseService {
 							) {
 								verificationChecks.push(
 									...productGapVerificationChecks(result, executedQueryText),
+								);
+							}
+							if (
+								question.sourceExternalId ===
+								"atlas:product-analytics-coverage:attribution-outcome"
+							) {
+								verificationChecks.push(
+									...attributionOutcomeVerificationChecks(result),
+								);
+							}
+							if (
+								question.sourceExternalId ===
+								"atlas:product-analytics-coverage:cohort-outcomes"
+							) {
+								verificationChecks.push(
+									...cohortOutcomeVerificationChecks(result),
 								);
 							}
 							if (question.number === 1004 && version.sourceCardExternalId) {

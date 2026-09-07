@@ -12,6 +12,7 @@ export const billingExperimentReport = z.enum([
 	"live-funnel",
 	"live-readout",
 	"live-diagnostics",
+	"live-scorecard",
 	"milestones",
 ]);
 

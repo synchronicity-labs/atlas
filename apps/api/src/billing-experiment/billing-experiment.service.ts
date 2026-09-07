@@ -24,6 +24,8 @@ import {
 	type BillingExperimentQuery,
 	billingExperimentQuery,
 } from "./billing-experiment.contracts";
+import { buildBillingScorecard } from "./billing-scorecard";
+import { billingScorecardVerificationChecks } from "./billing-scorecard-verification";
 
 const SOURCE_KEY = "atlas:billing-experiment";
 const EXPERIMENT_START = "2026-06-22 00:00:00";
@@ -421,9 +423,10 @@ export class BillingExperimentService {
 			const version = question.versions[0];
 			if (!version) continue;
 			try {
-				const result = await this.execute(
-					billingExperimentQuery.parse(JSON.parse(version.queryText)),
+				const parsedQuery = billingExperimentQuery.parse(
+					JSON.parse(version.queryText),
 				);
+				const result = await this.execute(parsedQuery);
 				const payload = { columns: result.columns, rows: result.rows };
 				const contentHash = hash(payload);
 				const externalId =
@@ -465,9 +468,11 @@ export class BillingExperimentService {
 						scope: eligibility.scope,
 					},
 					verificationChecks:
-						question.sourceExternalId === "cron:billing-v3:diagnostics"
-							? billingDiagnosticsVerificationChecks(result)
-							: undefined,
+						parsedQuery.report === "live-scorecard"
+							? billingScorecardVerificationChecks(result)
+							: question.sourceExternalId === "cron:billing-v3:diagnostics"
+								? billingDiagnosticsVerificationChecks(result)
+								: undefined,
 				});
 				cardsProcessed += 1;
 				snapshotsCreated += created.count;
@@ -521,6 +526,9 @@ export class BillingExperimentService {
 		if (query.report === "milestones") return this.milestones();
 		const live = await this.live();
 		if (query.report === "live-diagnostics") return live.diagnostics;
+		if (query.report === "live-scorecard") {
+			return buildBillingScorecard(live);
+		}
 		if (query.report === "live-cash") {
 			return {
 				columns: [

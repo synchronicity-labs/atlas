@@ -1,3 +1,5 @@
+import { setTimeout as sleep } from "node:timers/promises";
+
 type BetterStackConfig = {
 	telemetryApiKey: string;
 	sqlEuHost: string;
@@ -51,7 +53,7 @@ export class BetterStackClient {
 					Authorization: `Bearer ${this.config.telemetryApiKey}`,
 				},
 			});
-			const payload = (await response.json()) as SourceResponse;
+			const payload = JSON.parse(response) as SourceResponse;
 			for (const item of payload.data ?? []) {
 				const attributes = item.attributes ?? {};
 				if (text(attributes.name) !== exactName) continue;
@@ -101,7 +103,7 @@ export class BetterStackClient {
 				body: `${query.trim().replace(/;$/, "")}\nFORMAT JSONEachRow`,
 			},
 		);
-		const body = await response.text();
+		const body = response;
 		if (!body.trim()) return [];
 		return body
 			.trim()
@@ -112,18 +114,28 @@ export class BetterStackClient {
 
 	private async request(url: URL, init: RequestInit) {
 		for (let attempt = 1; attempt <= 4; attempt += 1) {
-			const response = await fetch(url, {
-				...init,
-				signal: AbortSignal.timeout(60_000),
-			});
-			if (response.ok) return response;
-			const detail = (await response.text()).slice(0, 500);
-			if (attempt === 4 || !RETRYABLE_STATUS.has(response.status)) {
-				throw new Error(
-					`BetterStack request failed with HTTP ${response.status}: ${detail}`,
-				);
+			try {
+				const response = await fetch(url, {
+					...init,
+					signal: AbortSignal.timeout(60_000),
+				});
+				const body = await response.text();
+				if (response.ok) return body;
+				if (attempt === 4 || !RETRYABLE_STATUS.has(response.status)) {
+					throw new Error(
+						`BetterStack request failed with HTTP ${response.status}: ${body.slice(0, 500)}`,
+					);
+				}
+			} catch (error) {
+				if (
+					attempt !== 1 ||
+					!(error instanceof Error) ||
+					!["TimeoutError", "AbortError"].includes(error.name)
+				) {
+					throw error;
+				}
 			}
-			await Bun.sleep(250 * 2 ** (attempt - 1));
+			await sleep(250 * 2 ** (attempt - 1));
 		}
 		throw new Error("BetterStack request failed after retries.");
 	}

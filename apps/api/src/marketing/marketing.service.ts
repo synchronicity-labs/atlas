@@ -31,6 +31,7 @@ import {
 import {
 	apiReliabilityVerificationChecks,
 	apiReliabilityWeeklyReport,
+	canReuseApiReliability,
 } from "./api-reliability";
 import { BetterStackClient, betterStackConfig } from "./betterstack.client";
 import {
@@ -269,12 +270,24 @@ export class MarketingService {
 								sourceExternalId: true,
 								databaseExternalId: true,
 								metricVersionId: true,
+								lastCheckedAt: true,
+								metricVersion: {
+									select: {
+										snapshots: {
+											where: { trustStatus: "VERIFIED" },
+											orderBy: { computedAt: "desc" },
+											take: 1,
+											select: { dataThrough: true },
+										},
+									},
+								},
 								versions: {
 									orderBy: { version: "desc" },
 									take: 1,
 									select: {
 										id: true,
 										version: true,
+										createdAt: true,
 										queryLanguage: true,
 										queryText: true,
 									},
@@ -347,6 +360,17 @@ export class MarketingService {
 				}
 				try {
 					const parsedQuery = this.parse(version.queryText);
+					if (
+						parsedQuery.source === "api_reliability" &&
+						canReuseApiReliability({
+							lastCheckedAt: question.lastCheckedAt,
+							dataThrough: question.metricVersion?.snapshots[0]?.dataThrough,
+							versionCreatedAt: version.createdAt,
+						})
+					) {
+						sourceCardsProcessed += 1;
+						continue;
+					}
 					const eligibility = requiresProductUserEligibility(parsedQuery)
 						? await this.productUserEligibility()
 						: null;

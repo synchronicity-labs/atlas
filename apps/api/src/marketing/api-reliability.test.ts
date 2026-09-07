@@ -2,6 +2,7 @@ import { describe, expect, mock, test } from "bun:test";
 import {
 	apiReliabilityVerificationChecks,
 	apiReliabilityWeeklyReport,
+	canReuseApiReliability,
 } from "./api-reliability";
 import type { BetterStackClient } from "./betterstack.client";
 
@@ -53,7 +54,14 @@ describe("API reliability weekly report", () => {
 			expect(queryText).toContain(
 				"JSONExtractString(raw, 'message') = 'api_response'",
 			);
-			expect(queryText).not.toContain("remote(t202575_prod_sync_api_v2_logs)");
+			expect(queryText).toContain("remote(t202575_prod_sync_api_v2_logs)");
+			expect(queryText).toContain("union all");
+			expect(
+				queryText.match(/dt >= toDateTime\('2026-08-10 00:00:00'/g),
+			).toHaveLength(2);
+			expect(
+				queryText.match(/dt < toDateTime\('2026-08-24 00:00:00'/g),
+			).toHaveLength(2);
 		}
 		expect(
 			apiReliabilityVerificationChecks(result, query).map((check) => [
@@ -74,6 +82,30 @@ describe("API reliability weekly report", () => {
 				(check) => check.name === "betterstack_adapter",
 			)?.status,
 		).toBe("FAILED");
+		const set = (name: string, value: unknown) => {
+			const index = result.columns.findIndex((column) => column.name === name);
+			for (const row of result.rows) row[index] = value as string;
+		};
+		set("source_region", "eu-central-1a");
+		set("covered_hours", 321);
+		set("source_window_max", "2026-08-23T09:23:48.104Z");
+		expect(
+			apiReliabilityVerificationChecks(result, query).find(
+				(check) => check.name === "oldest_complete_watermark",
+			)?.status,
+		).toBe("FAILED");
+		set("source_window_max", "2026-08-23T23:59:59.949Z");
+		expect(
+			apiReliabilityVerificationChecks(result, query).find(
+				(check) => check.name === "oldest_complete_watermark",
+			)?.status,
+		).toBe("FAILED");
+		set("covered_hours", 336);
+		expect(
+			apiReliabilityVerificationChecks(result, query).every(
+				(check) => check.status === "PASSED",
+			),
+		).toBe(true);
 	});
 
 	test("fails closed when BetterStack has no covered source window", async () => {
@@ -130,6 +162,48 @@ describe("API reliability weekly report", () => {
 				now: new Date("2026-08-26T12:00:00Z"),
 			}),
 		).rejects.toThrow("exact endpoint registry");
+	});
+});
+
+describe("API reliability refresh reuse", () => {
+	const now = new Date("2026-09-07T12:00:00Z");
+	const current = {
+		now,
+		lastCheckedAt: new Date("2026-09-07T11:00:00Z"),
+		dataThrough: new Date("2026-09-07T00:00:00Z"),
+		versionCreatedAt: new Date("2026-08-26T00:00:00Z"),
+	};
+	test("reuses a checked current-week result for six hours", () => {
+		expect(canReuseApiReliability(current)).toBe(true);
+		expect(
+			canReuseApiReliability({
+				...current,
+				lastCheckedAt: new Date("2026-09-07T06:00:00Z"),
+			}),
+		).toBe(false);
+	});
+	test("refreshes after rollover, a definition edit, or a missing successful check", () => {
+		expect(
+			canReuseApiReliability({
+				...current,
+				dataThrough: new Date("2026-08-31T00:00:00Z"),
+			}),
+		).toBe(false);
+		expect(canReuseApiReliability({ ...current, versionCreatedAt: now })).toBe(
+			false,
+		);
+		expect(canReuseApiReliability({ ...current, lastCheckedAt: null })).toBe(
+			false,
+		);
+		expect(canReuseApiReliability({ ...current, dataThrough: null })).toBe(
+			false,
+		);
+		expect(
+			canReuseApiReliability({
+				...current,
+				lastCheckedAt: new Date("2026-09-08T00:00:00Z"),
+			}),
+		).toBe(false);
 	});
 });
 

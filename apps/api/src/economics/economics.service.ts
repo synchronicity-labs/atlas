@@ -6,7 +6,11 @@ import {
 	SyncMode,
 	SyncRunStatus,
 } from "@crm/db";
-import { Injectable, NotFoundException } from "@nestjs/common";
+import {
+	BadRequestException,
+	Injectable,
+	NotFoundException,
+} from "@nestjs/common";
 import { InjectDatabase } from "../database/database.constants";
 import { MetabaseClient } from "../metabase/metabase.client";
 import { metabaseConfig } from "../metabase/metabase.config";
@@ -27,6 +31,7 @@ const MODAL_SOURCE = "modal:billing";
 const MODAL_RAW_QUESTION = "economics:modal:cost-by-model-raw";
 const FRESHNESS_MS = 8 * 60 * 60 * 1000;
 const MODAL_FRESHNESS_MS = 30 * 60 * 60 * 1000;
+const MODAL_CLOCK_SKEW_MS = 5 * 60 * 1000;
 
 export const ECONOMICS_WAREHOUSE_QUERY = `with now('UTC') as end_utc
 select
@@ -104,6 +109,15 @@ export class EconomicsService {
 	}
 
 	async importModal(input: ModalImport) {
+		const capturedAt = new Date(input.capturedAt);
+		if (
+			!Number.isFinite(capturedAt.getTime()) ||
+			capturedAt.getTime() > Date.now() + MODAL_CLOCK_SKEW_MS
+		) {
+			throw new BadRequestException(
+				"Modal capturedAt must be valid and no more than five minutes in the future.",
+			);
+		}
 		const source = await this.db.dataSource.findUnique({
 			where: { key: MODAL_SOURCE },
 		});
@@ -120,8 +134,29 @@ export class EconomicsService {
 		const payload = { collector: input.collector, rows: normalized };
 		const contentHash = hash(payload);
 		const reportingPeriod = normalized.at(-1)?.month ?? month(input.capturedAt);
-		const capturedAt = new Date(input.capturedAt);
 		return this.db.$transaction(async (tx) => {
+			const advanced = await tx.dataSource.updateMany({
+				where: {
+					id: source.id,
+					OR: [{ lastSyncAt: null }, { lastSyncAt: { lt: capturedAt } }],
+				},
+				data: {
+					state: SourceStatus.HEALTHY,
+					lastSyncAt: capturedAt,
+					lastError: null,
+					freshnessDeadlineAt: new Date(
+						capturedAt.getTime() + MODAL_FRESHNESS_MS,
+					),
+				},
+			});
+			if (advanced.count === 0) {
+				return {
+					reportingPeriod,
+					rows: normalized.length,
+					snapshotCreated: false,
+					ignored: true,
+				};
+			}
 			const created = await tx.resultSnapshot.createMany({
 				data: [
 					{
@@ -149,17 +184,6 @@ export class EconomicsService {
 				where: { sourceId: source.id, sourceExternalId: MODAL_RAW_QUESTION },
 				data: { lastCheckedAt: capturedAt },
 			});
-			await tx.dataSource.update({
-				where: { id: source.id },
-				data: {
-					state: SourceStatus.HEALTHY,
-					lastSyncAt: capturedAt,
-					lastError: null,
-					freshnessDeadlineAt: new Date(
-						capturedAt.getTime() + MODAL_FRESHNESS_MS,
-					),
-				},
-			});
 			await tx.syncCursor.upsert({
 				where: {
 					sourceId_mode_scope: {
@@ -186,6 +210,7 @@ export class EconomicsService {
 				reportingPeriod,
 				rows: normalized.length,
 				snapshotCreated: created.count === 1,
+				ignored: false,
 			};
 		});
 	}
@@ -640,7 +665,7 @@ export function modalImportIsFresh(
 	);
 	return (
 		Number.isFinite(checkedAt) &&
-		checkedAt <= now.getTime() + 300_000 &&
+		checkedAt <= now.getTime() + MODAL_CLOCK_SKEW_MS &&
 		now.getTime() - checkedAt <= MODAL_FRESHNESS_MS
 	);
 }

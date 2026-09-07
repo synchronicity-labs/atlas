@@ -1,10 +1,19 @@
 import unittest
 from datetime import date, datetime, timezone
+from unittest.mock import patch
 
-from modal_collector import aggregate, windows
+from modal_collector import aggregate, run, windows
 
 
 class ModalCollectorTest(unittest.TestCase):
+    def test_invalid_origin_is_rejected_before_collection_or_credential_delivery(self):
+        for base in ["https://user@atlas.invalid", "https://atlas.invalid/path", "https://atlas.invalid?q=1", "https://atlas.invalid#part"]:
+            with patch.dict("os.environ", {"ATLAS_API_URL": base, "ATLAS_MODAL_INGEST_SECRET": "secret"}), patch("modal_collector.collect") as collect, patch("modal_collector.request_json") as request:
+                with self.assertRaises(RuntimeError):
+                    run()
+                collect.assert_not_called()
+                request.assert_not_called()
+
     def test_first_day_skips_the_empty_current_window(self):
         self.assertEqual(windows(date(2026, 9, 1)), [(date(2026, 8, 1), date(2026, 9, 1))])
 

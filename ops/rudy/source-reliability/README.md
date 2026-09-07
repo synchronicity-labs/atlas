@@ -87,6 +87,10 @@ cursor records the last checked content hash and timestamp. An unchanged import
 refreshes its check without rewriting history. If corrected vendor data returns
 to an earlier hash, economics selects that checked result, not an intervening
 snapshot. Older imports without this cursor retain snapshot-based freshness.
+Imports reject invalid timestamps and clock skew above five minutes. The source
+timestamp advances through an atomic conditional update in the same transaction
+as the snapshot and cursor. Older or equal timestamps return `ignored: true`
+without changing shared state, including when import requests overlap.
 
 The monitor reads every registered source independently of ingestion. A source
 is required if it is configured or has an active question. An unconfigured
@@ -94,6 +98,9 @@ source without an active question is skipped. Expired deadlines become stale
 even if the stored state is healthy or syncing. A sync in progress does not
 invalidate a still-fresh previous success. Missing freshness evidence is
 unavailable, never healthy.
+When a previously required source becomes non-required, its incident is marked
+inactive without a Slack recovery message. This local state change still happens
+during Slack backoff. Re-enabling the source starts a new incident lifecycle.
 
 Alerts contain the source, last success, deadline, latest run, a safe error class,
 dashboard links, and [OPS-30](https://linear.app/sync-labs/issue/OPS-30). Raw vendor

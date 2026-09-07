@@ -49,6 +49,27 @@ class SourceMonitorTest(unittest.TestCase):
     def test_missing_sources_do_not_produce_false_recovery(self):
         self.assertEqual(list(transitions([], {"product": {"status": "ERROR"}}, NOW)), [])
 
+    def test_unconfiguration_closes_the_incident_without_a_recovery(self):
+        state, sent, saved = {}, [], []
+        send = lambda row, status: sent.append(status)
+        persist = lambda value: saved.append(json.loads(json.dumps(value)))
+        deliver_transitions([source(state="ERROR")], state, NOW, send, persist)
+        deliver_transitions([source(required=False)], state, NOW, send, persist, delivery_allowed=False)
+        self.assertEqual(saved[-1]["product"]["status"], "UNCONFIGURED")
+        restored = saved[-1]
+        deliver_transitions([source()], restored, NOW, send, persist)
+        self.assertEqual(sent, ["ERROR"])
+        deliver_transitions([source(state="ERROR")], restored, NOW, send, persist)
+        deliver_transitions([source(state="ERROR")], restored, NOW, send, persist)
+        self.assertEqual(sent, ["ERROR", "ERROR"])
+
+    def test_first_or_repeated_unconfigured_checks_do_not_write_state(self):
+        saved = []
+        persist = lambda value: saved.append(value)
+        deliver_transitions([source(required=False)], {}, NOW, None, persist)
+        deliver_transitions([source(required=False)], {"product": {"status": "UNCONFIGURED"}}, NOW, None, persist)
+        self.assertEqual(saved, [])
+
     def test_malformed_stale_duplicate_or_empty_response_is_rejected(self):
         for rows in [[], [source(), source()], [{"key": "product"}], [source(lastSyncAt=42)], [source(latestRun="invalid")], [source(dashboards="invalid")]]:
             with self.assertRaises(ValueError):

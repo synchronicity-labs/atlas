@@ -29,7 +29,7 @@ test("repeated and reverted imports retain immutable snapshots and point to the 
 	const tx = {
 		resultSnapshot: { createMany },
 		question: { updateMany: mock(async () => ({})) },
-		dataSource: { update: mock(async () => ({})) },
+		dataSource: { updateMany: mock(async () => ({ count: 1 })) },
 		syncCursor: { upsert },
 	};
 	const db = {
@@ -70,6 +70,68 @@ test("repeated and reverted imports retain immutable snapshots and point to the 
 		}),
 	);
 	expect(db.$transaction).toHaveBeenCalledTimes(3);
+});
+
+test("invalid and excessive future timestamps are rejected before database access", async () => {
+	const findUnique = mock(async () => null);
+	const service = new EconomicsService(
+		{ dataSource: { findUnique } } as unknown as Db,
+		{} as TinybirdEligibilityService,
+		{} as ProductMetricPublisher,
+	);
+	for (const capturedAt of [
+		"invalid",
+		new Date(Date.now() + 6 * 60_000).toISOString(),
+	]) {
+		await expect(
+			service.importModal({
+				collector: "rudy-modal-billing-v1",
+				capturedAt,
+				rows: [{ month: "2026-09", model: "sync-3", costUsd: 1 }],
+			}),
+		).rejects.toThrow("no more than five minutes");
+	}
+	expect(findUnique).not.toHaveBeenCalled();
+});
+
+test("an older or duplicate import cannot replace source, question, snapshot, or cursor state", async () => {
+	const updateMany = mock(async () => ({ count: 0 }));
+	const createMany = mock(async () => ({ count: 1 }));
+	const questionUpdate = mock(async () => ({}));
+	const cursorUpsert = mock(async () => ({}));
+	const tx = {
+		dataSource: { updateMany },
+		resultSnapshot: { createMany },
+		question: { updateMany: questionUpdate },
+		syncCursor: { upsert: cursorUpsert },
+	};
+	const service = new EconomicsService(
+		{
+			dataSource: { findUnique: mock(async () => ({ id: "modal-source" })) },
+			$transaction: async (action: (client: typeof tx) => unknown) =>
+				action(tx),
+		} as unknown as Db,
+		{} as TinybirdEligibilityService,
+		{} as ProductMetricPublisher,
+	);
+	const capturedAt = new Date("2026-09-01T00:00:00Z");
+	const result = await service.importModal({
+		collector: "rudy-modal-billing-v1",
+		capturedAt: capturedAt.toISOString(),
+		rows: [{ month: "2026-09", model: "sync-3", costUsd: 1 }],
+	});
+	expect(result).toMatchObject({ ignored: true, snapshotCreated: false });
+	expect(updateMany).toHaveBeenCalledWith(
+		expect.objectContaining({
+			where: {
+				id: "modal-source",
+				OR: [{ lastSyncAt: null }, { lastSyncAt: { lt: capturedAt } }],
+			},
+		}),
+	);
+	expect(createMany).not.toHaveBeenCalled();
+	expect(questionUpdate).not.toHaveBeenCalled();
+	expect(cursorUpsert).not.toHaveBeenCalled();
 });
 
 test("economics selects the last checked content even when it is not the newest snapshot", async () => {

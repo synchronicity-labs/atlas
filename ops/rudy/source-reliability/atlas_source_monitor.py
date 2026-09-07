@@ -6,9 +6,7 @@ import tempfile
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from urllib.parse import urlparse
-
-from atlas_http import RateLimited, request_json
+from atlas_http import RateLimited, https_origin, request_json
 
 
 def instant(value):
@@ -94,7 +92,7 @@ def transitions(sources, previous, now):
             continue
         if before and before["status"] == status:
             continue
-        if status == "HEALTHY" and not before:
+        if status == "HEALTHY" and (not before or before["status"] == "UNCONFIGURED"):
             continue
         yield source, status
 
@@ -117,7 +115,14 @@ def save_state(path, state):
             os.unlink(temporary)
 
 
-def deliver_transitions(sources, state, now, send, persist):
+def deliver_transitions(sources, state, now, send, persist, delivery_allowed=True):
+    for source in sources:
+        before = state.get(source["key"])
+        if not source["required"] and before and before["status"] != "UNCONFIGURED":
+            state[source["key"]] = {"status": "UNCONFIGURED", "inactiveAt": now.isoformat()}
+            persist(state)
+    if not delivery_allowed:
+        return 0
     delivered = 0
     for source, status in transitions(sources, state, now):
         send(source, status)
@@ -128,7 +133,7 @@ def deliver_transitions(sources, state, now, send, persist):
 
 
 def run(dry_run=False, state_dir=Path("/var/lib/rudy-atlas-source-monitor")):
-    base = os.environ.get("ATLAS_API_URL", "").rstrip("/")
+    base = os.environ.get("ATLAS_API_URL", "")
     app = os.environ.get("ATLAS_APP_URL", "https://atlas.pr.sync.so").rstrip("/")
     token = os.environ.get("ATLAS_QUERY_SECRET", "")
     channel = os.environ.get("ATLAS_ALERT_SLACK_CHANNEL", "")
@@ -136,9 +141,7 @@ def run(dry_run=False, state_dir=Path("/var/lib/rudy-atlas-source-monitor")):
     if not base or not token or not dry_run and not (channel and slack_token):
         print(json.dumps({"status": "disabled", "reason": "Missing optional monitor configuration"}))
         return
-    origin = urlparse(base)
-    if origin.scheme != "https" or not origin.netloc or origin.username or origin.path or origin.query or origin.fragment:
-        raise RuntimeError("Atlas monitor requires an HTTPS API origin")
+    base = https_origin(base)
     now = datetime.now(timezone.utc)
     monitor = {"key": "__monitor__", "label": "Atlas source health endpoint", "required": True,
                "state": "HEALTHY", "lastSyncAt": now.isoformat(),
@@ -161,9 +164,7 @@ def run(dry_run=False, state_dir=Path("/var/lib/rudy-atlas-source-monitor")):
             raise RuntimeError("Incident state is invalid; preserve it for investigation")
         backoff_path = state_dir / "slack-backoff.json"
         backoff = json.loads(backoff_path.read_text()) if backoff_path.exists() else {}
-        if backoff.get("until", 0) > time.time():
-            print(json.dumps({"status": "delivery_deferred", "reason": "Slack Retry-After is active"}))
-            return
+        delivery_allowed = backoff.get("until", 0) <= time.time()
 
         def send(source, status):
             response = request_json("https://slack.com/api/chat.postMessage", slack_token, {
@@ -175,10 +176,13 @@ def run(dry_run=False, state_dir=Path("/var/lib/rudy-atlas-source-monitor")):
             time.sleep(1.1)
 
         try:
-            delivered = deliver_transitions(sources, state, now, send, lambda value: save_state(path, value))
+            delivered = deliver_transitions(sources, state, now, send, lambda value: save_state(path, value), delivery_allowed)
         except RateLimited as error:
             save_state(backoff_path, {"until": time.time() + error.retry_after})
             raise
+        if not delivery_allowed:
+            print(json.dumps({"status": "delivery_deferred", "reason": "Slack Retry-After is active"}))
+            return
         print(json.dumps({"sourcesChecked": len(sources) - 1, "notificationsSent": delivered}))
 
 

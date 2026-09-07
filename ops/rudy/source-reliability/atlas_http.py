@@ -4,6 +4,22 @@ import time
 import urllib.error
 import urllib.request
 from email.utils import parsedate_to_datetime
+from urllib.parse import urlparse
+
+
+def https_origin(value):
+    try:
+        origin = urlparse(value)
+        port = origin.port
+        valid = (origin.scheme == "https" and origin.hostname and origin.username is None
+                 and origin.path in {"", "/"} and "?" not in value and "#" not in value
+                 and not any(character.isspace() or ord(character) < 32 or character == "\\" for character in value)
+                 and (port is None or 0 < port <= 65535))
+    except ValueError:
+        valid = False
+    if not valid:
+        raise RuntimeError("Atlas requires an HTTPS origin without user information, path, query, or fragment")
+    return f"https://{origin.netloc}"
 
 
 class RateLimited(RuntimeError):

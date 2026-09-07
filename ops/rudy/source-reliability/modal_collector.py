@@ -5,9 +5,7 @@ import os
 import subprocess
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
-from urllib.parse import urlparse
-
-from atlas_http import request_json
+from atlas_http import https_origin, request_json
 
 
 MODELS = {
@@ -79,13 +77,13 @@ def collect(now):
 
 
 def run(dry_run=False):
-    base = os.environ.get("ATLAS_API_URL", "").rstrip("/")
+    base = os.environ.get("ATLAS_API_URL", "")
     secret = os.environ.get("ATLAS_MODAL_INGEST_SECRET", "")
     if not dry_run and not (base and secret):
         print(json.dumps({"status": "disabled", "reason": "Missing optional Modal ingestion configuration"}))
         return
-    if not dry_run and (urlparse(base).scheme != "https" or not urlparse(base).netloc):
-        raise RuntimeError("Modal collector requires an HTTPS Atlas origin")
+    if not dry_run:
+        base = https_origin(base)
     payload = collect(datetime.now(timezone.utc))
     if dry_run:
         print(json.dumps({"dryRun": True, "rows": len(payload["rows"]), "months": sorted({row["month"] for row in payload["rows"]})}))
@@ -93,7 +91,7 @@ def run(dry_run=False):
     result = request_json(base + "/internal/sync/modal", secret, payload)
     if not isinstance(result.get("snapshotCreated"), bool) or result.get("rows") != len(payload["rows"]):
         raise RuntimeError("Atlas did not acknowledge the Modal snapshot")
-    print(json.dumps({"rowsImported": len(payload["rows"]), "result": result}))
+    print(json.dumps({"rowsImported": 0 if result.get("ignored") is True else len(payload["rows"]), "result": result}))
 
 
 if __name__ == "__main__":

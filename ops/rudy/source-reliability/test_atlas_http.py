@@ -3,10 +3,21 @@ import unittest
 import urllib.error
 from unittest.mock import Mock, patch
 
-from atlas_http import NoRedirect, RateLimited, request_json, retry_delay
+from atlas_http import NoRedirect, RateLimited, https_origin, request_json, retry_delay
 
 
 class AtlasHttpTest(unittest.TestCase):
+    def test_https_origin_accepts_only_bare_origins_and_optional_root_slash(self):
+        self.assertEqual(https_origin("https://atlas.invalid/"), "https://atlas.invalid")
+        self.assertEqual(https_origin("https://atlas.invalid:8443"), "https://atlas.invalid:8443")
+        self.assertEqual(https_origin("https://[::1]:8443"), "https://[::1]:8443")
+        for value in ["http://atlas.invalid", "https:///", "https://user@atlas.invalid", "https://@atlas.invalid",
+                      "https://atlas.invalid/path", "https://atlas.invalid//", "https://atlas.invalid?query=1", "https://atlas.invalid?",
+                      "https://atlas.invalid#fragment", "https://atlas.invalid#", "https://atlas.invalid:bad", "https://atlas.invalid:65536",
+                      "https://atlas.invalid:0", "https://atlas.invalid\\path", " https://atlas.invalid", "https://atlas.invalid\n"]:
+            with self.subTest(value=value), self.assertRaises(RuntimeError):
+                https_origin(value)
+
     def test_redirect_never_forwards_a_credential(self):
         with self.assertRaisesRegex(RuntimeError, "refused a redirect"):
             NoRedirect().redirect_request(None, None, 302, "", {}, "https://elsewhere.invalid")

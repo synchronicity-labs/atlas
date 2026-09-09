@@ -1,0 +1,46 @@
+{
+  "baseline": "2202861",
+  "period": "2026-03-01 through 2026-09-01, exclusive",
+  "parity": "Exact ordered application rows, all fields and source count",
+  "measurement": "One complete export per variant; baseline SQL uses the export endpoint to avoid replaying 50 production scans",
+  "incidentBaselineRequests": 50,
+  "afterRequests": 1,
+  "runs": [
+    {
+      "variant": "before",
+      "rows": 49288,
+      "elapsedMs": 3709.3397919999998,
+      "sha256": "3a70c0c6defcdaa926b52112aecf314c2d4bbc67fb6d02ba04da3711a7552268"
+    },
+    {
+      "variant": "after",
+      "rows": 49288,
+      "elapsedMs": 3348.6236670000008,
+      "sha256": "3a70c0c6defcdaa926b52112aecf314c2d4bbc67fb6d02ba04da3711a7552268"
+    },
+    {
+      "variant": "after",
+      "rows": 49288,
+      "elapsedMs": 3352.2064999999984,
+      "sha256": "3a70c0c6defcdaa926b52112aecf314c2d4bbc67fb6d02ba04da3711a7552268"
+    },
+    {
+      "variant": "before",
+      "rows": 49288,
+      "elapsedMs": 3561.9327080000003,
+      "sha256": "3a70c0c6defcdaa926b52112aecf314c2d4bbc67fb6d02ba04da3711a7552268"
+    },
+    {
+      "variant": "before",
+      "rows": 49288,
+      "elapsedMs": 3371.2810419999987,
+      "sha256": "3a70c0c6defcdaa926b52112aecf314c2d4bbc67fb6d02ba04da3711a7552268"
+    },
+    {
+      "variant": "after",
+      "rows": 49288,
+      "elapsedMs": 3517.936834,
+      "sha256": "3a70c0c6defcdaa926b52112aecf314c2d4bbc67fb6d02ba04da3711a7552268"
+    }
+  ]
+}

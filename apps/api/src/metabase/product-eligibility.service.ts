@@ -19,7 +19,7 @@ import {
 import { ProductMetricPublisher } from "./product-metric.publisher";
 
 const SOURCE_KEY = "atlas:product-eligibility";
-const PAGE_SIZE = 1_000;
+const MAX_ATTRIBUTION_ROWS = 1_000_000;
 const FRESHNESS_MS = 8 * 60 * 60 * 1_000;
 
 type AttributionRow = {
@@ -563,62 +563,60 @@ export class ProductEligibilityService {
 		const start = `${periods[0]}-01 00:00:00`;
 		const end = `${nextMonth(periods.at(-1) ?? periods[0] ?? "")}-01 00:00:00`;
 		const rows: AttributionRow[] = [];
-		let sourceRows = 0;
-		for (let offset = 0; ; offset += PAGE_SIZE) {
-			const result = await client.preview({
-				language: "SQL",
-				databaseExternalId: "166",
-				queryText: `with professional as (
-  select toStartOfMonth(generationCreatedAt) as month, organizationId
+		const result = await client.exportRows({
+			databaseExternalId: "166",
+			queryText: `with attributed as (
+  select toStartOfMonth(generationCreatedAt) as period, organizationId,
+    toDate(generationCreatedAt) as activity_date,
+    ifNull(userId, '') as user_id, ifNull(apiKeyId, '') as api_key_id,
+    uniqExactState(generationId) as generation_ids,
+    sum(generationCostMillicents) as accrued_millicents,
+    max(generationCreatedAt) as last_activity_at
   from sync_prod.sync_usage3
   where generationCreatedAt >= toDateTime('${start}')
     and generationCreatedAt < toDateTime('${end}')
     and organizationId != ''
     and organizationPlanType in ('hobbyist','creator','growth','scale')
-  group by month, organizationId
-  having countDistinct(generationId) >= 3
-    and countDistinct(toDate(generationCreatedAt)) >= 2
-    and sum(generationCostMillicents) / 100000.0 >= 100
-), attributed as (
-  select
-    toStartOfMonth(u.generationCreatedAt) as period,
-    u.organizationId,
-    toDate(u.generationCreatedAt) as activity_date,
-    ifNull(u.userId, '') as user_id,
-    ifNull(u.apiKeyId, '') as api_key_id,
-    countDistinct(u.generationId) as generations,
-    sum(u.generationCostMillicents) / 100000.0 as accrued_value_usd,
-    max(u.generationCreatedAt) as last_activity_at
-  from sync_prod.sync_usage3 u
-  inner join professional p
-    on p.month = toStartOfMonth(u.generationCreatedAt)
-    and p.organizationId = u.organizationId
-  where u.generationCreatedAt >= toDateTime('${start}')
-    and u.generationCreatedAt < toDateTime('${end}')
-    and u.organizationPlanType in ('hobbyist','creator','growth','scale')
-  group by period, u.organizationId, activity_date, user_id, api_key_id
+  group by period, organizationId, activity_date, user_id, api_key_id
+), qualified as (
+  select *,
+    uniqExactMerge(generation_ids) over (partition by period, organizationId) as monthly_generations,
+    uniqExact(activity_date) over (partition by period, organizationId) as active_days,
+    sum(accrued_millicents) over (partition by period, organizationId) as monthly_millicents
+  from attributed
 )
-select *, count() over() as source_row_count
-from attributed
+select period, organizationId, activity_date, user_id, api_key_id,
+  finalizeAggregation(generation_ids) as generations,
+  accrued_millicents / 100000.0 as accrued_value_usd, last_activity_at,
+  count() over() as source_row_count
+from qualified
+where monthly_generations >= 3 and active_days >= 2
+  and monthly_millicents / 100000.0 >= 100
 order by period, organizationId, activity_date, user_id, api_key_id
-limit ${PAGE_SIZE} offset ${offset}`,
-			});
-			for (const values of result.rows) {
-				rows.push({
-					period: text(values[0]).slice(0, 7),
-					organizationId: text(values[1]),
-					activityDate: text(values[2]).slice(0, 10),
-					userId: text(values[3]),
-					apiKeyId: text(values[4]),
-					generations: number(values[5]),
-					accruedValueUsd: number(values[6]),
-					lastActivityAt: date(values[7]),
-				});
-				sourceRows = Math.max(sourceRows, number(values[8]));
-			}
-			if (result.rows.length < PAGE_SIZE) break;
+limit ${MAX_ATTRIBUTION_ROWS}`,
+		});
+		const sourceRows =
+			result.length === 0 ? 0 : Number(result[0]?.source_row_count);
+		if (
+			!Number.isSafeInteger(sourceRows) ||
+			sourceRows !== result.length ||
+			result.some((row) => Number(row.source_row_count) !== sourceRows)
+		) {
+			throw new Error("Product attribution export is incomplete.");
 		}
-		return { rows, sourceRows, complete: rows.length === sourceRows };
+		for (const values of result) {
+			rows.push({
+				period: text(values.period).slice(0, 7),
+				organizationId: text(values.organizationId),
+				activityDate: text(values.activity_date).slice(0, 10),
+				userId: text(values.user_id),
+				apiKeyId: text(values.api_key_id),
+				generations: number(values.generations),
+				accruedValueUsd: number(values.accrued_value_usd),
+				lastActivityAt: date(values.last_activity_at),
+			});
+		}
+		return { rows, sourceRows, complete: true };
 	}
 
 	private async principals(

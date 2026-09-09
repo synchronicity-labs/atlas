@@ -59,6 +59,58 @@ const enterprisePolicy = {
 	includedOrganizationLabels: [],
 };
 
+describe("completion-source revenue eligibility", () => {
+	it.each([
+		[applyRevenueDoorPolicy, policy],
+		[applyPartnerRevenueDoorPolicy, partnerPolicy],
+		[applyEnterpriseRevenueDoorPolicy, enterprisePolicy],
+	] as const)("preserves every revenue-door predicate", (apply, doorPolicy) => {
+		const before = apply("select * from sync_prod.sync_usage3", doorPolicy);
+		const after = apply(
+			"select * from sync_prod.sync_usage_by_completion",
+			doorPolicy,
+		);
+		expect(after.applied).toBe(true);
+		expect(
+			after.queryText.replaceAll(
+				"sync_prod.sync_usage_by_completion",
+				"sync_prod.sync_usage3",
+			),
+		).toBe(before.queryText);
+		const eligibility = {
+			capturedAt: new Date("2026-09-09T00:00:00Z"),
+			contentHash: "fixture",
+			excludedUserIds: ["internal-user"],
+			excludedOrganizationIds: ["internal-org"],
+			excludedCustomerIds: ["internal-customer"],
+			complete: true,
+			sourceRows: 1,
+			returnedRows: 1,
+			scope: "SUBSCRIBED_ORGANIZATIONS" as const,
+			policy: "MONEY" as const,
+		};
+		const governedBefore = governTinybirdQuery(
+			before.queryText,
+			"166",
+			eligibility,
+		);
+		const governedAfter = governTinybirdQuery(
+			after.queryText,
+			"166",
+			eligibility,
+		);
+		expect(governedAfter.applied).toBe(true);
+		expect(
+			governedAfter.queryText.replaceAll(
+				"sync_prod.sync_usage_by_completion",
+				"sync_prod.sync_usage3",
+			),
+		).toBe(governedBefore.queryText);
+		expect(governedAfter.eligibility).toEqual(governedBefore.eligibility);
+		expect(governedAfter.queryText).toContain('"userId" not in');
+	});
+});
+
 describe("applyRevenueDoorPolicy", () => {
 	it("covers every governed revenue question", () => {
 		expect(usesRevenueDoorPolicy(1101)).toBe(true);

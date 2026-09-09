@@ -9,7 +9,10 @@ import { Injectable } from "@nestjs/common";
 import { InjectDatabase } from "../database/database.constants";
 
 const POLICY_ID = "company-revenue-doors";
-const USAGE_TABLE = "sync_prod.sync_usage3";
+const USAGE_TABLES = [
+	"sync_prod.sync_usage3",
+	"sync_prod.sync_usage_by_completion",
+] as const;
 const SUBSCRIPTION_TABLE = "sync_prod.sync_stripe_subscriptions_with_plan";
 const RAW_SUBSCRIPTION_TABLE = "sync_prod.sync_stripe_subscriptions";
 const ORGANIZATION_TABLES = [
@@ -351,13 +354,23 @@ export class RevenueDoorPolicyService {
 	}
 }
 
+function wrapUsageTables(queryText: string, predicate: string) {
+	let governed = queryText;
+	let applied = false;
+	for (const table of USAGE_TABLES) {
+		const result = wrapTable(governed, table, predicate);
+		governed = result.queryText;
+		applied ||= result.applied;
+	}
+	return { queryText: governed, applied };
+}
+
 export function applyEnterpriseRevenueDoorPolicy(
 	queryText: string,
 	policy: ResolvedRevenueDoorPolicy,
 ): { queryText: string; applied: boolean } {
-	const usage = wrapTable(
+	const usage = wrapUsageTables(
 		queryText,
-		USAGE_TABLE,
 		[
 			enterpriseCombinedPredicate(
 				"lower(coalesce(\"organizationPlanType\", ''))",
@@ -404,9 +417,8 @@ export function applyPartnerRevenueDoorPolicy(
 	queryText: string,
 	policy: ResolvedRevenueDoorPolicy,
 ): { queryText: string; applied: boolean } {
-	const usage = wrapTable(
+	const usage = wrapUsageTables(
 		queryText,
-		USAGE_TABLE,
 		[
 			partnerCombinedPredicate(
 				"lower(coalesce(\"organizationPlanType\", ''))",
@@ -464,9 +476,8 @@ export function applyRevenueDoorPolicy(
 	queryText: string,
 	policy: ResolvedRevenueDoorPolicy,
 ): { queryText: string; applied: boolean } {
-	const usage = wrapTable(
+	const usage = wrapUsageTables(
 		queryText,
-		USAGE_TABLE,
 		[
 			combinedPredicate(
 				"lower(coalesce(\"organizationPlanType\", ''))",

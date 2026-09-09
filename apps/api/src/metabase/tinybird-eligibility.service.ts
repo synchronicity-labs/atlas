@@ -23,6 +23,7 @@ limit 2000`;
 
 const USER_TABLES = [
 	"sync_prod.sync_usage3",
+	"sync_prod.sync_usage_by_completion",
 	"sync_prod.sync_usage_integration_tts",
 	"sync_prod.sync_usage_integration_dubbing",
 ] as const;

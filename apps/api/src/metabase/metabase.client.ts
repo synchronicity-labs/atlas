@@ -439,6 +439,36 @@ export class MetabaseClient {
 		return this.result(raw);
 	}
 
+	async exportRows(
+		input: Pick<MetabasePreviewInput, "databaseExternalId" | "queryText">,
+	): Promise<Record<string, unknown>[]> {
+		const database = Number(input.databaseExternalId);
+		if (!Number.isSafeInteger(database) || database <= 0) {
+			throw new Error("This question has no Metabase database connection.");
+		}
+		assertReadOnlyQuery("SQL", input.queryText);
+		const raw = await this.request<unknown>("/api/dataset/json", {
+			method: "POST",
+			body: JSON.stringify({
+				query: {
+					database,
+					type: "native",
+					native: { query: input.queryText },
+					parameters: [],
+				},
+				format_rows: false,
+			}),
+			signal: AbortSignal.timeout(PREVIEW_TIMEOUT_MS),
+		});
+		if (
+			!Array.isArray(raw) ||
+			raw.some((row) => !row || typeof row !== "object" || Array.isArray(row))
+		) {
+			throw new Error("Metabase export did not return rows.");
+		}
+		return raw;
+	}
+
 	private result(raw: DatasetResponse): MetabaseResult {
 		if (raw.status === "failed" || raw.error) {
 			throw new Error(

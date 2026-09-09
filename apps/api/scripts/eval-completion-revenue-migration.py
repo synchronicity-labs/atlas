@@ -23,7 +23,7 @@ def main():
 
     source = Path("packages/db/prisma/migrations/20260824190000_stripe_subscription_and_collection_reconciliation/migration.sql").read_text()
     original = source.split("atlas-weekly-revenue-version-product-run-rate-v6", 1)[1].split("$query$", 2)[1]
-    migration = Path("packages/db/prisma/migrations/20260909210000_completion_ordered_revenue_usage/migration.sql").read_text()
+    migration = Path("ops/tinybird/cutover-completion-revenue.sql").read_text()
     sql(f'CREATE SCHEMA "{schema}"')
     try:
         sql('''CREATE TABLE "question" (id text PRIMARY KEY, number integer);
@@ -53,7 +53,7 @@ INSERT INTO "questionVersion" VALUES
         sql(migration)
         assert sql('SELECT count(*) FROM "questionVersion"') == "3"
         assert sql('SELECT "queryText" FROM "questionVersion" WHERE id = \'other\'') == "select 1"
-        sql('DELETE FROM "questionVersion" WHERE id = \'atlas-revenue-version-product-run-rate-completion\'; UPDATE "questionVersion" SET "queryText" = \'select 2\' WHERE id = \'original\';')
+        sql('DELETE FROM "questionVersion" WHERE id = \'atlas-revenue-version-product-run-rate-completion-verified\'; UPDATE "questionVersion" SET "queryText" = \'select 2\' WHERE id = \'original\';')
         sql(migration, expected_success=False)
         assert sql('SELECT count(*) FROM "questionVersion"') == "2"
         print(json.dumps({"parity": "passed", "cases": ["preserves original version", "changes only usage source and matching date bounds", "preserves question metadata", "next version", "idempotence", "unrelated question unchanged", "rejects unexpected latest SQL"]}))

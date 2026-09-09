@@ -2,7 +2,7 @@ DO $migration$
 BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM "questionVersion"
-    WHERE "id" = 'atlas-revenue-version-product-run-rate-completion'
+    WHERE "id" = 'atlas-revenue-version-product-run-rate-completion-verified'
   ) AND EXISTS (
     SELECT 1
     FROM "question" q
@@ -26,7 +26,7 @@ INSERT INTO "questionVersion" (
   "visualization", "sourceCardExternalId", "createdBy", "createdAt"
 )
 SELECT
-  'atlas-revenue-version-product-run-rate-completion',
+  'atlas-revenue-version-product-run-rate-completion-verified',
   q."id",
   latest."version" + 1,
   latest."queryLanguage",
@@ -53,6 +53,6 @@ JOIN LATERAL (
 WHERE q."number" = 1102
   AND NOT EXISTS (
     SELECT 1 FROM "questionVersion"
-    WHERE "id" = 'atlas-revenue-version-product-run-rate-completion'
+    WHERE "id" = 'atlas-revenue-version-product-run-rate-completion-verified'
   )
 ON CONFLICT ("id") DO NOTHING;

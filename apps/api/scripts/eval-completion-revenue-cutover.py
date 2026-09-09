@@ -9,7 +9,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--postgres-container", required=True)
     args = parser.parse_args()
-    schema = "revenue_migration_eval_" + uuid.uuid4().hex
+    schema = "revenue_cutover_eval_" + uuid.uuid4().hex
 
     def sql(statement, expected_success=True):
         result = subprocess.run(

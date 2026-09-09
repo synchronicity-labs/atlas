@@ -16,7 +16,7 @@ BEGIN
   cross join bounds
 ), topups as ($before$ IN latest."queryText") = 0
   ) THEN
-    RAISE EXCEPTION 'Question 1102 usage query has changed; verify the completion-source migration before applying it';
+    RAISE EXCEPTION 'Question 1102 usage query has changed; verify the completion-source cutover before applying it';
   END IF;
 END
 $migration$;

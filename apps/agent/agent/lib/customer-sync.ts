@@ -3,7 +3,6 @@ import { reconcileContracts } from "./contracts-reconciliation";
 import { syncHubspot } from "./hubspot-sync";
 import { syncPosthogLinkedUsers } from "./posthog-users";
 import { syncSalesDashboard } from "./sales-dashboard";
-import { syncSupportOperations } from "./support-sync";
 
 export async function runCustomerSync() {
 	const contracts = await syncContractsDrive().catch((error) => ({
@@ -22,10 +21,6 @@ export async function runCustomerSync() {
 		configured: true,
 		error: error instanceof Error ? error.message : String(error),
 	}));
-	const support = await syncSupportOperations().catch((error) => ({
-		configured: true,
-		error: error instanceof Error ? error.message : String(error),
-	}));
 	const contractReconciliation = await reconcileContracts().catch((error) => ({
 		configured: true,
 		error: error instanceof Error ? error.message : String(error),
@@ -36,6 +31,5 @@ export async function runCustomerSync() {
 		hubspot,
 		posthog,
 		sales,
-		support,
 	};
 }

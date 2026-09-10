@@ -2245,6 +2245,7 @@ export class MetabaseService {
 	) {
 		await this.db.syncRun.updateMany({
 			where: {
+				source: { key },
 				status: SyncRunStatus.RUNNING,
 				startedAt: { lt: new Date(Date.now() - 15 * 60 * 1000) },
 			},

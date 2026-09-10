@@ -506,11 +506,13 @@ identity table. Sensitive result sets remain capped at 2,000 rows. Governed
 snapshots retain the SQL that actually ran, including the population filter.
 An ordinary source mirror is not proof that this check passed.
 
-Scheduled Metabase refreshes have one owner per shared question. The ordered
+Scheduled Metabase refreshes have one owner per shared source. The ordered
 schedule list in `apps/api/src/metabase/dashboard-schedules.json` supplies both
 deployment cron entries and ownership priority (frequent jobs first). The first
-listed dashboard containing a question refreshes it for every dashboard that
-displays it. Moving or removing cards recomputes ownership on the next run.
+listed dashboard containing a source refreshes all of that source's questions
+across the scheduled dashboards. Moving or removing cards recomputes ownership
+on the next run. A changed question or version list resets the batch cursor.
+Only a complete cycle with no failed questions advances source freshness.
 Authenticated GET syncs use this rule; POST syncs and the in-app refresh remain
 manual and can run all questions. Scheduled and manual batch cursors are separate.
 A skipped dashboard does not advance source freshness or publish another snapshot.

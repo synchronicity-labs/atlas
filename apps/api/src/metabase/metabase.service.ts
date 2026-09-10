@@ -17,7 +17,7 @@ import { InjectDatabase } from "../database/database.constants";
 import { abuseEnforcementVerificationChecks } from "./abuse-detail-verification";
 import { atlasQuestionName } from "./atlas-question-name";
 import {
-	ownsScheduledQuestion,
+	ownsScheduledSource,
 	scheduledMetabaseDashboards,
 } from "./dashboard-refresh-ownership";
 import {
@@ -1032,6 +1032,28 @@ export class MetabaseService {
 		scheduled = false,
 	) {
 		const config = await this.requireConfig();
+		const questionSelect = {
+			id: true,
+			number: true,
+			name: true,
+			description: true,
+			metricVersionId: true,
+			connector: true,
+			sourceId: true,
+			sourceExternalId: true,
+			databaseExternalId: true,
+			versions: {
+				orderBy: { version: "desc" },
+				take: 1,
+				select: {
+					id: true,
+					version: true,
+					queryLanguage: true,
+					queryText: true,
+					sourceCardExternalId: true,
+				},
+			},
+		} satisfies Prisma.QuestionSelect;
 		const dashboard = await this.db.dashboard.findUnique({
 			where: { number },
 			select: {
@@ -1040,30 +1062,7 @@ export class MetabaseService {
 				cards: {
 					orderBy: { position: "asc" },
 					select: {
-						question: {
-							select: {
-								id: true,
-								number: true,
-								name: true,
-								description: true,
-								metricVersionId: true,
-								connector: true,
-								sourceId: true,
-								sourceExternalId: true,
-								databaseExternalId: true,
-								versions: {
-									orderBy: { version: "desc" },
-									take: 1,
-									select: {
-										id: true,
-										version: true,
-										queryLanguage: true,
-										queryText: true,
-										sourceCardExternalId: true,
-									},
-								},
-							},
-						},
+						question: { select: questionSelect },
 					},
 				},
 			},
@@ -1097,34 +1096,44 @@ export class MetabaseService {
 		const sourceId = [...sourceIds][0];
 		if (!sourceId) throw new Error("This dashboard has no configured source.");
 		if (scheduled && scheduledMetabaseDashboards.includes(number)) {
-			const placements = await this.db.dashboardCard.findMany({
-				where: {
-					questionId: { in: questions.map((question) => question.id) },
-					dashboard: { number: { in: scheduledMetabaseDashboards } },
-				},
-				select: { questionId: true, dashboard: { select: { number: true } } },
-			});
-			questions = questions.filter((question) =>
-				ownsScheduledQuestion(
+			const placements = (
+				await this.db.dashboardCard.findMany({
+					where: {
+						question: { sourceId, connector: DataSourceKind.METABASE },
+						dashboard: { number: { in: scheduledMetabaseDashboards } },
+					},
+					select: {
+						question: { select: questionSelect },
+						dashboard: { select: { number: true } },
+					},
+				})
+			).filter((card) => Boolean(card.question.versions[0]?.queryText.trim()));
+			if (
+				!ownsScheduledSource(
 					number,
-					placements
-						.filter((card) => card.questionId === question.id)
-						.map((card) => card.dashboard.number),
-				),
-			);
-			if (questions.length === 0) {
+					placements.map((card) => card.dashboard.number),
+				)
+			) {
 				return {
 					cardsProcessed: 0,
 					snapshotsCreated: 0,
 					completed: true,
 					remainingQuestions: 0,
 					errors: [],
-					skipped: "Shared questions refresh on their owning dashboard.",
+					skipped: "This source refreshes on its owning dashboard.",
 				};
 			}
+			questions = [
+				...new Map(
+					placements.map((card) => [card.question.id, card.question]),
+				).values(),
+			].sort((left, right) => left.number - right.number);
 		}
 
 		const period = currentMonth();
+		const questionSetHash = stableHash(
+			questions.map((question) => [question.id, question.versions[0]?.id]),
+		);
 		const runScope = `dashboard:${number}${scheduled ? ":scheduled" : ""}`;
 		const cursor = await this.db.syncCursor.upsert({
 			where: {
@@ -1142,7 +1151,11 @@ export class MetabaseService {
 			},
 			update: {},
 		});
-		const batchOffset = cursor.period === period ? cursor.offset : 0;
+		const checkpoint = checkpointObject(cursor.checkpoint);
+		const batchOffset =
+			cursor.period === period && checkpoint.questionSetHash === questionSetHash
+				? cursor.offset
+				: 0;
 		const questionBatchSize =
 			number === 1
 				? ATLAS_DASHBOARD_QUESTION_BATCH_SIZE
@@ -1355,6 +1368,17 @@ export class MetabaseService {
 			const remainingQuestions = completed
 				? 0
 				: questions.length - processedThrough;
+			const cycleErrors = [
+				...new Set([
+					...(batchOffset > 0 && Array.isArray(checkpoint.cycleErrors)
+						? checkpoint.cycleErrors.filter(
+								(value): value is number => typeof value === "number",
+							)
+						: []),
+					...errors.map((error) => error.number),
+				]),
+			];
+			const sourceComplete = completed && cycleErrors.length === 0;
 			await this.db.$transaction([
 				this.db.syncCursor.update({
 					where: { id: cursor.id },
@@ -1366,6 +1390,8 @@ export class MetabaseService {
 							: cursor.completedPeriods,
 						lastSuccessAt: finishedAt,
 						checkpoint: json({
+							questionSetHash,
+							cycleErrors,
 							completed,
 							nextOffset,
 							questionCount: questions.length,
@@ -1382,6 +1408,8 @@ export class MetabaseService {
 						cardsProcessed,
 						snapshotsCreated,
 						checkpoint: json({
+							questionSetHash,
+							cycleErrors,
 							batchOffset,
 							completed,
 							nextOffset,
@@ -1396,17 +1424,17 @@ export class MetabaseService {
 					where: { id: sourceId },
 					data: {
 						state:
-							errors.length === questionsToProcess.length && errors.length > 0
+							cycleErrors.length > 0
 								? SourceStatus.ERROR
-								: completed
+								: sourceComplete
 									? SourceStatus.HEALTHY
 									: SourceStatus.SYNCING,
-						lastSyncAt: completed ? finishedAt : undefined,
+						lastSyncAt: sourceComplete ? finishedAt : undefined,
 						lastError:
-							errors.length > 0
-								? `${errors.length} question(s) failed in the latest batch.`
+							cycleErrors.length > 0
+								? `${cycleErrors.length} question(s) failed in the refresh cycle.`
 								: null,
-						freshnessDeadlineAt: completed
+						freshnessDeadlineAt: sourceComplete
 							? new Date(Date.now() + FRESHNESS_MS)
 							: undefined,
 					},

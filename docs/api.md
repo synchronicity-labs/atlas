@@ -506,6 +506,15 @@ identity table. Sensitive result sets remain capped at 2,000 rows. Governed
 snapshots retain the SQL that actually ran, including the population filter.
 An ordinary source mirror is not proof that this check passed.
 
+Scheduled Metabase refreshes have one owner per shared question. The ordered
+schedule list in `apps/api/src/metabase/dashboard-schedules.json` supplies both
+deployment cron entries and ownership priority (frequent jobs first). The first
+listed dashboard containing a question refreshes it for every dashboard that
+displays it. Moving or removing cards recomputes ownership on the next run.
+Authenticated GET syncs use this rule; POST syncs and the in-app refresh remain
+manual and can run all questions. Scheduled and manual batch cursors are separate.
+A skipped dashboard does not advance source freshness or publish another snapshot.
+
 ## Freshness: invalidate the query, don't disable the cache
 
 There is no HTTP response cache in front of tRPC. Freshness is TanStack Query's

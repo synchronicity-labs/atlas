@@ -13,6 +13,9 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const apiDir = dirname(dirname(fileURLToPath(import.meta.url)));
+const metabaseSchedules = JSON.parse(
+	readFileSync(join(apiDir, "src/metabase/dashboard-schedules.json"), "utf8"),
+);
 const repoRoot = dirname(dirname(apiDir));
 const outDir = join(repoRoot, ".vercel/output");
 const funcDir = join(outDir, "functions/api/index.func");
@@ -172,18 +175,10 @@ writeFileSync(
 				path: "/internal/sync/atlas/1/native",
 				schedule: "*/15 * * * *",
 			},
-			{
-				path: "/internal/sync/atlas/1/metabase",
-				schedule: "2-59/5 * * * *",
-			},
-			{
-				path: "/internal/sync/atlas/2/metabase",
-				schedule: "4-59/5 * * * *",
-			},
-			{
-				path: "/internal/sync/atlas/4/metabase",
-				schedule: "31 */6 * * *",
-			},
+			...metabaseSchedules.map(({ number, schedule }) => ({
+				path: `/internal/sync/atlas/${number}/metabase`,
+				schedule,
+			})),
 			{
 				path: "/internal/sync/atlas/4/native",
 				schedule: "40 */6 * * *",
@@ -207,10 +202,6 @@ writeFileSync(
 			{
 				path: "/internal/sync/atlas/6",
 				schedule: "53 */6 * * *",
-			},
-			{
-				path: "/internal/sync/atlas/7/metabase",
-				schedule: "1-59/5 * * * *",
 			},
 			{
 				path: "/internal/sync/atlas/9/native",
@@ -247,10 +238,6 @@ writeFileSync(
 			{
 				path: "/internal/sync/atlas/18/native",
 				schedule: "49 */6 * * *",
-			},
-			{
-				path: "/internal/sync/atlas/18/metabase",
-				schedule: "11-59/15 * * * *",
 			},
 		],
 	}),

@@ -1,0 +1,7 @@
+[
+	{ "number": 1, "schedule": "2-59/5 * * * *" },
+	{ "number": 2, "schedule": "4-59/5 * * * *" },
+	{ "number": 7, "schedule": "1-59/5 * * * *" },
+	{ "number": 18, "schedule": "11-59/15 * * * *" },
+	{ "number": 4, "schedule": "31 */6 * * *" }
+]

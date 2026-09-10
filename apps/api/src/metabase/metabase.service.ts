@@ -17,6 +17,10 @@ import { InjectDatabase } from "../database/database.constants";
 import { abuseEnforcementVerificationChecks } from "./abuse-detail-verification";
 import { atlasQuestionName } from "./atlas-question-name";
 import {
+	ownsScheduledQuestion,
+	scheduledMetabaseDashboards,
+} from "./dashboard-refresh-ownership";
+import {
 	type MetabaseCardResponse,
 	MetabaseClient,
 	type MetabaseDashboardResponse,
@@ -1022,7 +1026,11 @@ export class MetabaseService {
 		}
 	}
 
-	async syncAtlasDashboard(number: number, sourceIdFilter?: string) {
+	async syncAtlasDashboard(
+		number: number,
+		sourceIdFilter?: string,
+		scheduled = false,
+	) {
 		const config = await this.requireConfig();
 		const dashboard = await this.db.dashboard.findUnique({
 			where: { number },
@@ -1064,7 +1072,7 @@ export class MetabaseService {
 			throw new NotFoundException(`No Atlas dashboard ${number}.`);
 		}
 
-		const questions = [
+		let questions = [
 			...new Map(
 				dashboard.cards.map((card) => [card.question.id, card.question]),
 			).values(),
@@ -1088,9 +1096,36 @@ export class MetabaseService {
 		}
 		const sourceId = [...sourceIds][0];
 		if (!sourceId) throw new Error("This dashboard has no configured source.");
+		if (scheduled && scheduledMetabaseDashboards.includes(number)) {
+			const placements = await this.db.dashboardCard.findMany({
+				where: {
+					questionId: { in: questions.map((question) => question.id) },
+					dashboard: { number: { in: scheduledMetabaseDashboards } },
+				},
+				select: { questionId: true, dashboard: { select: { number: true } } },
+			});
+			questions = questions.filter((question) =>
+				ownsScheduledQuestion(
+					number,
+					placements
+						.filter((card) => card.questionId === question.id)
+						.map((card) => card.dashboard.number),
+				),
+			);
+			if (questions.length === 0) {
+				return {
+					cardsProcessed: 0,
+					snapshotsCreated: 0,
+					completed: true,
+					remainingQuestions: 0,
+					errors: [],
+					skipped: "Shared questions refresh on their owning dashboard.",
+				};
+			}
+		}
 
 		const period = currentMonth();
-		const runScope = `dashboard:${number}`;
+		const runScope = `dashboard:${number}${scheduled ? ":scheduled" : ""}`;
 		const cursor = await this.db.syncCursor.upsert({
 			where: {
 				sourceId_mode_scope: {

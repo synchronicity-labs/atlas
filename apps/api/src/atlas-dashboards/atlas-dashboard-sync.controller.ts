@@ -34,7 +34,7 @@ export class AtlasDashboardSyncController {
 		@Param("number", ParseIntPipe) number: number,
 		@Headers("authorization") authorization?: string,
 	) {
-		return this.run(number, authorization);
+		return this.run(number, authorization, "all", true);
 	}
 
 	@Post(":number")
@@ -53,7 +53,7 @@ export class AtlasDashboardSyncController {
 		@Param("mode") mode: string,
 		@Headers("authorization") authorization?: string,
 	) {
-		return this.run(number, authorization, refreshMode(mode));
+		return this.run(number, authorization, refreshMode(mode), true);
 	}
 
 	@Post(":number/:mode")
@@ -70,6 +70,7 @@ export class AtlasDashboardSyncController {
 		number: number,
 		authorization?: string,
 		mode: AtlasRefreshMode = "all",
+		scheduled = false,
 	) {
 		if (!this.secret) {
 			throw new ServiceUnavailableException("Sync is not configured.");
@@ -77,7 +78,7 @@ export class AtlasDashboardSyncController {
 		if (!timingSafeEquals(authorization ?? "", `Bearer ${this.secret}`)) {
 			throw new ForbiddenException();
 		}
-		return this.dashboards.refresh(number, mode);
+		return this.dashboards.refresh(number, mode, scheduled);
 	}
 }
 

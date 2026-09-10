@@ -1,5 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
+import metabaseSchedules from "../src/metabase/dashboard-schedules.json";
+
+test("customer economics has a Metabase lane as well as native refreshes", () => {
+	expect(metabaseSchedules.find(({ number }) => number === 9)).toEqual({
+		number: 9,
+		schedule: "13-59/15 * * * *",
+	});
+});
 
 describe("governed Sales refresh schedule", () => {
 	test("refreshes native answers every six hours with time left before expiry", () => {
@@ -15,9 +23,14 @@ describe("governed Sales refresh schedule", () => {
 		);
 		expect(sales).toHaveLength(1);
 		expect(sales[0]?.[2]).toBe("40 */6 * * *");
-		expect(
-			schedules.some((match) => match[1] === "/internal/sync/atlas/4/metabase"),
-		).toBe(true);
+		expect(metabaseSchedules.find(({ number }) => number === 4)).toEqual({
+			number: 4,
+			schedule: "31 */6 * * *",
+		});
+		expect(build).toContain("...metabaseSchedules.map(");
+		expect(build).toMatch(
+			/path: `\/internal\/sync\/atlas\/\$\{number\}\/metabase`/,
+		);
 	});
 });
 
@@ -38,13 +51,10 @@ describe("All Hands dashboard refresh schedules", () => {
 					match[2] === "49 */6 * * *",
 			),
 		).toBe(true);
-		expect(
-			schedules.some(
-				(match) =>
-					match[1] === "/internal/sync/atlas/18/metabase" &&
-					match[2] === "11-59/15 * * * *",
-			),
-		).toBe(true);
+		expect(metabaseSchedules.find(({ number }) => number === 18)).toEqual({
+			number: 18,
+			schedule: "11-59/15 * * * *",
+		});
 	});
 });
 
@@ -59,7 +69,9 @@ describe("governed refresh safety margin", () => {
 		].map((match) => ({ path: match[1], schedule: match[2] }));
 
 		expect(
-			schedules.filter(({ schedule }) => schedule?.includes("*/8")),
+			[...schedules, ...metabaseSchedules].filter(({ schedule }) =>
+				schedule?.includes("*/8"),
+			),
 		).toEqual([]);
 	});
 });

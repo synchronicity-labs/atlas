@@ -33,7 +33,11 @@ export class AtlasDashboardsService {
 		private readonly economics: EconomicsService,
 	) {}
 
-	async refresh(number: number, mode: AtlasRefreshMode = "all") {
+	async refresh(
+		number: number,
+		mode: AtlasRefreshMode = "all",
+		scheduled = false,
+	) {
 		const dashboard = await this.db.dashboard.findUnique({
 			where: { number },
 			select: {
@@ -119,6 +123,7 @@ export class AtlasDashboardsService {
 				const metabase = await this.metabase.syncAtlasDashboard(
 					number,
 					sourceId,
+					scheduled,
 				);
 				results.push(metabase);
 			}

@@ -161,8 +161,8 @@ describe("Atlas dashboard refresh", () => {
 		const result = await service.refresh(1);
 
 		expect(metabaseSync).toHaveBeenCalledTimes(2);
-		expect(metabaseSync).toHaveBeenNthCalledWith(1, 1, "source-one");
-		expect(metabaseSync).toHaveBeenNthCalledWith(2, 1, "source-two");
+		expect(metabaseSync).toHaveBeenNthCalledWith(1, 1, "source-one", false);
+		expect(metabaseSync).toHaveBeenNthCalledWith(2, 1, "source-two", false);
 		expect(billingSync).toHaveBeenCalledWith(1);
 		expect(billingSync.mock.invocationCallOrder[0]).toBeLessThan(
 			metabaseSync.mock.invocationCallOrder[0] ?? Number.MAX_SAFE_INTEGER,

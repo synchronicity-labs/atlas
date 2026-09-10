@@ -1,6 +1,7 @@
 import { syncContractsDrive } from "./contracts-drive";
 import { reconcileContracts } from "./contracts-reconciliation";
 import { syncHubspot } from "./hubspot-sync";
+import { syncPosthogLinkedUsers } from "./posthog-users";
 import { syncSalesDashboard } from "./sales-dashboard";
 
 export async function runCustomerSync() {
@@ -9,6 +10,10 @@ export async function runCustomerSync() {
 		error: error instanceof Error ? error.message : String(error),
 	}));
 	const hubspot = await syncHubspot().catch((error) => ({
+		configured: true,
+		error: error instanceof Error ? error.message : String(error),
+	}));
+	const posthog = await syncPosthogLinkedUsers().catch((error) => ({
 		configured: true,
 		error: error instanceof Error ? error.message : String(error),
 	}));
@@ -24,6 +29,7 @@ export async function runCustomerSync() {
 		contracts,
 		contractReconciliation,
 		hubspot,
+		posthog,
 		sales,
 	};
 }

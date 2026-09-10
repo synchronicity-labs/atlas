@@ -513,6 +513,8 @@ listed dashboard containing a source refreshes all of that source's questions
 across the scheduled dashboards. Moving or removing cards recomputes ownership
 on the next run. A changed question or version list resets the batch cursor.
 Only a complete cycle with no failed questions advances source freshness.
+Customer economics (dashboard 9) has a Metabase lane as well as its native lane;
+its shared revenue questions run under the revenue source's scheduled owner.
 Authenticated GET syncs use this rule; POST syncs and the in-app refresh remain
 manual and can run all questions. Scheduled and manual batch cursors are separate.
 A skipped dashboard does not advance source freshness or publish another snapshot.

@@ -2,6 +2,13 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import metabaseSchedules from "../src/metabase/dashboard-schedules.json";
 
+test("customer economics has a Metabase lane as well as native refreshes", () => {
+	expect(metabaseSchedules.find(({ number }) => number === 9)).toEqual({
+		number: 9,
+		schedule: "13-59/15 * * * *",
+	});
+});
+
 describe("governed Sales refresh schedule", () => {
 	test("refreshes native answers every six hours with time left before expiry", () => {
 		const build = readFileSync(

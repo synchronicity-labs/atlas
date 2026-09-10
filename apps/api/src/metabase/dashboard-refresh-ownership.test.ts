@@ -9,20 +9,19 @@ import schedules from "./dashboard-schedules.json";
 import { MetabaseService } from "./metabase.service";
 
 describe("scheduled shared-question ownership", () => {
-	test.each([[2, 7, 18], [1, 18], [4, 7], [4, 18], [18], [7, 7, 18]])(
-		"exactly one scheduled owner for %j",
-		(...placements: number[]) => {
-			const owners = [...new Set(placements)].filter((dashboard) =>
-				ownsScheduledQuestion(dashboard, placements),
-			);
-			expect(owners).toHaveLength(1);
-			expect(owners[0]).toBe(
-				scheduledMetabaseDashboards.find((number) =>
-					placements.includes(number),
-				),
-			);
-		},
-	);
+	test.each(
+		[[2, 7, 18], [1, 18], [4, 7], [4, 18], [18], [7, 7, 18]].map(
+			(placements) => ({ placements }),
+		),
+	)("exactly one scheduled owner for %j", ({ placements }) => {
+		const owners = [...new Set(placements)].filter((dashboard) =>
+			ownsScheduledQuestion(dashboard, placements),
+		);
+		expect(owners).toHaveLength(1);
+		expect(owners[0]).toBe(
+			scheduledMetabaseDashboards.find((number) => placements.includes(number)),
+		);
+	});
 
 	test("manual-only dashboards do not suppress a scheduled owner", () => {
 		expect(ownsScheduledQuestion(18, [3, 8, 18])).toBe(true);

@@ -1,4 +1,5 @@
-import { afterEach, describe, expect, it, mock } from "bun:test";
+import { afterEach, describe, expect, it, mock, spyOn } from "bun:test";
+import { MarketingClient } from "../marketing/marketing.client";
 import { MetabaseClient } from "./metabase.client";
 import { ProductEligibilityService } from "./product-eligibility.service";
 
@@ -30,6 +31,86 @@ function attributionRow(index: number, count: number) {
 
 afterEach(() => {
 	globalThis.fetch = originalFetch;
+	mock.restore();
+});
+
+describe("scoped deletion lookup", () => {
+	it("does not query PostHog when there are no owners", async () => {
+		const execute = spyOn(MarketingClient.prototype, "execute");
+		expect(await service["userDeletionEvents"](new Map())).toEqual(new Map());
+		expect(execute).not.toHaveBeenCalled();
+	});
+
+	it("batches unique owners, retaining earliest deletion across all history", async () => {
+		const execute = spyOn(MarketingClient.prototype, "execute")
+			.mockResolvedValueOnce({
+				columns: [],
+				rows: [["owner-0", "2025-01-01T00:00:00Z"]],
+			})
+			.mockResolvedValueOnce({
+				columns: [],
+				rows: [["owner-1000", "2026-09-01T00:00:00Z"]],
+			});
+		const principals = new Map(
+			Array.from({ length: 1_001 }, (_, i) => [
+				`user:${i}`,
+				{ eligible: true, ownerUserId: `owner-${i}` },
+			]),
+		);
+		principals.set("api:duplicate", { eligible: true, ownerUserId: "owner-0" });
+		const result = await service["userDeletionEvents"](principals);
+		expect(result.get("owner-0")).toEqual(new Date("2025-01-01T00:00:00Z"));
+		expect(result.size).toBe(2);
+		expect(execute).toHaveBeenCalledTimes(2);
+		const first = execute.mock.calls[0]?.[0];
+		expect(first).toMatchObject({
+			source: "posthog",
+			personPolicy: "all_events",
+		});
+		expect(first).toHaveProperty(
+			"query",
+			expect.stringContaining("min(timestamp)"),
+		);
+		expect(first).toHaveProperty(
+			"query",
+			expect.stringContaining("and distinct_id in ('owner-0',"),
+		);
+		expect(first).toHaveProperty(
+			"query",
+			expect.not.stringContaining("timestamp >="),
+		);
+		expect(execute.mock.calls[1]?.[0]).toHaveProperty(
+			"query",
+			expect.stringContaining("in ('owner-1000')"),
+		);
+	});
+
+	it("escapes owners and rejects responses outside the requested set", async () => {
+		const execute = spyOn(
+			MarketingClient.prototype,
+			"execute",
+		).mockResolvedValue({ columns: [], rows: [["unexpected", "2026-01-01"]] });
+		await expect(
+			service["userDeletionEvents"](
+				new Map([["user:1", { eligible: true, ownerUserId: "a\\b'c" }]]),
+			),
+		).rejects.toThrow("unexpected owners");
+		expect(execute.mock.calls[0]?.[0]).toHaveProperty(
+			"query",
+			expect.stringContaining("'a\\\\b''c'"),
+		);
+	});
+
+	it("propagates a failed lookup instead of treating it as no deletions", async () => {
+		spyOn(MarketingClient.prototype, "execute").mockRejectedValue(
+			new Error("lookup failed"),
+		);
+		await expect(
+			service["userDeletionEvents"](
+				new Map([["user:1", { eligible: true, ownerUserId: "owner-1" }]]),
+			),
+		).rejects.toThrow("lookup failed");
+	});
 });
 
 describe("product attribution export", () => {

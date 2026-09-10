@@ -21,7 +21,9 @@ The ingestion project was connected to GitHub on August 27, 2026. It previously 
 
 ## Schedules
 
-The API builds its KPI schedules in `apps/api/scripts/build-func.mjs`. The ingestion app builds its schedules from `apps/agent/agent/schedules`: customer sync every six hours, a bounded PostHog user sync hourly, and queued job dispatch every minute. Do not add a second scheduler for these jobs when deploying.
+The API builds its KPI schedules in `apps/api/scripts/build-func.mjs`. The ingestion app builds its schedules from `apps/agent/agent/schedules`: customer sync every six hours, a bounded PostHog user sync hourly, Pylon support every three hours, and queued job dispatch every minute. Do not add a second scheduler for these jobs when deploying.
+
+Pylon and PostHog run independently, not inside the serial customer sync. Pylon runs at minute 27 every three hours, leaving one retry window before its six-hour freshness deadline. The hourly PostHog owner processes up to 20 linked users per run. For a support-only refresh, use `bun run --filter=agent support:sync`.
 
 The native Sales dashboard refresh runs at 00:40, 06:40, 12:40, and 18:40 UTC, after the normal ingestion window. It republishes Q243 and the other governed Sales answers within their ten-hour freshness limit. Raw HubSpot ingestion and the Metabase comparison refresh do not replace this publication step. Keep this cadence shorter than the question freshness limit; do not extend that limit to hide a missing refresh.
 

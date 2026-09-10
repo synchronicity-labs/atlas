@@ -92,8 +92,10 @@ timestamp advances through an atomic conditional update in the same transaction
 as the snapshot and cursor. Older or equal timestamps return `ignored: true`
 without changing shared state, including when import requests overlap.
 
-The monitor reads every registered source independently of ingestion. A source
-is required if it is configured or has an active question. An unconfigured
+The monitor reads every registered source independently of ingestion. The metric
+catalog and Rudy question-authoring namespaces are metadata, not ingestion jobs;
+they do not have freshness deadlines and are excluded from operational alerts.
+Other sources are required if configured or referenced by an active question. An unconfigured
 source without an active question is skipped. Expired deadlines become stale
 even if the stored state is healthy or syncing. A sync in progress does not
 invalidate a still-fresh previous success. Missing freshness evidence is

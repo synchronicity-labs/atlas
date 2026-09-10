@@ -59,6 +59,40 @@ describe("Atlas source health", () => {
 		expect(sourceErrorSummary(null)).toBeNull();
 	});
 
+	test("draft namespaces have no ingestion deadline; missing evidence on real sources still alerts", async () => {
+		const service = new AtlasQueryService({
+			dataSource: {
+				findMany: async () =>
+					[
+						"atlas:metric-catalog",
+						"atlas:rudy-cron-authoring",
+						"pylon:support",
+						"google-drive:customer-contracts",
+						"modal:billing",
+					].map((key) => ({
+						key,
+						state: "HEALTHY",
+						lastSyncAt: null,
+						freshnessDeadlineAt: null,
+						lastError: null,
+						syncRuns: [],
+						questions: [{ dashboardCards: [] }],
+					})),
+			},
+		} as unknown as Db);
+		const result = await service.sources();
+		expect(result.sources.map(({ required }) => required)).toEqual([
+			false,
+			false,
+			true,
+			true,
+			true,
+		]);
+		expect(result.sources.every(({ lastSyncAt }) => lastSyncAt === null)).toBe(
+			true,
+		);
+	});
+
 	test("requires the read-only credential before reading source health", () => {
 		const sources = mock(async () => ({}));
 		const controller = new AtlasQueryController(

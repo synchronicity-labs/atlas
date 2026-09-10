@@ -46,7 +46,11 @@ export class AtlasQueryService {
 			checkedAt: new Date().toISOString(),
 			sources: sources.map(({ questions, syncRuns, lastError, ...source }) => ({
 				...source,
-				required: source.state !== "UNCONFIGURED" || questions.length > 0,
+				required:
+					!["atlas:metric-catalog", "atlas:rudy-cron-authoring"].includes(
+						source.key,
+					) &&
+					(source.state !== "UNCONFIGURED" || questions.length > 0),
 				lastError: sourceErrorSummary(lastError),
 				latestRun: syncRuns[0] ?? null,
 				dashboards: [

@@ -10,6 +10,7 @@ import {
 	usesRevenueDoorPolicy,
 	usesSubscribedRevenueEligibility,
 } from "./revenue-door-policy.service";
+import { boundRevenueUsage } from "./revenue-usage-bounds";
 import {
 	type GovernedTinybirdQuery,
 	hasSubscribedPopulation,
@@ -42,6 +43,9 @@ export async function prepareGovernedMetabaseQuery(
 		databaseExternalId: question.databaseExternalId,
 	});
 	assertReadOnlyQuery(prepared.language, prepared.queryText);
+	if (prepared.language === "SQL" && question.databaseExternalId === "166") {
+		prepared.queryText = boundRevenueUsage(question.number, prepared.queryText);
+	}
 	const revenueDoor =
 		prepared.language === "SQL" && usesRevenueDoorPolicy(question.number)
 			? await revenueDoorPolicy.compileForQuestion(

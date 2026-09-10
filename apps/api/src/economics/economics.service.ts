@@ -65,6 +65,8 @@ type WarehouseRow = {
 
 type ModalRow = { month: string; model: string; costUsd: number };
 
+type EconomicsInputs = { warehouseRows: WarehouseRow[]; modalRows: ModalRow[] };
+
 type MonthlyEconomics = {
 	month: string;
 	usageRevenueUsd: number;
@@ -293,12 +295,14 @@ export class EconomicsService {
 		let snapshotsCreated = 0;
 		try {
 			const eligibility = await this.tinybirdEligibility.currentForRevenue();
+			const inputs = new Map<string, EconomicsInputs>();
 			for (const question of questions) {
 				const version = question.versions[0];
 				if (!version) continue;
 				const result = await this.execute(
 					economicsQuery.parse(JSON.parse(version.queryText)),
 					eligibility,
+					inputs,
 				);
 				const payload = { columns: result.columns, rows: result.rows };
 				const contentHash = hash(payload);
@@ -398,7 +402,21 @@ export class EconomicsService {
 	private async execute(
 		query: EconomicsQuery,
 		eligibility?: TinybirdEligibilitySnapshot,
+		inputs = new Map<string, EconomicsInputs>(),
 	): Promise<Result> {
+		const warehouseSql = query.warehouseSql ?? ECONOMICS_WAREHOUSE_QUERY;
+		let shared = inputs.get(warehouseSql);
+		if (!shared) {
+			shared = await this.loadInputs(warehouseSql, eligibility);
+			inputs.set(warehouseSql, shared);
+		}
+		return economicsResult(query, shared.warehouseRows, shared.modalRows);
+	}
+
+	private async loadInputs(
+		warehouseSql: string,
+		eligibility?: TinybirdEligibilitySnapshot,
+	): Promise<EconomicsInputs> {
 		const cursor = await this.db.syncCursor.findFirst({
 			where: {
 				source: { key: MODAL_SOURCE },
@@ -426,7 +444,6 @@ export class EconomicsService {
 		}
 		const config = metabaseConfig();
 		if (!config) throw new Error("Metabase is not configured.");
-		const warehouseSql = query.warehouseSql ?? ECONOMICS_WAREHOUSE_QUERY;
 		assertReadOnlyQuery("SQL", warehouseSql);
 		const currentEligibility =
 			eligibility ?? (await this.tinybirdEligibility.current());
@@ -452,7 +469,7 @@ export class EconomicsService {
 			model: normalizeModel(String(row[1] ?? "other")),
 			costUsd: Number(row[2] ?? 0),
 		}));
-		return economicsResult(query, warehouseRows, modalRows);
+		return { warehouseRows, modalRows };
 	}
 }
 

@@ -684,24 +684,33 @@ where k.id::text in (${ids.map(sqlString).join(", ")})`,
 		principals: Map<string, Principal>,
 	): Promise<Map<string, Date>> {
 		const ownerUserIds = new Set(
-			[...principals.values()].map((principal) => principal.ownerUserId),
+			[...principals.values()]
+				.map((principal) => principal.ownerUserId)
+				.filter(Boolean),
 		);
 		const client = new MarketingClient(marketingConfig());
 		const deletions = new Map<string, Date>();
-		const result = await client.execute({
-			source: "posthog",
-			personPolicy: "all_events",
-			query: `select
+		for (const ids of chunks([...ownerUserIds], 1_000)) {
+			const result = await client.execute({
+				source: "posthog",
+				personPolicy: "all_events",
+				query: `select
   distinct_id,
   min(timestamp) as deleted_at
 from events
 where event = 'user_account_deleted'
+  and distinct_id in (${ids.map((id) => sqlString(id.replaceAll("\\", "\\\\"))).join(", ")})
 group by distinct_id
-limit 10000`,
-		});
-		for (const values of result.rows) {
-			const ownerUserId = text(values[0]);
-			if (ownerUserIds.has(ownerUserId) && values[1]) {
+limit ${ids.length + 1}`,
+			});
+			const requested = new Set(ids);
+			for (const values of result.rows) {
+				const ownerUserId = text(values[0]);
+				if (!requested.has(ownerUserId) || deletions.has(ownerUserId)) {
+					throw new Error(
+						"PostHog deletion lookup returned unexpected owners.",
+					);
+				}
 				deletions.set(ownerUserId, date(values[1]));
 			}
 		}

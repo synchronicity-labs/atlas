@@ -1,8 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { boundRevenueUsage } from "./revenue-usage-bounds";
 
-export function usageFixture(number: number) {
-	const periods = ![1101, 1102].includes(number);
+export function usageFixture(
+	number: number,
+	periods = ![1101, 1102].includes(number),
+) {
 	const start = periods ? "periods.period_start" : "bounds.month_start";
 	const end = periods ? "periods.period_end" : "bounds.data_through";
 	return `with bounds as (
@@ -65,6 +67,26 @@ describe("revenue source date bounds", () => {
 		const cutover = query.replaceAll("sync_usage3", "sync_usage_by_completion");
 		expect(boundRevenueUsage(1112, cutover)).toBe(cutover);
 	});
+
+	test("Q1102's current saved definition is scalar; its older period shape is also supported", async () => {
+		const migration = await Bun.file(
+			new URL(
+				"../../../../packages/db/prisma/migrations/20260824190000_stripe_subscription_and_collection_reconciliation/migration.sql",
+				import.meta.url,
+			),
+		).text();
+		const query = migration
+			.split("atlas-weekly-revenue-version-product-run-rate-v6")[1]
+			?.split("$query$")[1];
+		expect(query).toBeDefined();
+		expect(query).toContain("from sync_prod.sync_usage3\n  cross join bounds");
+		expect(boundRevenueUsage(1102, query as string)).toContain(
+			'where "generationEndedAt" >= bounds.month_start',
+		);
+		expect(boundRevenueUsage(1102, usageFixture(1102, true))).toContain(
+			"left join usage_totals using (period_start, period_end, is_current)",
+		);
+	});
 });
 
 const clickhouse = process.env.ATLAS_TEST_CLICKHOUSE_URL;
@@ -87,10 +109,15 @@ test.skipIf(!clickhouse)(
 			"('2026-08-15 00:00:00', 200)",
 			"('2026-09-05 00:00:00', 400)",
 		];
-		for (const number of [1101, 1102, 1110, 1112, 1118, 1119]) {
+		const fixtures = [1101, 1102, 1110, 1112, 1118, 1119].map((number) => ({
+			number,
+			periods: ![1101, 1102].includes(number),
+		}));
+		fixtures.push({ number: 1102, periods: true });
+		for (const { number, periods } of fixtures) {
 			for (const rows of cases) {
 				const source = `values('generationEndedAt DateTime, generationCostMillicents Int64', ${rows}) as fixture_usage`;
-				const original = usageFixture(number);
+				const original = usageFixture(number, periods);
 				const bounded = boundRevenueUsage(number, original);
 				expect(
 					await run(bounded.replace("sync_prod.sync_usage3", source)),
@@ -99,12 +126,12 @@ test.skipIf(!clickhouse)(
 			const emptySource =
 				"(select toDateTime('2026-07-01') as generationEndedAt, toInt64(0) as generationCostMillicents where 0) as fixture_usage";
 			const empty = await run(
-				boundRevenueUsage(number, usageFixture(number)).replace(
+				boundRevenueUsage(number, usageFixture(number, periods)).replace(
 					"sync_prod.sync_usage3",
 					emptySource,
 				),
 			);
-			expect(empty).toHaveLength([1101, 1102].includes(number) ? 1 : 2);
+			expect(empty).toHaveLength(periods ? 2 : 1);
 			for (const row of empty)
 				expect(Number(row.usage_actual ?? row.current_usage)).toBe(0);
 		}

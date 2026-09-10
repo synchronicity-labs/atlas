@@ -78,7 +78,8 @@ test.skipIf(!clickhouse)(
 				headers: { "Content-Type": "text/plain" },
 			});
 			if (!response.ok) throw new Error(await response.text());
-		return ((await response.json()) as { data: Record<string, unknown>[] }).data;
+			return ((await response.json()) as { data: Record<string, unknown>[] })
+				.data;
 		};
 		const cases = [
 			"('2026-07-31 23:59:59', 100), ('2026-08-01 00:00:00', 200), ('2026-08-31 23:59:59', 300), ('2026-09-01 00:00:00', 400), ('2026-09-10 23:59:59', 500), ('2026-09-11 00:00:00', 600)",
@@ -88,7 +89,7 @@ test.skipIf(!clickhouse)(
 		];
 		for (const number of [1101, 1102, 1110, 1112, 1118, 1119]) {
 			for (const rows of cases) {
-			const source = `values('generationEndedAt DateTime, generationCostMillicents Int64', ${rows}) as fixture_usage`;
+				const source = `values('generationEndedAt DateTime, generationCostMillicents Int64', ${rows}) as fixture_usage`;
 				const original = usageFixture(number);
 				const bounded = boundRevenueUsage(number, original);
 				expect(
@@ -96,7 +97,7 @@ test.skipIf(!clickhouse)(
 				).toEqual(await run(original.replace("sync_prod.sync_usage3", source)));
 			}
 			const emptySource =
-			"(select toDateTime('2026-07-01') as generationEndedAt, toInt64(0) as generationCostMillicents where 0) as fixture_usage";
+				"(select toDateTime('2026-07-01') as generationEndedAt, toInt64(0) as generationCostMillicents where 0) as fixture_usage";
 			const empty = await run(
 				boundRevenueUsage(number, usageFixture(number)).replace(
 					"sync_prod.sync_usage3",

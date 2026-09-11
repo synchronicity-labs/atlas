@@ -39,7 +39,12 @@ type Row = Record<string, unknown>;
 export function abuseUsesAllIdentities(
 	sourceExternalId: string | null,
 ): boolean {
-	return sourceExternalId === "cron:abuse:enforcement-detail";
+	return (
+		sourceExternalId === "cron:abuse:enforcement-detail" ||
+		sourceExternalId === "abuse:users:currently-banned" ||
+		sourceExternalId === "abuse:users:banned-updated-at-proxy" ||
+		sourceExternalId === "abuse:users:ban-reasons"
+	);
 }
 
 export function abuseRingVerificationChecks(

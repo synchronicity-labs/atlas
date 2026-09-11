@@ -114,7 +114,10 @@ Delivery state lives in `/var/lib/rudy-atlas-source-monitor`, with a file lock a
 atomic private state files. Successful delivery is saved after each alert. Failed
 delivery stays retryable. Slack `Retry-After` survives timer restarts. An unchanged
 status is suppressed; a changed failure status sends an update, and a fresh
-healthy check sends recovery. An abrupt crash after Slack accepts a message but
+healthy check sends recovery after the current refresh has finished. A retry
+starting (`SYNCING` or latest run `RUNNING`) is not recovery evidence and does not
+clear the previous incident, even while its older snapshot is still fresh. An
+expired deadline still alerts during a retry. An abrupt crash after Slack accepts a message but
 before state is saved can duplicate that message. Delivery is not exactly once.
 
 If Slack cannot receive messages, the service fails and journals the transport

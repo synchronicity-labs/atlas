@@ -51,6 +51,16 @@ describe("Atlas source health", () => {
 
 	test("does not expose vendor error bodies, SQL, credentials or customer data", () => {
 		expect(
+			sourceErrorSummary("3 question(s) failed in the refresh cycle."),
+		).toBe(
+			"3 question(s) failed; the refresh job finished but the source is not ready.",
+		);
+		expect(
+			sourceErrorSummary(
+				"3 question(s) failed in the refresh cycle. private@example.test",
+			),
+		).not.toContain("private@example.test");
+		expect(
 			sourceErrorSummary("401 Bearer secret email@example.test SELECT *"),
 		).toBe("Source authentication or permission failed.");
 		expect(sourceErrorSummary("Something private here")).toBe(

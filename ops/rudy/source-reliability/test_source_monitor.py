@@ -46,6 +46,24 @@ class SourceMonitorTest(unittest.TestCase):
         self.assertEqual(state, {})
         self.assertEqual(len(list(transitions([source(state="ERROR")], state, NOW))), 1)
 
+    def test_retry_start_is_not_recovery_and_a_failed_retry_does_not_flap(self):
+        state, sent = {}, []
+        send = lambda row, status: sent.append(status)
+        for row in [
+            source(state="ERROR"),
+            source(state="SYNCING", latestRun={"status": "RUNNING"}),
+            source(latestRun={"status": "RUNNING"}),
+            source(state="ERROR", latestRun={"status": "COMPLETED"}),
+            source(latestRun={"status": "COMPLETED"}),
+            source(latestRun={"status": "COMPLETED"}),
+        ]:
+            deliver_transitions([row], state, NOW, send, lambda value: None)
+        self.assertEqual(sent, ["ERROR", "HEALTHY"])
+
+    def test_running_retry_does_not_hide_expired_deadline(self):
+        pending = source(state="SYNCING", freshnessDeadlineAt=NOW.isoformat(), latestRun={"status": "RUNNING"})
+        self.assertEqual(list(transitions([pending], {"product": {"status": "ERROR"}}, NOW))[0][1], "STALE")
+
     def test_missing_sources_do_not_produce_false_recovery(self):
         self.assertEqual(list(transitions([], {"product": {"status": "ERROR"}}, NOW)), [])
 

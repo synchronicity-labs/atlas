@@ -89,7 +89,7 @@ function selectedProperties(
 	);
 }
 
-class PosthogClient {
+export class PosthogClient {
 	constructor(private readonly value: PosthogConfig) {}
 
 	async byDistinctId(distinctId: string): Promise<PosthogPerson | null> {
@@ -153,23 +153,53 @@ class PosthogClient {
 	}
 
 	private async request<T>(path: string, init: RequestInit = {}): Promise<T> {
-		const response = await fetch(`${this.value.host}${path}`, {
-			...init,
-			headers: {
-				Authorization: `Bearer ${this.value.apiKey}`,
-				"Content-Type": "application/json",
-				...init.headers,
-			},
-			signal: AbortSignal.timeout(30_000),
-		});
-		const body = (await response.json()) as T & {
-			detail?: string;
-			error?: string | null;
-		};
-		if (!response.ok || body.error) {
-			throw new Error(`PostHog request failed (${response.status}).`);
+		for (let attempt = 0; ; attempt += 1) {
+			if (attempt > 0)
+				await new Promise((resolve) => setTimeout(resolve, 1_000));
+			let response: Response;
+			try {
+				response = await fetch(`${this.value.host}${path}`, {
+					...init,
+					headers: {
+						Authorization: `Bearer ${this.value.apiKey}`,
+						"Content-Type": "application/json",
+						...init.headers,
+					},
+					signal: AbortSignal.timeout(30_000),
+				});
+			} catch {
+				if (attempt > 0)
+					throw new Error("PostHog request unavailable or timed out.");
+				continue;
+			}
+			if (!response.ok) {
+				await response.body?.cancel();
+				if (
+					attempt === 0 &&
+					[408, 500, 502, 503, 504].includes(response.status)
+				) {
+					continue;
+				}
+				throw new Error(`PostHog request failed (HTTP ${response.status}).`);
+			}
+			let body: T & { detail?: string; error?: string | null };
+			try {
+				body = (await response.json()) as T & {
+					detail?: string;
+					error?: string | null;
+				};
+			} catch {
+				if (attempt > 0) throw new Error("PostHog returned invalid JSON.");
+				continue;
+			}
+			if (!body || typeof body !== "object" || Array.isArray(body)) {
+				throw new Error("PostHog returned an invalid response.");
+			}
+			if (body.error) {
+				throw new Error(`PostHog request failed (${response.status}).`);
+			}
+			return body;
 		}
-		return body;
 	}
 }
 

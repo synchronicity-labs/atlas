@@ -21,7 +21,20 @@ function result(columns: string[], rows: unknown[][]): MetabaseResult {
 describe("abuse detail verification", () => {
 	test("keeps enforcement populations intact", () => {
 		expect(abuseUsesAllIdentities("cron:abuse:enforcement-detail")).toBeTrue();
-		expect(abuseUsesAllIdentities("abuse:users:currently-banned")).toBeFalse();
+		expect(abuseUsesAllIdentities("abuse:users:currently-banned")).toBeTrue();
+		expect(
+			abuseUsesAllIdentities("abuse:users:banned-updated-at-proxy"),
+		).toBeTrue();
+		expect(abuseUsesAllIdentities("abuse:users:ban-reasons")).toBeTrue();
+	});
+
+	test.each([
+		null,
+		"5182",
+		"abuse:users:other",
+		"abuse:users:currently-banned:copy",
+	])("does not exempt an unapproved source %s", (sourceExternalId) => {
+		expect(abuseUsesAllIdentities(sourceExternalId)).toBeFalse();
 	});
 
 	test("verifies reconciled 24-hour PostHog ring detail", () => {

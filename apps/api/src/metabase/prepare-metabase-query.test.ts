@@ -104,6 +104,67 @@ describe("shared Metabase preview and refresh preparation", () => {
 		expect(prepared.input.queryText).toEndWith("limit 2000");
 	});
 
+	it.each([
+		[
+			"abuse:users:currently-banned",
+			"select count(*)::integer as currently_banned_accounts from auth.users where banned is true",
+		],
+		[
+			"abuse:users:banned-updated-at-proxy",
+			"select date_trunc('day', updated_at)::date as day, count(*)::integer as accounts_marked_banned from auth.users where banned is true and updated_at >= current_date - interval '180 days' group by 1 order by 1",
+		],
+		[
+			"abuse:users:ban-reasons",
+			"select coalesce(nullif(btrim(ban_reason), ''), '(none)') as ban_reason, count(*)::integer as banned_accounts from auth.users where banned is true and updated_at >= current_date - interval '30 days' group by 1 order by 2 desc",
+		],
+	])(
+		"preserves the banned population for %s without dropping safety checks",
+		async (sourceExternalId, queryText) => {
+			const { client, eligibility, policy } = dependencies();
+			const context = { ...question, sourceExternalId };
+			const prepared = await prepareGovernedMetabaseQuery(
+				context,
+				{ language: "SQL", queryText },
+				client,
+				eligibility,
+				policy,
+			);
+			expect(prepared.input.queryText).toBe(
+				`select * from (${queryText}) as atlas_bounded_identity_result limit 2000`,
+			);
+			expect(prepared.governed).toBeNull();
+			expect(eligibility.current).not.toHaveBeenCalled();
+			await expect(
+				prepareGovernedMetabaseQuery(
+					context,
+					{
+						language: "SQL",
+						queryText: "delete from auth.users where banned is true",
+					},
+					client,
+					eligibility,
+					policy,
+				),
+			).rejects.toThrow();
+		},
+	);
+
+	it.each(["5182", "abuse:users:other", "abuse:users:currently-banned:copy"])(
+		"still rejects an unfiltered identity query for %s",
+		async (sourceExternalId) => {
+			const { client, eligibility, policy } = dependencies();
+			await expect(
+				prepareGovernedMetabaseQuery(
+					{ ...question, sourceExternalId },
+					{ language: "SQL", queryText: "select * from auth.users" },
+					client,
+					eligibility,
+					policy,
+				),
+			).rejects.toThrow("The Product query was not executed");
+		},
+	);
+
 	it("keeps the money and paid-activity policies distinct", async () => {
 		const { client, eligibility, policy } = dependencies();
 		const input = {

@@ -94,6 +94,10 @@ def transitions(sources, previous, now):
             continue
         if status == "HEALTHY" and (not before or before["status"] == "UNCONFIGURED"):
             continue
+        if status == "HEALTHY" and (
+            source["state"] == "SYNCING" or (source.get("latestRun") or {}).get("status") == "RUNNING"
+        ):
+            continue
         yield source, status
 
 

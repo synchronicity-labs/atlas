@@ -96,6 +96,7 @@ export class MarketingClient {
 	constructor(
 		private readonly config: MarketingConfig,
 		private readonly posthogRetryDelayMs = 500,
+		private readonly posthogTimeoutMs = 60_000,
 	) {
 		this.google = new GoogleServiceAccountClient(config.google);
 	}
@@ -458,7 +459,9 @@ export class MarketingClient {
 	private async posthog(query: string): Promise<MarketingResult> {
 		const config = this.config.posthog;
 		if (!config) throw new Error("PostHog is not configured.");
+		const signal = AbortSignal.timeout(this.posthogTimeoutMs);
 		for (let attempt = 1; attempt <= 3; attempt += 1) {
+			signal.throwIfAborted();
 			const response = await fetch(
 				`${config.host}/api/projects/${config.projectId}/query/`,
 				{
@@ -468,9 +471,18 @@ export class MarketingClient {
 						"Content-Type": "application/json",
 					},
 					body: JSON.stringify({ query: { kind: "HogQLQuery", query } }),
+					signal,
 				},
 			);
-			const body = (await response.json().catch(() => ({}))) as PosthogReport;
+			const body = (
+				response.ok
+					? await response.json().catch(() => {
+							signal.throwIfAborted();
+							throw new Error("PostHog returned invalid JSON.");
+						})
+					: {}
+			) as PosthogReport;
+			if (!response.ok) await response.body?.cancel();
 			if (response.ok && !body.error) {
 				if (body.hasMore) {
 					throw new Error(
@@ -637,7 +649,9 @@ export class MarketingClient {
 	private async posthogNative(query: unknown): Promise<unknown> {
 		const config = this.config.posthog;
 		if (!config) throw new Error("PostHog is not configured.");
+		const signal = AbortSignal.timeout(this.posthogTimeoutMs);
 		for (let attempt = 1; attempt <= 3; attempt += 1) {
+			signal.throwIfAborted();
 			const response = await fetch(
 				`${config.host}/api/projects/${config.projectId}/query/`,
 				{
@@ -647,13 +661,22 @@ export class MarketingClient {
 						"Content-Type": "application/json",
 					},
 					body: JSON.stringify({ query }),
+					signal,
 				},
 			);
-			const body = (await response.json().catch(() => ({}))) as {
+			const body = (
+				response.ok
+					? await response.json().catch(() => {
+							signal.throwIfAborted();
+							throw new Error("PostHog returned invalid JSON.");
+						})
+					: {}
+			) as {
 				results?: unknown;
 				error?: string | null;
 				hasMore?: boolean | null;
 			};
+			if (!response.ok) await response.body?.cancel();
 			if (response.ok && !body.error) {
 				if (body.hasMore) {
 					throw new Error("PostHog insight query result was truncated.");

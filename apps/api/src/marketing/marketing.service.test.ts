@@ -1,8 +1,9 @@
-import { describe, expect, mock, test } from "bun:test";
+import { describe, expect, mock, spyOn, test } from "bun:test";
 import type { Db } from "@crm/db";
 import type { ProductMetricPublisher } from "../metabase/product-metric.publisher";
 import type { TinybirdEligibilityService } from "../metabase/tinybird-eligibility.service";
 import type { GbrainEvidenceService } from "./gbrain-evidence.service";
+import { MarketingClient } from "./marketing.client";
 import {
 	groupMarketingQuestionsBySource,
 	MarketingService,
@@ -30,6 +31,81 @@ describe("marketing metric attempts", () => {
 });
 
 describe("marketing source runs", () => {
+	test("records a timed-out question and still publishes the next question", async () => {
+		const publish = mock(async () => undefined);
+		const updateRun = mock(async () => ({}));
+		const updateSource = mock(async () => ({}));
+		const db = {
+			dashboard: {
+				findUnique: async () => ({
+					cards: [1, 2].map((number) => ({
+						question: {
+							id: String(number),
+							number,
+							sourceId: "marketing",
+							versions: [
+								{
+									version: 1,
+									queryLanguage: "API",
+									queryText: JSON.stringify({
+										source: "posthog",
+										personPolicy: "all_events",
+										query: "select 1",
+									}),
+								},
+							],
+						},
+					})),
+				}),
+			},
+			dataSource: {
+				findUnique: async () => ({ id: "marketing", key: "atlas:marketing" }),
+				update: updateSource,
+			},
+			syncRun: { create: async () => ({ id: "run" }), update: updateRun },
+			resultSnapshot: { createMany: async () => ({ count: 1 }) },
+			$transaction: async (operations: Promise<unknown>[]) =>
+				Promise.all(operations),
+		} as unknown as Db;
+		const execute = spyOn(MarketingClient.prototype, "execute")
+			.mockRejectedValueOnce(
+				new DOMException("PostHog deadline reached", "TimeoutError"),
+			)
+			.mockResolvedValueOnce({ columns: [], rows: [[1]] });
+		try {
+			const service = new MarketingService(
+				db,
+				{ publish } as unknown as ProductMetricPublisher,
+				{} as TinybirdEligibilityService,
+				{} as GbrainEvidenceService,
+			);
+			const result = await service.syncDashboard(3);
+			expect(result.cardsProcessed).toBe(1);
+			expect(result.snapshotsCreated).toBe(1);
+			expect(result.errors).toEqual([
+				{ number: 1, message: "PostHog deadline reached" },
+			]);
+			expect(publish).toHaveBeenCalledTimes(1);
+			expect(publish).toHaveBeenCalledWith(
+				expect.objectContaining({
+					question: expect.objectContaining({ number: 2 }),
+				}),
+			);
+			expect(updateRun).toHaveBeenCalledWith(
+				expect.objectContaining({
+					data: expect.objectContaining({ status: "FAILED" }),
+				}),
+			);
+			expect(updateSource).toHaveBeenLastCalledWith(
+				expect.objectContaining({
+					data: expect.objectContaining({ state: "ERROR" }),
+				}),
+			);
+		} finally {
+			execute.mockRestore();
+		}
+	});
+
 	test("a targeted refresh never starts an unrelated source", async () => {
 		const sourceLookup = mock(async () => null);
 		const db = {

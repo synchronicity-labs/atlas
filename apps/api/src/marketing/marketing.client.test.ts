@@ -23,6 +23,72 @@ afterEach(() => {
 	mock.restore();
 });
 
+describe("MarketingClient PostHog deadlines", () => {
+	for (const route of ["hogql", "native"] as const) {
+		const execute = (client: MarketingClient) =>
+			route === "native"
+				? client.nativeInsight({ kind: "TrendsQuery" })
+				: client.execute({
+						source: "posthog",
+						personPolicy: "all_events",
+						query: "select 1",
+					});
+
+		for (const phase of ["headers", "body"] as const) {
+			test(`${route} rejects a stalled ${phase} response without empty success`, async () => {
+				const fetchMock = mock((_url: unknown, init: RequestInit) => {
+					const signal = init.signal as AbortSignal;
+					if (phase === "headers") {
+						return new Promise<Response>((_resolve, reject) => {
+							signal.addEventListener("abort", () => reject(signal.reason));
+						});
+					}
+					return Promise.resolve(
+						new Response(
+							new ReadableStream({
+								start(controller) {
+									signal.addEventListener("abort", () =>
+										controller.error(signal.reason),
+									);
+								},
+							}),
+						),
+					);
+				});
+				globalThis.fetch = fetchMock as unknown as typeof fetch;
+				await expect(
+					execute(new MarketingClient(config, 0, 10)),
+				).rejects.toMatchObject({
+					name: "TimeoutError",
+				});
+				expect(fetchMock).toHaveBeenCalledTimes(1);
+			});
+		}
+
+		test(`${route} keeps one deadline across retries`, async () => {
+			const fetchMock = mock().mockResolvedValue(
+				new Response("busy", { status: 503 }),
+			);
+			globalThis.fetch = fetchMock as unknown as typeof fetch;
+			await expect(
+				execute(new MarketingClient(config, 30, 10)),
+			).rejects.toMatchObject({
+				name: "TimeoutError",
+			});
+			expect(fetchMock).toHaveBeenCalledTimes(1);
+		});
+
+		test(`${route} rejects invalid successful JSON`, async () => {
+			globalThis.fetch = mock().mockResolvedValue(
+				new Response("invalid sensitive upstream content"),
+			) as unknown as typeof fetch;
+			await expect(execute(new MarketingClient(config, 0))).rejects.toThrow(
+				"PostHog returned invalid JSON.",
+			);
+		});
+	}
+});
+
 describe("MarketingClient scoped Google weeks", () => {
 	test("requests six complete GA4 months without current-month partials", async () => {
 		spyOn(

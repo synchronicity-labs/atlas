@@ -64,23 +64,30 @@ def health(source, now):
 
 def message(source, status, app_url):
     recovery = status == "HEALTHY"
-    run = source.get("latestRun") or {}
+    def display_time(value):
+        parsed = instant(value)
+        return parsed.astimezone(timezone.utc).strftime("%d %b %H:%M UTC") if parsed else "unknown"
+
+    title = {
+        "HEALTHY": "✅ Atlas recovered",
+        "STALE": "⚠️ Atlas data is stale",
+        "ERROR": "⚠️ Atlas refresh failed",
+        "UNAVAILABLE": "⚠️ Atlas freshness is unknown",
+    }.get(status, "⚠️ Atlas needs attention")
     lines = [
-        f"Atlas source {'recovered' if recovery else 'needs attention'}: {source.get('label', source['key'])}",
-        f"Source: {source['key']} | State: {status}",
-        f"Last successful sync: {source.get('lastSyncAt') or 'none'}",
-        f"Freshness deadline: {source.get('freshnessDeadlineAt') or 'not configured'}",
-        f"Latest run: {run.get('id', 'none')} | {run.get('status', 'unknown')}",
+        f"{title} — {source.get('label', source['key'])}",
+        f"Last sync: {display_time(source.get('lastSyncAt'))}",
     ]
     if not recovery:
-        lines.append(f"Latest error: {source.get('lastError') or 'No source error recorded; check the deadline and collector.'}")
-    else:
-        lines.append("The current source check passes. This is not a certification change.")
+        lines.append(f"Freshness deadline: {display_time(source.get('freshnessDeadlineAt'))}")
+        if source.get("lastError"):
+            lines.append(f"Issue: {source['lastError']}")
     for number in source.get("dashboards", [])[:10]:
         if isinstance(number, int) and number > 0:
             lines.append(f"Dashboard: {app_url}/dashboards/{number}")
-    lines.append("Runbook: https://github.com/synchronicity-labs/atlas/blob/main/ops/rudy/source-reliability/README.md")
-    lines.append("Ticket: https://linear.app/sync-labs/issue/OPS-30")
+            break
+    if not recovery or len(lines) == 2:
+        lines.append("Troubleshooting: https://github.com/synchronicity-labs/atlas/blob/main/ops/rudy/source-reliability/README.md")
     return "\n".join(lines).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")[:3900]
 
 

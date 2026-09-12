@@ -104,9 +104,14 @@ When a previously required source becomes non-required, its incident is marked
 inactive without a Slack recovery message. This local state change still happens
 during Slack backoff. Re-enabling the source starts a new incident lifecycle.
 
-Alerts contain the source, last success, deadline, latest run, a safe error class,
-dashboard links, and [OPS-30](https://linear.app/sync-labs/issue/OPS-30). Raw vendor
-errors and customer data stay out of Slack. An unavailable or malformed health
+Recovery alerts contain the source label, last successful sync in readable UTC,
+and one dashboard link (or this runbook if no dashboard exists). Failure alerts
+also include the freshness deadline, a safe error summary when available, and
+this runbook. Run IDs, full source details, and additional dashboard links remain
+available through `/internal/atlas/sources`; incident tracking is in
+[OPS-30](https://linear.app/sync-labs/issue/OPS-30). Recovery describes source
+health, not metric certification. Raw vendor errors and customer data stay out
+of Slack. An unavailable or malformed health
 endpoint produces a separate monitor incident; it does not recover old source
 incidents.
 

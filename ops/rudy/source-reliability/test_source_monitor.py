@@ -97,10 +97,26 @@ class SourceMonitorTest(unittest.TestCase):
         self.assertEqual(len(validated_sources({"schemaVersion": 1, "checkedAt": NOW.isoformat(), "sources": [source()]}, NOW)), 1)
 
     def test_message_contains_operator_evidence_without_active_mentions(self):
-        text = message(source(label="<@all>", dashboards=[4], latestRun={"id": "run-1", "status": "FAILED"}), "ERROR", "https://atlas.pr.sync.so")
-        for value in ["run-1", "FAILED", "Freshness deadline:", "/dashboards/4", "OPS-30"]:
+        text = message(source(label="<@all>", dashboards=[4], lastError="Endpoint unavailable", latestRun={"id": "run-1", "status": "FAILED"}), "ERROR", "https://atlas.pr.sync.so")
+        for value in ["Atlas refresh failed", "Endpoint unavailable", "Freshness deadline:", "/dashboards/4", "Troubleshooting:"]:
             self.assertIn(value, text)
         self.assertNotIn("<@all>", text)
+        self.assertNotIn("run-1", text)
+
+    def test_recovery_is_three_lines_with_one_dashboard_and_readable_utc_time(self):
+        text = message(source(label="GA4, Search Console, and PostHog", dashboards=[3, 15, 18], lastSyncAt="2026-09-12T11:46:08.079+02:00"), "HEALTHY", "https://atlas.pr.sync.so")
+        self.assertEqual(text.splitlines(), [
+            "✅ Atlas recovered — GA4, Search Console, and PostHog",
+            "Last sync: 12 Sep 09:46 UTC",
+            "Dashboard: https://atlas.pr.sync.so/dashboards/3",
+        ])
+
+    def test_missing_timestamp_and_dashboard_keep_a_useful_fallback(self):
+        text = message(source(lastSyncAt=None, freshnessDeadlineAt=None), "UNAVAILABLE", "https://atlas.pr.sync.so")
+        self.assertIn("Last sync: unknown", text)
+        self.assertIn("Freshness deadline: unknown", text)
+        self.assertIn("Troubleshooting:", text)
+        self.assertIn("Troubleshooting:", message(source(), "HEALTHY", "https://atlas.pr.sync.so"))
 
     def test_state_is_atomic_and_private(self):
         with TemporaryDirectory() as directory:

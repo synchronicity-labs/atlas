@@ -1385,6 +1385,7 @@ model MetricSnapshot {
   createdAt       DateTime          @default(now())
 
   @@index([metricVersionId, reportingPeriod, computedAt])
+  @@index([metricVersionId, computedAt(sort: Desc), id(sort: Desc)])
   @@index([trustStatus, dataThrough])
   @@map("metricSnapshot")
   @@schema("metrics")
@@ -1427,6 +1428,7 @@ model ResultSnapshot {
   createdAt           DateTime   @default(now())
 
   @@index([questionExternalId, reportingPeriod, capturedAt])
+  @@index([questionExternalId, capturedAt(sort: Desc), id(sort: Desc)])
   @@index([sourceId, capturedAt])
   @@map("resultSnapshot")
   @@schema("public")

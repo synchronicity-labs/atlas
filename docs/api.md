@@ -73,6 +73,12 @@ question response includes its immutable result snapshot, saved definition,
 freshness status, content hash, idempotency key, and source provenance. Historical
 reads accept `reportingPeriod=YYYY-MM` and `asOf=<ISO timestamp>`.
 
+Latest-only dashboard, catalog, and Rudy context reads use
+`apps/api/src/latest-snapshots.ts`. The database selects one snapshot ID per
+question or metric version through its timestamp index before loading result
+JSON. Do not fetch snapshot history and discard older rows in application code.
+Explicit historical question reads keep their period and verification filters.
+
 `GET /internal/atlas/sources` uses the same read-only credential. It returns all
 source states, successful-sync timestamps, freshness deadlines, latest run IDs,
 and affected dashboard numbers. Error text is reduced to a safe error class; raw

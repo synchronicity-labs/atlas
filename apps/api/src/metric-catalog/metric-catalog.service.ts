@@ -18,6 +18,7 @@ import {
 } from "@crm/db";
 import { Injectable } from "@nestjs/common";
 import { InjectDatabase } from "../database/database.constants";
+import { latestResultSnapshotIds } from "../latest-snapshots";
 import { QuestionsService } from "../questions/questions.service";
 import {
 	classifyMetricAudit,
@@ -693,8 +694,9 @@ export class MetricCatalogService {
 			),
 		];
 		const resultSnapshots = await this.db.resultSnapshot.findMany({
-			where: { questionExternalId: { in: externalIds } },
-			orderBy: { capturedAt: "desc" },
+			where: {
+				id: { in: await latestResultSnapshotIds(this.db, externalIds) },
+			},
 			select: {
 				questionExternalId: true,
 				capturedAt: true,

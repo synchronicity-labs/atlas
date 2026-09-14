@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { type Db, type Prisma, QueryLanguage, QuestionStatus } from "@crm/db";
+import { type Db, Prisma, QueryLanguage, QuestionStatus } from "@crm/db";
 import {
 	BadRequestException,
 	Injectable,
@@ -305,23 +305,13 @@ export class RudyService {
 						tab: { select: { number: true, name: true } },
 						question: {
 							select: {
+								id: true,
 								number: true,
 								publicNumber: true,
 								name: true,
 								description: true,
 								connector: true,
 								sourceExternalId: true,
-								versions: {
-									orderBy: { version: "desc" },
-									take: 1,
-									select: {
-										version: true,
-										queryLanguage: true,
-										queryText: true,
-										display: true,
-										visualization: true,
-									},
-								},
 							},
 						},
 					},
@@ -330,6 +320,35 @@ export class RudyService {
 		});
 		if (!dashboard)
 			throw new NotFoundException(`No Atlas dashboard ${number}.`);
+		const questionIds = [
+			...new Set(dashboard.cards.map((card) => card.question.id)),
+		];
+		const versionIds = questionIds.length
+			? await this.db.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+				SELECT latest."id"
+				FROM unnest(ARRAY[${Prisma.join(questionIds)}]::text[]) AS requested("questionId")
+				CROSS JOIN LATERAL (
+					SELECT "id" FROM "public"."questionVersion"
+					WHERE "questionId" = requested."questionId"
+					ORDER BY "version" DESC
+					LIMIT 1
+				) AS latest
+			`)
+			: [];
+		const versions = await this.db.questionVersion.findMany({
+			where: { id: { in: versionIds.map((version) => version.id) } },
+			select: {
+				questionId: true,
+				version: true,
+				queryLanguage: true,
+				queryText: true,
+				display: true,
+				visualization: true,
+			},
+		});
+		const latestVersions = new Map(
+			versions.map(({ questionId, ...version }) => [questionId, version]),
+		);
 		const externalIds = dashboard.cards.flatMap((card) =>
 			card.question.sourceExternalId ? [card.question.sourceExternalId] : [],
 		);
@@ -360,8 +379,12 @@ export class RudyService {
 					...card,
 					question: {
 						...card.question,
+						id: undefined,
 						number: card.question.publicNumber,
 						publicNumber: undefined,
+						versions: latestVersions.has(card.question.id)
+							? [latestVersions.get(card.question.id)]
+							: [],
 					},
 					latestResult: card.question.sourceExternalId
 						? compactSnapshot(

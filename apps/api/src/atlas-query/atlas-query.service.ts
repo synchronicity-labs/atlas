@@ -6,6 +6,10 @@ import {
 } from "@crm/db";
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { InjectDatabase } from "../database/database.constants";
+import {
+	latestMetricSnapshotIds,
+	latestResultSnapshotIds,
+} from "../latest-snapshots";
 import { questionExplanation } from "../questions/question-explanation";
 import { questionNumberWhere } from "../questions/question-number";
 import { sanitizeQuestionResult } from "../questions/question-result-safety";
@@ -179,10 +183,13 @@ export class AtlasQueryService {
 		const metricVersionIds = questions.flatMap((question) =>
 			question.metricVersionId ? [question.metricVersionId] : [],
 		);
+		const [resultIds, metricIds] = await Promise.all([
+			latestResultSnapshotIds(this.db, externalIds),
+			latestMetricSnapshotIds(this.db, metricVersionIds),
+		]);
 		const [snapshots, metricSnapshots] = await Promise.all([
 			this.db.resultSnapshot.findMany({
-				where: { questionExternalId: { in: externalIds } },
-				orderBy: { capturedAt: "desc" },
+				where: { id: { in: resultIds } },
 				select: {
 					questionExternalId: true,
 					reportingPeriod: true,
@@ -191,8 +198,7 @@ export class AtlasQueryService {
 				},
 			}),
 			this.db.metricSnapshot.findMany({
-				where: { metricVersionId: { in: metricVersionIds } },
-				orderBy: { computedAt: "desc" },
+				where: { id: { in: metricIds } },
 				select: {
 					metricVersionId: true,
 					reportingPeriod: true,

@@ -1,10 +1,14 @@
-import { DataSourceKind, type Db, Prisma, SourceStatus } from "@crm/db";
+import { DataSourceKind, type Db, SourceStatus } from "@crm/db";
 import { Injectable, NotFoundException } from "@nestjs/common";
 import type { z } from "zod";
 import { BillingExperimentService } from "../billing-experiment/billing-experiment.service";
 import { ContractsReportingService } from "../contracts-reporting/contracts-reporting.service";
 import { InjectDatabase } from "../database/database.constants";
 import { EconomicsService } from "../economics/economics.service";
+import {
+	latestMetricSnapshotIds,
+	latestResultSnapshotIds,
+} from "../latest-snapshots";
 import { MarketingService } from "../marketing/marketing.service";
 import { MetabaseService } from "../metabase/metabase.service";
 import { ProductEligibilityService } from "../metabase/product-eligibility.service";
@@ -278,24 +282,20 @@ export class AtlasDashboardsService {
 			card.question.sourceExternalId ? [card.question.sourceExternalId] : [],
 		);
 		const resultSnapshots = externalIds.length
-			? await this.db.$queryRaw<
-					Array<{
-						id: string;
-						questionExternalId: string;
-						reportingPeriod: string;
-						capturedAt: Date;
-						columns: Prisma.JsonValue;
-						rows: Prisma.JsonValue;
-						rowCount: number;
-					}>
-				>(Prisma.sql`
-				SELECT DISTINCT ON ("questionExternalId")
-				  "id", "questionExternalId", "reportingPeriod", "capturedAt",
-				  "columns", "rows", "rowCount"
-				FROM "resultSnapshot"
-				WHERE "questionExternalId" IN (${Prisma.join(externalIds)})
-				ORDER BY "questionExternalId", "capturedAt" DESC
-			`)
+			? await this.db.resultSnapshot.findMany({
+					where: {
+						id: { in: await latestResultSnapshotIds(this.db, externalIds) },
+					},
+					select: {
+						id: true,
+						questionExternalId: true,
+						reportingPeriod: true,
+						capturedAt: true,
+						columns: true,
+						rows: true,
+						rowCount: true,
+					},
+				})
 			: [];
 		const latestResult = new Map<string, (typeof resultSnapshots)[number]>();
 		for (const snapshot of resultSnapshots) {
@@ -306,17 +306,13 @@ export class AtlasDashboardsService {
 		const metricVersionIds = dashboard.cards.flatMap((card) =>
 			card.question.metricVersionId ? [card.question.metricVersionId] : [],
 		);
-		const latestMetricIds = metricVersionIds.length
-			? await this.db.$queryRaw<Array<{ id: string }>>(Prisma.sql`
-				SELECT DISTINCT ON ("metricVersionId") "id"
-				FROM "metrics"."metricSnapshot"
-				WHERE "metricVersionId" IN (${Prisma.join(metricVersionIds)})
-				ORDER BY "metricVersionId", "computedAt" DESC, "id" DESC
-			`)
-			: [];
+		const latestMetricIds = await latestMetricSnapshotIds(
+			this.db,
+			metricVersionIds,
+		);
 		const metricSnapshots = latestMetricIds.length
 			? await this.db.metricSnapshot.findMany({
-					where: { id: { in: latestMetricIds.map((snapshot) => snapshot.id) } },
+					where: { id: { in: latestMetricIds } },
 					select: {
 						id: true,
 						metricVersionId: true,

@@ -21,18 +21,10 @@ describe("Atlas dashboard refresh", () => {
 				}),
 			);
 			const queryRaw = mock((query: Prisma.Sql) => {
-				expect(query.text).toContain(
-					'SELECT DISTINCT ON ("metricVersionId") "id"',
-				);
+				expect(query.text).toContain("CROSS JOIN LATERAL");
 				expect(query.text).toContain('FROM "metrics"."metricSnapshot"');
-				expect(query.text).toContain(
-					'ORDER BY "metricVersionId", "computedAt" DESC, "id" DESC',
-				);
-				expect(query.values).toEqual([
-					"version-one",
-					"version-two",
-					"version-one",
-				]);
+				expect(query.text).toContain('ORDER BY "computedAt" DESC, "id" DESC');
+				expect(query.values).toEqual(["version-one", "version-two"]);
 				return Promise.resolve(
 					hasSnapshots ? snapshots.map(({ id }) => ({ id })) : [],
 				);
@@ -134,31 +126,34 @@ describe("Atlas dashboard refresh", () => {
 		};
 		const db = {
 			dashboard: { findUnique: mock().mockResolvedValue(dashboard) },
-			$queryRaw: mock().mockResolvedValue([
-				{
-					id: "snapshot-141",
-					questionExternalId: "5182",
-					reportingPeriod: "all-time",
-					capturedAt,
-					columns: [
-						{ name: "created_at" },
-						{ name: "organization_id" },
-						{ name: "model_name" },
-						{ name: "text_feedback" },
-						{ name: "output_media_url" },
-					],
-					rows: [
-						[
-							"2026-09-03T11:00:00.000Z",
-							"org-customer",
-							"sync-3",
-							"bad result",
-							"https://signed.example/customer.mp4",
+			$queryRaw: mock().mockResolvedValue([{ id: "snapshot-141" }]),
+			resultSnapshot: {
+				findMany: mock().mockResolvedValue([
+					{
+						id: "snapshot-141",
+						questionExternalId: "5182",
+						reportingPeriod: "all-time",
+						capturedAt,
+						columns: [
+							{ name: "created_at" },
+							{ name: "organization_id" },
+							{ name: "model_name" },
+							{ name: "text_feedback" },
+							{ name: "output_media_url" },
 						],
-					],
-					rowCount: 1,
-				},
-			]),
+						rows: [
+							[
+								"2026-09-03T11:00:00.000Z",
+								"org-customer",
+								"sync-3",
+								"bad result",
+								"https://signed.example/customer.mp4",
+							],
+						],
+						rowCount: 1,
+					},
+				]),
+			},
 			metricSnapshot: { findMany: mock().mockResolvedValue([]) },
 			dataSource: { findMany: mock().mockResolvedValue([]) },
 		} as unknown as Db;

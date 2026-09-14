@@ -8,6 +8,7 @@ import {
 } from "@nestjs/common";
 import { z } from "zod";
 import { InjectDatabase } from "../database/database.constants";
+import { latestResultSnapshotIds } from "../latest-snapshots";
 import { questionNumberWhere } from "../questions/question-number";
 import { sanitizeQuestionResult } from "../questions/question-result-safety";
 import { assertReadOnlyQuery } from "../questions/read-only-query";
@@ -333,8 +334,9 @@ export class RudyService {
 			card.question.sourceExternalId ? [card.question.sourceExternalId] : [],
 		);
 		const snapshots = await this.db.resultSnapshot.findMany({
-			where: { questionExternalId: { in: externalIds } },
-			orderBy: { capturedAt: "desc" },
+			where: {
+				id: { in: await latestResultSnapshotIds(this.db, externalIds) },
+			},
 			select: {
 				questionExternalId: true,
 				reportingPeriod: true,

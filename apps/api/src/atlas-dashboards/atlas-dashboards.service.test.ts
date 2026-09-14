@@ -1,8 +1,98 @@
 import { describe, expect, mock, test } from "bun:test";
-import { DataSourceKind, type Db } from "@crm/db";
+import { DataSourceKind, type Db, type Prisma } from "@crm/db";
 import { AtlasDashboardsService } from "./atlas-dashboards.service";
 
 describe("Atlas dashboard refresh", () => {
+	for (const hasSnapshots of [true, false]) {
+		test(`loads only latest governed snapshot IDs (available: ${hasSnapshots})`, async () => {
+			const computedAt = new Date("2026-09-14T12:00:00.000Z");
+			const snapshots = ["version-one", "version-two"].map(
+				(metricVersionId) => ({
+					id: `latest-${metricVersionId}`,
+					metricVersionId,
+					reportingPeriod: "2026-09",
+					computedAt,
+					dataThrough: computedAt,
+					trustStatus: "VERIFIED",
+					columns: [{ name: "value" }],
+					rows: [[42]],
+					rowCount: 1,
+					metricRun: { verifications: [] },
+				}),
+			);
+			const queryRaw = mock((query: Prisma.Sql) => {
+				expect(query.text).toContain(
+					'SELECT DISTINCT ON ("metricVersionId") "id"',
+				);
+				expect(query.text).toContain('FROM "metrics"."metricSnapshot"');
+				expect(query.text).toContain(
+					'ORDER BY "metricVersionId", "computedAt" DESC, "id" DESC',
+				);
+				expect(query.values).toEqual([
+					"version-one",
+					"version-two",
+					"version-one",
+				]);
+				return Promise.resolve(
+					hasSnapshots ? snapshots.map(({ id }) => ({ id })) : [],
+				);
+			});
+			const findMany = mock().mockResolvedValue(snapshots);
+			const db = {
+				dashboard: {
+					findUnique: mock().mockResolvedValue({
+						updatedAt: computedAt,
+						cards: ["version-one", "version-two", "version-one"].map(
+							(metricVersionId) => ({
+								question: {
+									publicNumber: 1,
+									name: "Metric",
+									metricVersionId,
+									canonicalCatalogEntries: [],
+									versions: [],
+								},
+							}),
+						),
+					}),
+				},
+				$queryRaw: queryRaw,
+				metricSnapshot: { findMany },
+				dataSource: { findMany: mock().mockResolvedValue([]) },
+			} as unknown as Db;
+			const service = new AtlasDashboardsService(
+				db,
+				{} as never,
+				{} as never,
+				{} as never,
+				{} as never,
+				{} as never,
+				{} as never,
+				{} as never,
+			);
+
+			const result = await service.byNumber(1);
+
+			expect(queryRaw).toHaveBeenCalledTimes(1);
+			if (hasSnapshots) {
+				expect(findMany).toHaveBeenCalledTimes(1);
+				expect(findMany.mock.calls[0]?.[0].where).toEqual({
+					id: { in: snapshots.map(({ id }) => id) },
+				});
+				expect(result.cards.map((card) => card.snapshot?.id)).toEqual([
+					"latest-version-one",
+					"latest-version-two",
+					"latest-version-one",
+				]);
+				expect(result.cards[0]?.snapshot?.rows).toEqual([[42]]);
+				expect(result.cards[0]?.verification?.status).toBe("VERIFIED");
+			} else {
+				expect(findMany).not.toHaveBeenCalled();
+				expect(result.cards.every((card) => card.snapshot === null)).toBe(true);
+				expect(result.cards[0]?.verification?.status).toBe("PENDING");
+			}
+		});
+	}
+
 	test("sanitizes cached negative-feedback snapshots in protected dashboard reads", async () => {
 		const capturedAt = new Date("2026-09-03T12:00:00.000Z");
 		const dashboard = {

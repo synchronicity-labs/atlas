@@ -306,10 +306,17 @@ export class AtlasDashboardsService {
 		const metricVersionIds = dashboard.cards.flatMap((card) =>
 			card.question.metricVersionId ? [card.question.metricVersionId] : [],
 		);
-		const metricSnapshots = metricVersionIds.length
+		const latestMetricIds = metricVersionIds.length
+			? await this.db.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+				SELECT DISTINCT ON ("metricVersionId") "id"
+				FROM "metrics"."metricSnapshot"
+				WHERE "metricVersionId" IN (${Prisma.join(metricVersionIds)})
+				ORDER BY "metricVersionId", "computedAt" DESC, "id" DESC
+			`)
+			: [];
+		const metricSnapshots = latestMetricIds.length
 			? await this.db.metricSnapshot.findMany({
-					where: { metricVersionId: { in: metricVersionIds } },
-					orderBy: { computedAt: "desc" },
+					where: { id: { in: latestMetricIds.map((snapshot) => snapshot.id) } },
 					select: {
 						id: true,
 						metricVersionId: true,

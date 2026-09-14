@@ -6,6 +6,7 @@ import { RudyService } from "../src/rudy/rudy.service";
 
 const capturedAt = new Date("2026-09-14T12:00:00Z");
 const question = {
+	id: "question-1",
 	publicNumber: 1,
 	name: "Test metric",
 	updatedAt: capturedAt,
@@ -24,22 +25,75 @@ const result = {
 };
 
 describe("bounded snapshot readers", () => {
+	test("Rudy accepts a dashboard with no cards without a raw lookup", async () => {
+		const queryRaw = mock();
+		const emptyRead = async (input: { where: unknown }) => {
+			expect(input.where).toEqual({ id: { in: [] } });
+			return [];
+		};
+		const service = new RudyService(
+			{
+				dashboard: { findUnique: async () => ({ cards: [] }) },
+				$queryRaw: queryRaw,
+				questionVersion: { findMany: emptyRead },
+				resultSnapshot: { findMany: emptyRead },
+			} as unknown as Db,
+			{} as never,
+		);
+		expect(
+			await Reflect.get(service, "readContext").call(service, {
+				kind: "dashboard",
+				id: "1",
+			}),
+		).toMatchObject({ dashboard: { cards: [] } });
+		expect(queryRaw).not.toHaveBeenCalled();
+	});
+
 	test("Rudy fetches only latest dashboard results and keeps missing results empty", async () => {
 		const findMany = mock(async (input: Prisma.ResultSnapshotFindManyArgs) => {
 			expect(input.where).toEqual({ id: { in: [result.id] } });
 			return [result];
 		});
+		const latestDefinition = {
+			version: 12,
+			queryLanguage: "SQL",
+			queryText: "select 42",
+			display: "scalar",
+			visualization: {},
+		};
+		const versionRead = mock(
+			async (input: Prisma.QuestionVersionFindManyArgs) => {
+				expect(input.where).toEqual({ id: { in: ["definition-latest"] } });
+				return [{ questionId: question.id, ...latestDefinition }];
+			},
+		);
 		const service = new RudyService(
 			{
 				dashboard: {
-					findUnique: async () => ({
-						cards: [
-							{ question },
-							{ question: { ...question, sourceExternalId: "missing" } },
-						],
-					}),
+					findUnique: async (input: Prisma.DashboardFindUniqueArgs) => {
+						expect(JSON.stringify(input.select)).not.toContain('"versions"');
+						return {
+							cards: [
+								{ question },
+								{
+									question: {
+										...question,
+										id: "missing-question",
+										sourceExternalId: "missing",
+									},
+								},
+							],
+						};
+					},
 				},
-				$queryRaw: async () => [{ id: result.id }],
+				$queryRaw: async (sql: Prisma.Sql) => {
+					if (!sql.text.includes('"questionVersion"'))
+						return [{ id: result.id }];
+					expect(sql.values).toEqual([question.id, "missing-question"]);
+					expect(sql.text).toContain('ORDER BY "version" DESC');
+					return [{ id: "definition-latest" }];
+				},
+				questionVersion: { findMany: versionRead },
 				resultSnapshot: { findMany },
 			} as unknown as Db,
 			{} as never,
@@ -49,11 +103,15 @@ describe("bounded snapshot readers", () => {
 			id: "1",
 		});
 		expect(findMany).toHaveBeenCalledTimes(1);
+		expect(versionRead).toHaveBeenCalledTimes(1);
 		expect(context).toMatchObject({
 			dashboard: {
 				cards: [
-					{ latestResult: { rows: [[42]], rowCount: 1, truncated: false } },
-					{ latestResult: null },
+					{
+						question: { versions: [latestDefinition] },
+						latestResult: { rows: [[42]], rowCount: 1, truncated: false },
+					},
+					{ question: { versions: [] }, latestResult: null },
 				],
 			},
 		});

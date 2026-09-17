@@ -66,6 +66,12 @@ export function capabilitiesFrom(
 			gives:
 				"somewhere to keep a logo or a profile photo. Without it a record has no picture at all, because the URLs these sources hand back expire and are never stored as they are",
 		},
+		{
+			...fromEnv("TYPESAFE_API_KEY"),
+			label: "Semantic matching",
+			gives:
+				"typed ranking for ambiguous contract-customer matches; deterministic matches remain authoritative",
+		},
 	];
 }
 

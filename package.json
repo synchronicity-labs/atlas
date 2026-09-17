@@ -2,7 +2,7 @@
 	"name": "atlas",
 	"private": true,
 	"license": "MIT",
-	"version": "1.0.0",
+	"version": "1.1.0",
 	"scripts": {
 		"build": "turbo run build",
 		"dev": "doppler run -- turbo run dev",

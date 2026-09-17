@@ -7,6 +7,7 @@ import {
 	contractSearchTerms,
 } from "./contracts-mapping-names";
 import { inputJson } from "./customer-source";
+import { askTypeSafeChoice } from "./typesafe";
 
 export type ContractOrganizationCandidate = {
 	id: string;
@@ -154,11 +155,19 @@ export async function suggestContractCustomerMappings(
 		}
 	}
 
-	const candidates = [...candidatesById.values()];
+	const candidates = [...candidatesById.values()].sort(
+		(left, right) =>
+			right.confidence - left.confidence ||
+			Number(Boolean(right.stripeCustomerId)) -
+				Number(Boolean(left.stripeCustomerId)) ||
+			(left.name ?? "").localeCompare(right.name ?? ""),
+	);
 
-	if (candidates.length > 0) {
+	const ranked = await rankAmbiguousCandidates(candidates, input);
+
+	if (ranked.length > 0) {
 		await db.contractCustomerProductOrganization.createMany({
-			data: candidates.map((candidate) => ({
+			data: ranked.map((candidate) => ({
 				contractCustomerId: input.contractCustomerId,
 				productOrganizationId: candidate.id,
 				status: ContractMappingStatus.SUGGESTED,
@@ -177,7 +186,7 @@ export async function suggestContractCustomerMappings(
 			skipDuplicates: true,
 		});
 		await Promise.all(
-			candidates.map((candidate) =>
+			ranked.map((candidate) =>
 				db.contractCustomerProductOrganization.updateMany({
 					where: {
 						contractCustomerId: input.contractCustomerId,
@@ -202,11 +211,70 @@ export async function suggestContractCustomerMappings(
 		);
 	}
 
-	return candidates.sort(
-		(left, right) =>
-			right.confidence - left.confidence ||
-			Number(Boolean(right.stripeCustomerId)) -
-				Number(Boolean(left.stripeCustomerId)) ||
-			(left.name ?? "").localeCompare(right.name ?? ""),
+	return ranked;
+}
+
+async function rankAmbiguousCandidates(
+	candidates: ContractOrganizationCandidate[],
+	input: { folderName: string; legalName?: string | null },
+): Promise<ContractOrganizationCandidate[]> {
+	if (
+		candidates.length < 2 ||
+		candidates.some((candidate) => candidate.confidence >= 0.995)
+	) {
+		return candidates;
+	}
+
+	const shortlist = candidates.slice(0, 12);
+	const criteria = Object.fromEntries(
+		shortlist.map((candidate) => [
+			candidate.externalId,
+			[
+				candidate.name,
+				candidate.domain,
+				candidate.signals
+					.map((signal) => `${signal.kind}: ${signal.value}`)
+					.join(", "),
+			]
+				.filter(Boolean)
+				.join("; "),
+		]),
 	);
+	const answer = await askTypeSafeChoice({
+		state: {
+			contractCustomer: {
+				folderName: input.folderName,
+				legalName: input.legalName ?? null,
+			},
+			candidates: shortlist.map((candidate) => ({
+				id: candidate.externalId,
+				name: candidate.name,
+				domain: candidate.domain,
+				signals: candidate.signals,
+			})),
+		},
+		instructions:
+			"Which candidate product organization best matches this contract customer? Choose the best-supported candidate; do not choose based on a generic or weak partial match.",
+		criteria,
+	});
+	if (
+		!answer ||
+		!criteria[answer.choice] ||
+		(answer.confidence !== null && answer.confidence < 0.6)
+	) {
+		return candidates;
+	}
+
+	const position = shortlist.findIndex(
+		(candidate) => candidate.externalId === answer.choice,
+	);
+	if (position < 1) return candidates;
+
+	const chosen = shortlist[position];
+	if (!chosen) return candidates;
+	return [
+		chosen,
+		...shortlist.filter((candidate) => candidate !== chosen),
+		...candidates.slice(shortlist.length),
+	];
 }

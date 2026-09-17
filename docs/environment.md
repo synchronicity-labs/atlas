@@ -218,6 +218,7 @@ because it is not a variable at all — see
 | `GITHUB_TOKEN` | Raises the GitHub rate limit from 60/hour when matching profiles |
 | `BLOB_READ_WRITE_TOKEN` | Mirrors every logo and profile picture into Vercel Blob rather than linking them. Read by the API and the seed too — see below |
 | `AI_GATEWAY_API_KEY` | The model. Not needed on Vercel, where OIDC handles it |
+| `TYPESAFE_API_KEY` | Optional typed ranking for ambiguous contract-customer matches |
 | `AGENT_BRIDGE_SECRET` | Lets a rep talk to the agent from the contact sheet — [the bridge](./agent.md#the-bridge) |
 | `GOOGLE_SERVICE_ACCOUNT_JSON` + `CONTRACTS_DRIVE_FOLDER_ID` | Recursively indexes enterprise, production, and channel-partner contract folders during the customer-source sync |
 

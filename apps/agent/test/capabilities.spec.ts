@@ -11,6 +11,7 @@ const KEYS = [
 	"RAPIDAPI_KEY",
 	"PERPLEXITY_API_KEY",
 	"BLOB_READ_WRITE_TOKEN",
+	"TYPESAFE_API_KEY",
 ] as const;
 
 const saved: Record<string, string | undefined> = {};

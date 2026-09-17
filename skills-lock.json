@@ -61,6 +61,12 @@
       "skillPath": "skills/turborepo/SKILL.md",
       "computedHash": "f4b990564b013482af64f72ba2dd28f2e244283a1fdcf23e469b9bcf942c1212"
     },
+    "typesafe-ai": {
+      "source": "typesafe-ai/skills",
+      "sourceType": "github",
+      "skillPath": "skills/typesafe-ai/SKILL.md",
+      "computedHash": "9cd84c5e535dec8dec59917c110f9c00b4a61faadb86b432ec7e41051170af12"
+    },
     "typescript-advanced-types": {
       "source": "wshobson/agents",
       "sourceType": "github",

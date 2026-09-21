@@ -6,8 +6,8 @@ describe("QBR readiness", () => {
 		expect(
 			summarizeQbrReadiness(
 				[
-					{ snapshot: {}, verification: { status: "VERIFIED" } },
-					{ snapshot: {}, verification: { status: "VERIFIED" } },
+					{ snapshot: { rows: [[1]] }, verification: { status: "VERIFIED" } },
+					{ snapshot: { rows: [[2]] }, verification: { status: "VERIFIED" } },
 				],
 				[
 					{ label: "Stripe", state: "HEALTHY" },
@@ -25,7 +25,7 @@ describe("QBR readiness", () => {
 	test("blocks stale sources even when saved cards are verified", () => {
 		expect(
 			summarizeQbrReadiness(
-				[{ snapshot: {}, verification: { status: "VERIFIED" } }],
+				[{ snapshot: { rows: [[1]] }, verification: { status: "VERIFIED" } }],
 				[{ label: "GA4", state: "ERROR" }],
 			),
 		).toMatchObject({
@@ -40,7 +40,7 @@ describe("QBR readiness", () => {
 		expect(
 			summarizeQbrReadiness(
 				[
-					{ snapshot: {}, verification: { status: "VERIFIED" } },
+					{ snapshot: { rows: [[1]] }, verification: { status: "VERIFIED" } },
 					{ snapshot: null, verification: null },
 				],
 				[],
@@ -48,6 +48,19 @@ describe("QBR readiness", () => {
 		).toMatchObject({
 			status: "BLOCKED",
 			verifiedCards: 1,
+			blockedCards: 1,
+		});
+	});
+
+	test("blocks verified snapshots with no rows in the QBR period", () => {
+		expect(
+			summarizeQbrReadiness(
+				[{ snapshot: { rows: [] }, verification: { status: "VERIFIED" } }],
+				[],
+			),
+		).toMatchObject({
+			status: "BLOCKED",
+			verifiedCards: 0,
 			blockedCards: 1,
 		});
 	});

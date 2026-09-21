@@ -36,7 +36,7 @@ import {
 import { cn } from "@crm/ui/lib/utils";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
-import { parseAsInteger, useQueryState } from "nuqs";
+import { parseAsBoolean, parseAsInteger, useQueryState } from "nuqs";
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import ReactGridLayout, {
 	type Layout,
@@ -63,6 +63,7 @@ import {
 	hasCompatibleChartUnits,
 	metricDisplayFamily,
 } from "@/lib/chart-visualization";
+import { summarizeQbrReadiness } from "@/lib/qbr-readiness";
 import { useTRPC } from "@/lib/trpc/client";
 import type { RouterOutputs } from "@/lib/trpc/types";
 
@@ -181,12 +182,20 @@ function filterCardHistory(
 		sourceRows,
 		filters,
 	);
-	if (filtered.dateColumnIndex == null) return card;
+	const currentMonth = new Date().toISOString().slice(0, 7);
+	const currentScalarSnapshot =
+		filters.range === "previous-month" &&
+		card.snapshot.reportingPeriod?.startsWith(currentMonth) === true;
+	if (filtered.dateColumnIndex == null && !currentScalarSnapshot) return card;
 
 	const filteredCard = structuredClone(card);
 	const filteredSnapshot = filteredCard.snapshot as SnapshotData;
-	let visibleRows = filtered.rows;
-	if (card.visualization === "NUMBER" && filtered.rows.length === 1) {
+	let visibleRows = filtered.dateColumnIndex == null ? [] : filtered.rows;
+	if (
+		filtered.dateColumnIndex != null &&
+		card.visualization === "NUMBER" &&
+		filtered.rows.length === 1
+	) {
 		const selectedDate = reportingDate(
 			filtered.rows[0]?.[filtered.dateColumnIndex],
 		);
@@ -1505,8 +1514,15 @@ export function AtlasDashboard({ number }: { number: number }) {
 		"tab",
 		parseAsInteger.withDefault(1).withOptions({ history: "push" }),
 	);
+	const [qbrMode, setQbrMode] = useQueryState(
+		"qbr",
+		parseAsBoolean.withDefault(false),
+	);
 	const reportingPeriod = useReportingPeriod();
 	const historyFilters = reportingPeriod.filters;
+	const qbrFilters: ReportingPeriodFilters = qbrMode
+		? { range: "previous-month", from: null, to: null }
+		: historyFilters;
 	const [editing, setEditing] = useState(false);
 	const [draft, setDraft] = useState<Layout>([]);
 	const [visualizations, setVisualizations] = useState<
@@ -1572,11 +1588,11 @@ export function AtlasDashboard({ number }: { number: number }) {
 		() =>
 			baseCards.reduce<DashboardCard[]>((filtered, card) => {
 				if (card.snapshot) {
-					filtered.push(filterCardHistory(card, historyFilters));
+					filtered.push(filterCardHistory(card, qbrFilters));
 				}
 				return filtered;
 			}, []),
-		[baseCards, historyFilters],
+		[baseCards, qbrFilters],
 	);
 	const visibleCards = editing ? baseCards : readyCards;
 
@@ -1622,6 +1638,7 @@ export function AtlasDashboard({ number }: { number: number }) {
 	);
 	const everySourceFailed =
 		data.sources.length > 0 && sourceErrors.length === data.sources.length;
+	const qbrReadiness = summarizeQbrReadiness(data.cards, data.sources);
 
 	return (
 		<div className="flex flex-col gap-5">
@@ -1679,12 +1696,31 @@ export function AtlasDashboard({ number }: { number: number }) {
 						<MetricTrustIndicator summary={data.verification} />
 					</div>
 					<div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
-						<ReportingPeriodControl
-							filters={historyFilters}
-							bounds={historyBounds}
-							onPreset={(range) => void reportingPeriod.setPreset(range)}
-							onCustom={(from, to) => void reportingPeriod.setCustom(from, to)}
-						/>
+						{qbrMode ? (
+							<Button
+								variant="secondary"
+								size="sm"
+								onClick={() => void setQbrMode(false)}
+							>
+								QBR · Previous complete UTC month
+							</Button>
+						) : (
+							<ReportingPeriodControl
+								filters={historyFilters}
+								bounds={historyBounds}
+								onPreset={(range) => void reportingPeriod.setPreset(range)}
+								onCustom={(from, to) =>
+									void reportingPeriod.setCustom(from, to)
+								}
+							/>
+						)}
+						<Button
+							variant={qbrMode ? "outline" : "secondary"}
+							size="sm"
+							onClick={() => void setQbrMode(!qbrMode)}
+						>
+							{qbrMode ? "Exit QBR mode" : "Open QBR mode"}
+						</Button>
 						<RudyChatTrigger
 							record={{ kind: "dashboard", id: String(data.number) }}
 						/>
@@ -1736,6 +1772,42 @@ export function AtlasDashboard({ number }: { number: number }) {
 					</div>
 				</div>
 			</header>
+			{qbrMode ? (
+				<section
+					className={cn(
+						"rounded-lg border px-4 py-3",
+						qbrReadiness.status === "READY"
+							? "border-success/40 bg-success/5"
+							: "border-warning/50 bg-warning/5",
+					)}
+					aria-label="QBR readiness"
+				>
+					<div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+						<div>
+							<p className="font-medium text-sm">
+								QBR readiness ·{" "}
+								{qbrReadiness.status === "READY" ? "Ready" : "Blocked"}
+							</p>
+							<p className="text-muted-foreground text-xs">
+								{qbrReadiness.verifiedCards} of {data.cards.length} cards have
+								verified saved snapshots for the report.
+							</p>
+						</div>
+						{qbrReadiness.blockedCards > 0 ? (
+							<span className="text-muted-foreground text-xs">
+								{qbrReadiness.blockedCards} card
+								{qbrReadiness.blockedCards === 1 ? "" : "s"} need attention
+							</span>
+						) : null}
+					</div>
+					{qbrReadiness.attentionSources.length > 0 ? (
+						<p className="mt-2 text-muted-foreground text-xs">
+							Sources needing attention:{" "}
+							{qbrReadiness.attentionSources.join(", ")}.
+						</p>
+					) : null}
+				</section>
+			) : null}
 
 			<nav
 				className="flex min-h-10 gap-5 overflow-x-auto border-b"

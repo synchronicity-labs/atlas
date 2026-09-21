@@ -17,12 +17,21 @@ type QbrSource = {
 	state: string;
 };
 
+function hasRows(snapshot: unknown): boolean {
+	if (!snapshot || typeof snapshot !== "object" || Array.isArray(snapshot)) {
+		return false;
+	}
+	const snapshotRows = (snapshot as { rows?: unknown }).rows;
+	return !Array.isArray(snapshotRows) || snapshotRows.length > 0;
+}
+
 export function summarizeQbrReadiness(
 	cards: QbrCard[],
 	sources: QbrSource[],
 ): QbrReadinessSummary {
 	const verifiedCards = cards.filter(
-		(card) => card.snapshot != null && card.verification?.status === "VERIFIED",
+		(card) =>
+			hasRows(card.snapshot) && card.verification?.status === "VERIFIED",
 	).length;
 	const blockedCards = cards.length - verifiedCards;
 	const attentionSources = sources

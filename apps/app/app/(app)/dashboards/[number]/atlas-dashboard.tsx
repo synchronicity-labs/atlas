@@ -1638,7 +1638,12 @@ export function AtlasDashboard({ number }: { number: number }) {
 	);
 	const everySourceFailed =
 		data.sources.length > 0 && sourceErrors.length === data.sources.length;
-	const qbrReadiness = summarizeQbrReadiness(data.cards, data.sources);
+	const qbrReadiness = summarizeQbrReadiness(
+		qbrMode
+			? data.cards.map((card) => filterCardHistory(card, qbrFilters))
+			: data.cards,
+		data.sources,
+	);
 
 	return (
 		<div className="flex flex-col gap-5">
@@ -1671,8 +1676,9 @@ export function AtlasDashboard({ number }: { number: number }) {
 										: "warning"
 							}
 							label={
-								sourceErrors.length > 0 ? (
-									`${sourceErrors.length} of ${data.sources.length} sources need attention`
+								sourceErrors.length > 0 ||
+								qbrReadiness.attentionSources.length > 0 ? (
+									`${qbrReadiness.attentionSources.length} of ${data.sources.length} sources need attention`
 								) : fresh ? (
 									sourceUpdatedAt ? (
 										<>

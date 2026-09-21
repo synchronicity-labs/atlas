@@ -1586,13 +1586,23 @@ export function AtlasDashboard({ number }: { number: number }) {
 	);
 	const readyCards = useMemo(
 		() =>
-			baseCards.reduce<DashboardCard[]>((filtered, card) => {
-				if (card.snapshot) {
-					filtered.push(filterCardHistory(card, qbrFilters));
-				}
-				return filtered;
-			}, []),
-		[baseCards, qbrFilters],
+			baseCards
+				.map((card) => filterCardHistory(card, qbrFilters))
+				.filter(
+					(card) =>
+						card.snapshot != null &&
+						(!qbrMode || rows(card.snapshot).length > 0),
+				),
+		[baseCards, qbrFilters, qbrMode],
+	);
+	const qbrGapCards = useMemo(
+		() =>
+			qbrMode
+				? baseCards
+						.map((card) => filterCardHistory(card, qbrFilters))
+						.filter((card) => rows(card.snapshot).length === 0)
+				: [],
+		[baseCards, qbrFilters, qbrMode],
 	);
 	const visibleCards = editing ? baseCards : readyCards;
 
@@ -1796,7 +1806,7 @@ export function AtlasDashboard({ number }: { number: number }) {
 							</p>
 							<p className="text-muted-foreground text-xs">
 								{qbrReadiness.verifiedCards} of {data.cards.length} cards have
-								verified saved snapshots for the report.
+								verified data for the selected period.
 							</p>
 						</div>
 						{qbrReadiness.blockedCards > 0 ? (
@@ -1855,6 +1865,31 @@ export function AtlasDashboard({ number }: { number: number }) {
 							: ""}
 					</p>
 				</div>
+			) : null}
+
+			{qbrGapCards.length > 0 ? (
+				<section
+					className="rounded-lg border border-warning/40 bg-warning/5 p-4"
+					aria-label="QBR data gaps"
+				>
+					<p className="font-medium text-sm">QBR data gaps on this tab</p>
+					<p className="mt-1 text-muted-foreground text-xs">
+						No saved rows were found for the previous complete UTC month.
+					</p>
+					<div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+						{qbrGapCards.map((card) => (
+							<div
+								key={card.id}
+								className="rounded-md border border-warning/30 bg-background/40 px-3 py-2"
+							>
+								<p className="font-medium text-xs">{card.question.name}</p>
+								<p className="mt-1 text-muted-foreground text-xs">
+									Open the question to refresh or define this period.
+								</p>
+							</div>
+						))}
+					</div>
+				</section>
 			) : null}
 
 			{!editing ? <PendingKpiRail cards={pendingCards} /> : null}

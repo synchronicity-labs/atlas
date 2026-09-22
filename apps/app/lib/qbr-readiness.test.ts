@@ -17,6 +17,8 @@ describe("QBR readiness", () => {
 		).toEqual({
 			status: "READY",
 			verifiedCards: 2,
+			applicableCards: 2,
+			excludedCards: 0,
 			blockedCards: 0,
 			attentionSources: [],
 		});
@@ -31,6 +33,8 @@ describe("QBR readiness", () => {
 		).toMatchObject({
 			status: "BLOCKED",
 			verifiedCards: 1,
+			applicableCards: 1,
+			excludedCards: 0,
 			blockedCards: 0,
 			attentionSources: ["GA4"],
 		});
@@ -48,20 +52,32 @@ describe("QBR readiness", () => {
 		).toMatchObject({
 			status: "BLOCKED",
 			verifiedCards: 1,
+			applicableCards: 2,
+			excludedCards: 0,
 			blockedCards: 1,
 		});
 	});
 
-	test("blocks verified snapshots with no rows in the QBR period", () => {
+	test("excludes current-period-only snapshots from the QBR gate", () => {
 		expect(
 			summarizeQbrReadiness(
-				[{ snapshot: { rows: [] }, verification: { status: "VERIFIED" } }],
+				[
+					{
+						snapshot: {
+							rows: [],
+							reportingPeriod: new Date().toISOString().slice(0, 7),
+						},
+						verification: { status: "VERIFIED" },
+					},
+				],
 				[],
 			),
 		).toMatchObject({
-			status: "BLOCKED",
+			status: "READY",
 			verifiedCards: 0,
-			blockedCards: 1,
+			applicableCards: 0,
+			excludedCards: 1,
+			blockedCards: 0,
 		});
 	});
 });

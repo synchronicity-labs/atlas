@@ -140,7 +140,18 @@ const METRIC_CURRENCY_FORMAT = new Intl.NumberFormat("en-US", {
 	maximumFractionDigits: 0,
 });
 const METRIC_AXIS_NUMBER_FORMAT = new Intl.NumberFormat("en-US", {
-	maximumFractionDigits: 0,
+	notation: "compact",
+	compactDisplay: "short",
+	maximumFractionDigits: 1,
+	minimumFractionDigits: 0,
+});
+const METRIC_AXIS_CURRENCY_FORMAT = new Intl.NumberFormat("en-US", {
+	style: "currency",
+	currency: "USD",
+	notation: "compact",
+	compactDisplay: "short",
+	maximumFractionDigits: 1,
+	minimumFractionDigits: 0,
 });
 
 function columns(snapshot: SnapshotData): Column[] {
@@ -436,6 +447,9 @@ function formatAxisMetric(
 	if (metricDisplayFamily(name, visualization) === "number") {
 		return METRIC_AXIS_NUMBER_FORMAT.format(value);
 	}
+	if (metricDisplayFamily(name, visualization) === "currency") {
+		return METRIC_AXIS_CURRENCY_FORMAT.format(value);
+	}
 	return formatMetric(value, name, visualization);
 }
 
@@ -713,7 +727,7 @@ function BarSeriesChart({ card }: { card: DashboardCard }) {
 						/>
 						<YAxis
 							tickFormatter={(value) =>
-								formatMetric(value, series[0]?.metric ?? "", visualization)
+								formatAxisMetric(value, series[0]?.metric ?? "", visualization)
 							}
 						/>
 						<Tooltip
@@ -1387,6 +1401,39 @@ function toLayout(cards: DashboardCard[]): Layout {
 	}));
 }
 
+function toQbrLayout(cards: DashboardCard[]): Layout {
+	const source = [...toLayout(cards)].sort(
+		(left, right) => left.y - right.y || left.x - right.x,
+	);
+	const result: LayoutItem[] = [];
+	let row: LayoutItem[] = [];
+	let rowY = -1;
+	let nextY = 0;
+
+	function flushRow() {
+		if (row.length === 0) return;
+		let nextX = 0;
+		const rowHeight = Math.max(...row.map((item) => item.h));
+		row.forEach((item, index) => {
+			const remaining = 24 - nextX;
+			const width =
+				index === row.length - 1 ? remaining : Math.min(item.w, remaining);
+			result.push({ ...item, x: nextX, y: nextY, w: Math.max(4, width) });
+			nextX += width;
+		});
+		nextY += rowHeight;
+		row = [];
+	}
+
+	for (const item of source) {
+		if (rowY !== -1 && item.y !== rowY) flushRow();
+		rowY = item.y;
+		row.push(item);
+	}
+	flushRow();
+	return result;
+}
+
 function stackLayout(layout: Layout): Layout {
 	let nextY = 0;
 	return [...layout]
@@ -1880,12 +1927,19 @@ export function AtlasDashboard({ number }: { number: number }) {
 						{qbrGapCards.map((card) => (
 							<div
 								key={card.id}
-								className="rounded-md border border-warning/30 bg-background/40 px-3 py-2"
+								className="rounded-md border border-warning/30 bg-background/40 px-3 py-2 transition-colors hover:bg-background/70"
 							>
-								<p className="font-medium text-xs">{card.question.name}</p>
-								<p className="mt-1 text-muted-foreground text-xs">
-									Open the question to refresh or define this period.
-								</p>
+								<Link
+									href={`/questions/${card.question.publicNumber}`}
+									className="block rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+								>
+									<p className="truncate font-medium text-xs">
+										{card.question.name}
+									</p>
+									<p className="mt-1 text-muted-foreground text-xs">
+										Open the question to refresh or define this period.
+									</p>
+								</Link>
 							</div>
 						))}
 					</div>
@@ -1898,7 +1952,13 @@ export function AtlasDashboard({ number }: { number: number }) {
 				<AtlasGrid
 					cards={visibleCards}
 					editing={editing}
-					layout={editing ? draft : toLayout(visibleCards)}
+					layout={
+						editing
+							? draft
+							: qbrMode
+								? toQbrLayout(visibleCards)
+								: toLayout(visibleCards)
+					}
 					visualizations={visualizations}
 					onLayout={setDraft}
 					onVisualization={(id, visualization) =>

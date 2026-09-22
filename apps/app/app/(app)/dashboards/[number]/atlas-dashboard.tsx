@@ -63,7 +63,10 @@ import {
 	hasCompatibleChartUnits,
 	metricDisplayFamily,
 } from "@/lib/chart-visualization";
-import { summarizeQbrReadiness } from "@/lib/qbr-readiness";
+import {
+	isCurrentPeriodOnlySnapshot,
+	summarizeQbrReadiness,
+} from "@/lib/qbr-readiness";
 import { useTRPC } from "@/lib/trpc/client";
 import type { RouterOutputs } from "@/lib/trpc/types";
 
@@ -1647,7 +1650,20 @@ export function AtlasDashboard({ number }: { number: number }) {
 			qbrMode
 				? baseCards
 						.map((card) => filterCardHistory(card, qbrFilters))
-						.filter((card) => rows(card.snapshot).length === 0)
+						.filter(
+							(card) =>
+								rows(card.snapshot).length === 0 &&
+								!isCurrentPeriodOnlySnapshot(card.snapshot),
+						)
+				: [],
+		[baseCards, qbrFilters, qbrMode],
+	);
+	const qbrExcludedCards = useMemo(
+		() =>
+			qbrMode
+				? baseCards
+						.map((card) => filterCardHistory(card, qbrFilters))
+						.filter((card) => isCurrentPeriodOnlySnapshot(card.snapshot))
 				: [],
 		[baseCards, qbrFilters, qbrMode],
 	);
@@ -1852,14 +1868,14 @@ export function AtlasDashboard({ number }: { number: number }) {
 								{qbrReadiness.status === "READY" ? "Ready" : "Blocked"}
 							</p>
 							<p className="text-muted-foreground text-xs">
-								{qbrReadiness.verifiedCards} of {data.cards.length} cards have
-								verified data for the selected period.
+								{qbrReadiness.verifiedCards} of {qbrReadiness.applicableCards}{" "}
+								applicable cards have verified data for the selected period.
 							</p>
 						</div>
-						{qbrReadiness.blockedCards > 0 ? (
+						{qbrReadiness.excludedCards > 0 ? (
 							<span className="text-muted-foreground text-xs">
-								{qbrReadiness.blockedCards} card
-								{qbrReadiness.blockedCards === 1 ? "" : "s"} need attention
+								{qbrReadiness.excludedCards} current-period card
+								{qbrReadiness.excludedCards === 1 ? "" : "s"} excluded
 							</span>
 						) : null}
 					</div>
@@ -1941,6 +1957,35 @@ export function AtlasDashboard({ number }: { number: number }) {
 									</p>
 								</Link>
 							</div>
+						))}
+					</div>
+				</section>
+			) : null}
+
+			{qbrExcludedCards.length > 0 ? (
+				<section
+					className="rounded-lg border border-border/70 bg-card/50 p-4"
+					aria-label="Current-period QBR exclusions"
+				>
+					<p className="font-medium text-sm">Current-period cards excluded</p>
+					<p className="mt-1 text-muted-foreground text-xs">
+						These questions report on the current month and are outside this QBR
+						period.
+					</p>
+					<div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+						{qbrExcludedCards.map((card) => (
+							<Link
+								key={card.id}
+								href={`/questions/${card.question.publicNumber}`}
+								className="rounded-md border border-border/70 bg-background/40 px-3 py-2 transition-colors hover:bg-background/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+							>
+								<p className="truncate font-medium text-xs">
+									{card.question.name}
+								</p>
+								<p className="mt-1 text-muted-foreground text-xs">
+									Current-period only
+								</p>
+							</Link>
 						))}
 					</div>
 				</section>

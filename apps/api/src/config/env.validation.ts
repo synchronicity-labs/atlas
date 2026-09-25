@@ -57,6 +57,10 @@ export class EnvironmentVariables {
 	GOOGLE_CLIENT_SECRET?: string;
 
 	@IsOptional()
+	@IsString()
+	MINIRUDY_GOOGLE_CLIENT_ID?: string;
+
+	@IsOptional()
 	@IsUrl({ require_tld: false })
 	API_URL?: string;
 

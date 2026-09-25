@@ -1,4 +1,5 @@
 import "@crm/env/load";
+import { googleClientIds } from "./google-client-ids";
 
 const DEFAULT_API_URL = "http://localhost:3001";
 const DEFAULT_APP_URL = "http://localhost:3000";
@@ -9,7 +10,7 @@ const optional = (key: string): string | undefined => {
 };
 
 const googleCredentials = ():
-	| { clientId: string; clientSecret: string }
+	| { clientId: string | string[]; clientSecret: string }
 	| undefined => {
 	const clientId = optional("GOOGLE_CLIENT_ID");
 	const clientSecret = optional("GOOGLE_CLIENT_SECRET");
@@ -23,7 +24,10 @@ const googleCredentials = ():
 		return undefined;
 	}
 
-	return { clientId, clientSecret };
+	return {
+		clientId: googleClientIds(clientId, optional("MINIRUDY_GOOGLE_CLIENT_ID")),
+		clientSecret,
+	};
 };
 
 const apiUrl =

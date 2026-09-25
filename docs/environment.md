@@ -449,3 +449,22 @@ way.
 
 Generate your own secret. Never reuse one from an example file, a tutorial, or
 another environment: `openssl rand -base64 32`.
+
+## Automatic personal Atlas access from Mini Rudy
+
+`MINIRUDY_GOOGLE_CLIENT_ID` optionally adds Mini Rudy's Google OAuth client ID
+as an accepted Google ID-token audience. `GOOGLE_CLIENT_ID` remains the first
+client and continues to own Atlas's browser OAuth flow and client secret.
+When unset, the existing audience policy is unchanged.
+
+Mini Rudy exchanges each employee's own Google ID token through Better Auth's
+standard `/api/auth/sign-in/social` endpoint. The normal Google signature and
+audience checks, Google subject account linking, `ALLOWED_SIGN_IN`, and workspace
+membership/session hooks still apply. No shared Atlas service credential is
+used. Mini Rudy keeps the resulting personal session cookie encrypted on its
+server and exposes only fixed read queries to its employee-bound worker.
+
+Configure Mini Rudy's `MINIRUDY_ATLAS_API_URL` with Atlas's HTTPS API origin.
+Mini Rudy's optional Google Workspace service grant is not required. This change
+does not grant Mini Rudy's Google tokens to Atlas's Gmail or Calendar sync and
+does not enable query authoring or data refresh through the connector.

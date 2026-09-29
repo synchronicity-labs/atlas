@@ -207,3 +207,106 @@ describe("product attribution export", () => {
 		expect(request).toHaveBeenCalledTimes(1);
 	});
 });
+
+describe("product eligibility failed refresh timestamps", () => {
+	function createHarness(queryText: string) {
+		const sourceUpdates: Array<Record<string, unknown>> = [];
+		const runUpdates: Array<Record<string, unknown>> = [];
+		const db = {
+			dashboard: {
+				findUnique: async () => ({
+					cards: [
+						{
+							question: {
+								id: "question-id",
+								number: 6001,
+								sourceId: "source-id",
+								source: { key: "atlas:product-eligibility" },
+								versions: [
+									{
+										version: 1,
+										queryLanguage: "API",
+										queryText,
+									},
+								],
+							},
+						},
+					],
+				}),
+			},
+			dataSource: {
+				findUniqueOrThrow: async () => ({ id: "source-id" }),
+				update: async (args: { data: Record<string, unknown> }) => {
+					sourceUpdates.push(args.data);
+				},
+			},
+			syncRun: {
+				create: async () => ({ id: "run-id" }),
+				update: async (args: { data: Record<string, unknown> }) => {
+					runUpdates.push(args.data);
+				},
+			},
+			resultSnapshot: { createMany: async () => ({ count: 1 }) },
+			$transaction: async (operations: Promise<unknown>[]) =>
+				Promise.all(operations),
+		};
+		const service = new ProductEligibilityService(
+			db as never,
+			{ publish: async () => {} } as never,
+		);
+		return { service, sourceUpdates, runUpdates };
+	}
+
+	it("preserves the last successful timestamp and deadline on question failure", async () => {
+		const { service, sourceUpdates, runUpdates } = createHarness("{");
+
+		const result = await service.syncDashboard(1);
+
+		expect(result.errors).toHaveLength(1);
+		expect(runUpdates[0]?.status).toBe("FAILED");
+		expect(sourceUpdates[1]).toMatchObject({
+			state: "ERROR",
+			lastError: expect.stringContaining("valid JSON"),
+		});
+		expect(sourceUpdates[1]).not.toHaveProperty("lastSyncAt");
+		expect(sourceUpdates[1]).not.toHaveProperty("freshnessDeadlineAt");
+	});
+
+	it("advances freshness after a successful refresh", async () => {
+		const queryText = JSON.stringify({
+			source: "atlas-product-eligibility",
+			report: "qualified-then-deleted",
+			months: 1,
+		});
+		const { service, sourceUpdates, runUpdates } = createHarness(queryText);
+		service["analyze"] = async () => ({
+			months: [
+				{
+					period: "2026-08",
+					professionalOrganizations: 0,
+					qualifiedThenDeletedOrganizations: 0,
+					deletedContributors: 0,
+				},
+			],
+			complete: true,
+			sourceRows: 0,
+			returnedRows: 0,
+			missingPrincipals: 0,
+			missingUserPrincipals: 0,
+			missingApiKeyPrincipals: 0,
+			unattributedOrganizations: 0,
+			excludedPrincipals: 0,
+			excludedOrganizations: 0,
+			capturedAt: new Date(),
+			contentHash: "hash",
+		});
+
+		const result = await service.syncDashboard(1);
+
+		expect(result.errors).toHaveLength(0);
+		expect(runUpdates[0]?.status).toBe("COMPLETED");
+		expect(sourceUpdates[1]?.state).toBe("HEALTHY");
+		expect(sourceUpdates[1]?.lastSyncAt).toBeInstanceOf(Date);
+		expect(sourceUpdates[1]?.freshnessDeadlineAt).toBeInstanceOf(Date);
+	});
+});

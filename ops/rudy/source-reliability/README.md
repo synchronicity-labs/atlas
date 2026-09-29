@@ -118,8 +118,13 @@ incidents.
 Delivery state lives in `/var/lib/rudy-atlas-source-monitor`, with a file lock and
 atomic private state files. Successful delivery is saved after each alert. Failed
 delivery stays retryable. Slack `Retry-After` survives timer restarts. An unchanged
-status is suppressed; a changed failure status sends an update, and a fresh
-healthy check sends recovery after the current refresh has finished. A retry
+status is suppressed. A refresh error with fresh data waits for 30 minutes of
+observed failure before notifying. This pending state survives restarts and
+Slack backoff. Advancing timestamps on an ERROR or a running retry do not reset
+the wait: only a completed healthy observation clears it. Stale data, missing
+freshness evidence, and health-endpoint failures remain immediately alertable.
+A fresh healthy check sends recovery only for an incident previously notified,
+after the current refresh has finished. A retry
 starting (`SYNCING` or latest run `RUNNING`) is not recovery evidence and does not
 clear the previous incident, even while its older snapshot is still fresh. An
 expired deadline still alerts during a retry. An abrupt crash after Slack accepts a message but

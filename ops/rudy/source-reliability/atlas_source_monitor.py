@@ -51,14 +51,14 @@ def validated_sources(payload, now):
 def health(source, now):
     if not source["required"]:
         return "UNCONFIGURED"
-    if source["state"] == "ERROR":
-        return "ERROR"
     deadline = instant(source.get("freshnessDeadlineAt"))
     last_sync = instant(source.get("lastSyncAt"))
     if source["state"] == "STALE" or deadline and deadline <= now:
         return "STALE"
     if not deadline or not last_sync or (last_sync - now).total_seconds() > 300 or source["state"] == "UNCONFIGURED":
         return "UNAVAILABLE"
+    if source["state"] == "ERROR":
+        return "ERROR"
     return "HEALTHY"
 
 
@@ -91,6 +91,10 @@ def message(source, status, app_url):
     return "\n".join(lines).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")[:3900]
 
 
+def running(source):
+    return source["state"] == "SYNCING" or (source.get("latestRun") or {}).get("status") == "RUNNING"
+
+
 def transitions(sources, previous, now):
     for source in sources:
         status = health(source, now)
@@ -99,11 +103,13 @@ def transitions(sources, previous, now):
             continue
         if before and before["status"] == status:
             continue
-        if status == "HEALTHY" and (not before or before["status"] == "UNCONFIGURED"):
+        if status == "ERROR" and source["key"] != "__monitor__":
+            pending = (before or {}).get("pendingError")
+            if not pending or (now - instant(pending["since"])).total_seconds() < 1800:
+                continue
+        if status == "HEALTHY" and (not before or before["status"] in {"UNCONFIGURED", "PENDING"}):
             continue
-        if status == "HEALTHY" and (
-            source["state"] == "SYNCING" or (source.get("latestRun") or {}).get("status") == "RUNNING"
-        ):
+        if status == "HEALTHY" and running(source):
             continue
         yield source, status
 
@@ -128,9 +134,23 @@ def save_state(path, state):
 
 def deliver_transitions(sources, state, now, send, persist, delivery_allowed=True):
     for source in sources:
-        before = state.get(source["key"])
-        if not source["required"] and before and before["status"] != "UNCONFIGURED":
-            state[source["key"]] = {"status": "UNCONFIGURED", "inactiveAt": now.isoformat()}
+        key = source["key"]
+        before = state.get(key)
+        if not source["required"] and before and (before["status"] != "UNCONFIGURED" or before.get("pendingError")):
+            state[key] = {"status": "UNCONFIGURED", "inactiveAt": now.isoformat()}
+            persist(state)
+            continue
+        status = health(source, now)
+        pending = (before or {}).get("pendingError")
+        if status == "ERROR" and key != "__monitor__" and (before or {}).get("status") != "ERROR" and not pending:
+            state[key] = {**(before or {"status": "PENDING"}), "pendingError": {
+                "since": now.isoformat(),
+            }}
+            persist(state)
+        elif pending and status == "HEALTHY" and not running(source):
+            state[key] = {name: value for name, value in before.items() if name != "pendingError"}
+            if state[key]["status"] == "PENDING":
+                del state[key]
             persist(state)
     if not delivery_allowed:
         return 0

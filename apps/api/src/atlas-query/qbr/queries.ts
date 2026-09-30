@@ -1,0 +1,112 @@
+export const qbrPlgMetricIds = [
+	"plg_teams",
+	"plg_teams_period_end",
+	"plg_teams_adds",
+	"plg_teams_losses",
+	"plg_teams_net",
+	"product_m3_requalification",
+	"product_m3_ndr",
+	"product_reactivation",
+];
+
+export function isQbrPlgQuestion(externalId: string | null) {
+	return qbrPlgMetricIds.some((id) => externalId === `qbr:${id}`);
+}
+
+export function qbrQueries(now = new Date()) {
+	const through = new Date(
+		Math.min(
+			Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1),
+			Date.UTC(2026, 9, 1),
+		),
+	)
+		.toISOString()
+		.slice(0, 10);
+	if (through <= "2026-07-01")
+		throw new Error("No complete Q3 month is available.");
+	const monthlyOrgs = `select toStartOfMonth(toTimeZone(generationEndedAt, 'UTC')) as month, organizationId,
+  uniqExact(generationId) as billable_generations,
+  uniqExact(toDate(generationEndedAt, 'UTC')) as active_days,
+  sum(generationCostMillicents) / 100000.0 as accrued_value
+from sync_prod.sync_usage3
+where generationEndedAt >= toDateTime('2026-05-01 00:00:00', 'UTC')
+  and generationEndedAt < toDateTime('${through} 00:00:00', 'UTC')
+  and organizationId != ''
+  and organizationPlanType in ('hobbyist','creator','growth','scale','starter','pro','team')
+group by month, organizationId`;
+	const movement = `with monthly_orgs as (${monthlyOrgs}), professional as (
+  select month, organizationId, 1 as qualified from monthly_orgs
+  where billable_generations >= 3 and active_days >= 2 and accrued_value >= 100
+), spine as (
+  select month, organizationId from professional
+  union distinct
+  select addMonths(month, 1) as month, organizationId from professional
+)
+select s.month as period_start,
+  countIf(c.qualified = 1) as professional_teams,
+  countIf(c.qualified = 1 and coalesce(p.qualified, 0) != 1) as gross_adds,
+  countIf(p.qualified = 1 and coalesce(c.qualified, 0) != 1) as gross_losses,
+  countIf(c.qualified = 1) - countIf(p.qualified = 1) as net_change
+from spine s
+left join professional c on c.month = s.month and c.organizationId = s.organizationId
+left join professional p on p.month = addMonths(s.month, -1) and p.organizationId = s.organizationId
+where s.month >= toDate('2026-06-01') and s.month < toDate('${through}')
+group by s.month`;
+	const cohorts = `with monthly_orgs as (${monthlyOrgs}), starting as (
+  select * from monthly_orgs where billable_generations >= 3 and active_days >= 2 and accrued_value >= 100
+)
+select addMonths(p.month, 2) as period_start, p.month as cohort_month,
+  count() as starting_teams,
+  countIf(c.billable_generations >= 3 and c.active_days >= 2 and c.accrued_value >= 100) as requalified_teams,
+  sum(p.accrued_value) as starting_accrued_usd,
+  sum(coalesce(c.accrued_value,0)) as retained_accrued_usd,
+  countIf(coalesce(m2.billable_generations,0) < 3 or coalesce(m2.active_days,0) < 2 or coalesce(m2.accrued_value,0) < 100) as dropped_m2_teams,
+  countIf((coalesce(m2.billable_generations,0) < 3 or coalesce(m2.active_days,0) < 2 or coalesce(m2.accrued_value,0) < 100) and c.billable_generations >= 3 and c.active_days >= 2 and c.accrued_value >= 100) as reactivated_m3_teams
+from starting p
+left join monthly_orgs c on c.organizationId = p.organizationId and c.month = addMonths(p.month, 2)
+left join monthly_orgs m2 on m2.organizationId = p.organizationId and m2.month = addMonths(p.month, 1)
+where p.month >= toDate('2026-05-01') and addMonths(p.month, 2) < toDate('${through}')
+group by p.month`;
+	const queries: Record<
+		string,
+		{ queryText: string; databaseExternalId: string }
+	> = {};
+	for (const [id, column] of Object.entries({
+		plg_teams: "professional_teams",
+		plg_teams_period_end: "professional_teams",
+		plg_teams_adds: "gross_adds",
+		plg_teams_losses: "gross_losses",
+		plg_teams_net: "net_change",
+	})) {
+		queries[id] = {
+			databaseExternalId: "166",
+			queryText: `select period_start, ${column} as value from (${movement}) order by period_start`,
+		};
+	}
+	for (const [id, [numerator, denominator]] of Object.entries({
+		product_m3_requalification: ["requalified_teams", "starting_teams"],
+		product_m3_ndr: ["retained_accrued_usd", "starting_accrued_usd"],
+		product_reactivation: ["reactivated_m3_teams", "dropped_m2_teams"],
+	})) {
+		queries[id] = {
+			databaseExternalId: "166",
+			queryText: `select period_start, cohort_month, ${numerator} as numerator, ${denominator} as denominator,
+  round(100.0 * ${numerator} / nullIf(${denominator}, 0), 2) as value
+from (${cohorts}) order by period_start`,
+		};
+	}
+	queries.platform_completion = {
+		databaseExternalId: "34",
+		queryText: `select date_trunc('month', g.created_at at time zone 'UTC') as period_start,
+  count(*) filter (where g.status::text = 'COMPLETED')::int as numerator,
+  count(*) filter (where g.status::text in ('COMPLETED','FAILED','REJECTED','CANCELED','CANCELLED'))::int as denominator,
+  round(100.0 * count(*) filter (where g.status::text = 'COMPLETED') / nullif(count(*) filter (where g.status::text in ('COMPLETED','FAILED','REJECTED','CANCELED','CANCELLED')), 0), 2)::float as value,
+  count(*) filter (where g.status::text not in ('COMPLETED','FAILED','REJECTED','CANCELED','CANCELLED','PENDING','PROCESSING'))::int as unknown_status_count
+from public.generations g
+where g.created_at >= timestamptz '2026-07-01 00:00:00+00'
+  and g.created_at < timestamptz '${through} 00:00:00+00'
+  and g.deleted_at is null
+group by 1 order by 1`,
+	};
+	return queries;
+}

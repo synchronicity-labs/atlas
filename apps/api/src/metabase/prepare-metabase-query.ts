@@ -1,3 +1,4 @@
+import { isQbrPlgQuestion } from "../atlas-query/qbr/queries";
 import {
 	assertReadOnlyQuery,
 	bindDefaultMetabaseTemplateVariables,
@@ -32,7 +33,8 @@ export async function prepareGovernedMetabaseQuery(
 		TinybirdEligibilityService,
 		"current" | "currentForRevenue" | "currentForPaidActivity" | "govern"
 	>,
-	revenueDoorPolicy: Pick<RevenueDoorPolicyService, "compileForQuestion">,
+	revenueDoorPolicy: Pick<RevenueDoorPolicyService, "compileForQuestion"> &
+		Partial<Pick<RevenueDoorPolicyService, "compile">>,
 ) {
 	const prepared = await client.preparePreview({
 		...input,
@@ -46,13 +48,22 @@ export async function prepareGovernedMetabaseQuery(
 	if (prepared.language === "SQL" && question.databaseExternalId === "166") {
 		prepared.queryText = boundRevenueUsage(question.number, prepared.queryText);
 	}
+	const qbrPlg = isQbrPlgQuestion(question.sourceExternalId);
 	const revenueDoor =
-		prepared.language === "SQL" && usesRevenueDoorPolicy(question.number)
-			? await revenueDoorPolicy.compileForQuestion(
-					question.number,
-					prepared.queryText,
-				)
-			: null;
+		qbrPlg && prepared.language === "SQL"
+			? await revenueDoorPolicy.compile?.(prepared.queryText)
+			: prepared.language === "SQL" && usesRevenueDoorPolicy(question.number)
+				? await revenueDoorPolicy.compileForQuestion(
+						question.number,
+						prepared.queryText,
+					)
+				: null;
+	if (
+		qbrPlg &&
+		(!revenueDoor?.evidence.applied || !revenueDoor.evidence.complete)
+	) {
+		throw new Error("QBR PLG requires a complete applied revenue-door policy.");
+	}
 	const classifiedQueryText = revenueDoor?.queryText ?? prepared.queryText;
 	let governed: GovernedTinybirdQuery | null = null;
 	if (
@@ -60,15 +71,17 @@ export async function prepareGovernedMetabaseQuery(
 		["34", "166"].includes(question.databaseExternalId ?? "") &&
 		!abuseUsesAllIdentities(question.sourceExternalId)
 	) {
-		const snapshot = usesSubscribedRevenueEligibility(
-			question.number,
-			question.name,
-			classifiedQueryText,
-		)
-			? await eligibility.currentForRevenue()
-			: hasSubscribedPopulation(classifiedQueryText)
-				? await eligibility.currentForPaidActivity()
-				: await eligibility.current();
+		const snapshot = qbrPlg
+			? await eligibility.currentForPaidActivity()
+			: usesSubscribedRevenueEligibility(
+						question.number,
+						question.name,
+						classifiedQueryText,
+					)
+				? await eligibility.currentForRevenue()
+				: hasSubscribedPopulation(classifiedQueryText)
+					? await eligibility.currentForPaidActivity()
+					: await eligibility.current();
 		governed = eligibility.govern(
 			classifiedQueryText,
 			question.databaseExternalId,

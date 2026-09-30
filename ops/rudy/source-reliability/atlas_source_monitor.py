@@ -157,7 +157,10 @@ def deliver_transitions(sources, state, now, send, persist, delivery_allowed=Tru
     delivered = 0
     for source, status in transitions(sources, state, now):
         send(source, status)
+        pending = state.get(source["key"], {}).get("pendingError")
         state[source["key"]] = {"status": status, "notifiedAt": now.isoformat()}
+        if pending:
+            state[source["key"]]["pendingError"] = pending
         persist(state)
         delivered += 1
     return delivered

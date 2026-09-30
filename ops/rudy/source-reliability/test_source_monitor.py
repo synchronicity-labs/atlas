@@ -41,7 +41,8 @@ class SourceMonitorTest(unittest.TestCase):
         for status in ["ERROR", "ERROR", "STALE", "STALE", "HEALTHY", "HEALTHY"]:
             deliver_transitions([source(state=status)], state, NOW, send, persist)
         self.assertEqual(sent, ["ERROR", "STALE", "HEALTHY"])
-        self.assertEqual(len(saved), 3)
+        self.assertEqual(len(saved), 4)
+        self.assertNotIn("pendingError", state["product"])
 
     def test_failed_delivery_remains_retryable(self):
         state = pending_state()
@@ -125,6 +126,26 @@ class SourceMonitorTest(unittest.TestCase):
         ]:
             deliver_transitions([row], state, NOW + timedelta(minutes=minutes), send, lambda value: None)
         self.assertEqual(sent, ["ERROR"])
+
+    def test_freshness_alerts_preserve_the_continuous_error_timer(self):
+        for status, changes in [("STALE", {"freshnessDeadlineAt": NOW.isoformat()}), ("UNAVAILABLE", {"lastSyncAt": None})]:
+            with self.subTest(status=status), TemporaryDirectory() as directory:
+                path = Path(directory) / "incidents.json"
+                state, sent = {}, []
+                send = lambda row, value: sent.append(value)
+                persist = lambda value: save_state(path, value)
+                deliver_transitions([source(state="ERROR")], state, NOW, send, persist)
+                deliver_transitions([source(state="ERROR", **changes)], state, NOW + timedelta(minutes=15), send, persist)
+                state = json.loads(path.read_text())
+                self.assertEqual(state["product"]["pendingError"]["since"], NOW.isoformat())
+                for minutes in [30, 35]:
+                    deliver_transitions([source(state="ERROR")], state, NOW + timedelta(minutes=minutes), send, persist)
+                self.assertEqual(sent, [status, "ERROR"])
+                self.assertEqual(state["product"]["pendingError"]["since"], NOW.isoformat())
+                for minutes in [40, 45]:
+                    deliver_transitions([source()], state, NOW + timedelta(minutes=minutes), send, persist)
+                self.assertEqual(sent, [status, "ERROR", "HEALTHY"])
+                self.assertNotIn("pendingError", state["product"])
 
     def test_failed_refresh_timestamps_cannot_postpone_the_alert(self):
         state, sent = {}, []

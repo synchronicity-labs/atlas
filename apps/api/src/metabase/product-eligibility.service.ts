@@ -375,9 +375,15 @@ export class ProductEligibilityService {
 				where: { id: source.id },
 				data: {
 					state: failed ? SourceStatus.ERROR : SourceStatus.HEALTHY,
-					lastSyncAt: finishedAt,
 					lastError,
-					freshnessDeadlineAt: new Date(finishedAt.getTime() + FRESHNESS_MS),
+					...(failed
+						? {}
+						: {
+								lastSyncAt: finishedAt,
+								freshnessDeadlineAt: new Date(
+									finishedAt.getTime() + FRESHNESS_MS,
+								),
+							}),
 				},
 			}),
 		]);

@@ -307,6 +307,20 @@ export function QbrReview() {
 					{notApplicable.map(([id, metric]) => (
 						<article key={id} className="rounded-lg border p-4">
 							<p className="font-medium">{metric.label}</p>
+							{metric.question ? (
+								<a
+									className="text-sm underline underline-offset-4"
+									href={metric.question.url}
+									target="_blank"
+									rel="noreferrer"
+								>
+									Atlas question {metric.question.number}
+								</a>
+							) : (
+								<p className="text-sm text-muted-foreground">
+									Atlas question is not registered.
+								</p>
+							)}
 							<p className="text-sm text-muted-foreground">
 								{metric.definition}
 							</p>

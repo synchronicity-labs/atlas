@@ -135,15 +135,7 @@ try {
 			});
 			if (refreshStartedAt.getTime() >= Date.UTC(2026, 9, 1)) {
 				const quarter = qbrQuarterValue(id, values, refreshStartedAt);
-				if (
-					["plg_teams", "plg_teams_period_end", "platform_completion"].includes(
-						id,
-					)
-				) {
-					assert(
-						quarter,
-						`Missing July, August, or September source row for ${id}; existing snapshots were retained.`,
-					);
+				if (quarter)
 					values.push({
 						...quarter,
 						status: "provisional",
@@ -151,7 +143,6 @@ try {
 						dataThrough: null,
 						evidenceSource: values[0].evidenceSource,
 					});
-				}
 			}
 			pendingObservations.set(id, values);
 		}

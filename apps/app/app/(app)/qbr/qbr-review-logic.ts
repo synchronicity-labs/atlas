@@ -78,7 +78,7 @@ export function buildTeamRequest(
 					...supplied.flatMap(([id, metric]) =>
 						sortedObservations(metric).map(
 							([period, observation]) =>
-								`- ${metric.label} (${id}), ${period}${observation.cohortMonth ? ` (cohort ${observation.cohortMonth})` : ""}: ${observation.value} ${metric.unit}, ${observation.status}; Atlas question: ${metric.question?.url ?? "not registered"}; source: ${observation.evidenceSource.url}; as of ${observation.asOf}; data through ${observation.dataThrough ?? "unknown"}`,
+								`- ${metric.label} (${id}): ${metric.definition} ${period}${observation.cohortMonth ? ` (cohort ${observation.cohortMonth})` : ""}: ${observation.value} ${metric.unit}, ${observation.status}; Atlas question: ${metric.question?.url ?? "not registered"}; source: ${observation.evidenceSource.url}; as of ${observation.asOf}; data through ${observation.dataThrough ?? "unknown"}`,
 						),
 					),
 				]
@@ -94,7 +94,7 @@ export function buildTeamRequest(
 									`${period}${observation.cohortMonth ? ` (cohort ${observation.cohortMonth})` : ""}: ${observation.value} ${metric.unit} (${observation.status})`,
 							)
 							.join(", ");
-						return `- ${metric.label} (${id}): the Q3 aggregate is missing${monthly ? `; current monthly observations are ${monthly}` : "; no observations are saved"}.\n  Atlas question: ${metric.question?.url ?? "not registered"}\n  Manual ask: ${metric.preparation.manualAsk}\n  Collection location: ${metric.preparation.dataLocation}`;
+						return `- ${metric.label} (${id}): ${metric.definition} The Q3 aggregate is missing${monthly ? `; current monthly observations are ${monthly}` : "; no observations are saved"}.\n  Atlas question: ${metric.question?.url ?? "not registered"}\n  Manual ask: ${metric.preparation.manualAsk}\n  Collection location: ${metric.preparation.dataLocation}`;
 					}),
 				]
 			: []),
@@ -106,7 +106,7 @@ export function buildTeamRequest(
 						const periods = sortedObservations(metric)
 							.map(([period]) => period)
 							.join(", ");
-						return `- ${metric.label} (${id})${periods ? `; existing observations: ${periods}` : "; no observations are saved"}. Atlas question: ${metric.question?.url ?? "not registered"}.`;
+						return `- ${metric.label} (${id}): ${metric.definition}${periods ? `; existing observations: ${periods}` : "; no observations are saved"}. Atlas question: ${metric.question?.url ?? "not registered"}.`;
 					}),
 				]
 			: []),

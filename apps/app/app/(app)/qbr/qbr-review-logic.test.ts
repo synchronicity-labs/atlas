@@ -47,9 +47,10 @@ describe("QBR review drafts", () => {
 		);
 		expect(draft).toContain("Hi Product team,");
 		expect(draft).toContain("Please verify these supplied observations:");
+		expect(draft).toContain("Quarter average of active teams.");
 		expect(draft).toContain("2026-08: 12 count, provisional");
 		expect(draft).toContain(
-			"the Q3 aggregate is missing; current monthly observations are 2026-08: 12 count (provisional)",
+			"The Q3 aggregate is missing; current monthly observations are 2026-08: 12 count (provisional)",
 		);
 		expect(draft).toContain(
 			"Manual ask: Return the Q3 count with source evidence.",

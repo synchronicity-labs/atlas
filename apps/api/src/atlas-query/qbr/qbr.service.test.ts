@@ -1,5 +1,6 @@
 import { describe, expect, mock, setSystemTime, test } from "bun:test";
 import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
 import type { Db } from "@crm/db";
 import { QueryLanguage } from "@crm/db";
 import { ConflictException } from "@nestjs/common";
@@ -289,13 +290,19 @@ describe("AtlasQbrService", () => {
 						data,
 					}: {
 						where: { id: string };
-						data: { databaseExternalId: string | null };
+						data: {
+							databaseExternalId?: string | null;
+							description?: string;
+						};
 					}) => {
 						const entry = [...questions.values()].find(
 							(item) => item.id === where.id,
 						);
 						if (!entry) throw new Error("Missing registered question.");
-						entry.databaseExternalId = data.databaseExternalId;
+						if ("databaseExternalId" in data)
+							entry.databaseExternalId = data.databaseExternalId ?? null;
+						if (data.description !== undefined)
+							entry.description = data.description;
 						return entry;
 					},
 				),
@@ -349,6 +356,30 @@ describe("AtlasQbrService", () => {
 		const originalNumber = first.plg_teams;
 		await service.register(queries);
 		expect(tx.questionVersion.create).not.toHaveBeenCalled();
+		const migrationQuestion = questions.get("qbr:product_reactivation");
+		if (!migrationQuestion)
+			throw new Error("Registered migration question is missing.");
+		migrationQuestion.description = readFileSync(
+			new URL(
+				"./product_reactivation.previous-description.txt",
+				import.meta.url,
+			),
+			"utf8",
+		);
+		await service.register(queries);
+		const currentDescription = migrationQuestion.description;
+		expect(currentDescription).not.toBe(
+			readFileSync(
+				new URL(
+					"./product_reactivation.previous-description.txt",
+					import.meta.url,
+				),
+				"utf8",
+			),
+		);
+		migrationQuestion.description = "User-edited description";
+		await expect(service.register(queries)).rejects.toThrow(ConflictException);
+		migrationQuestion.description = currentDescription;
 		const changed = {
 			...queries,
 			plg_teams: {

@@ -111,6 +111,7 @@ describe("Atlas source health", () => {
 				EnvironmentVariables,
 				true
 			>,
+			{ exportReport: mock() } as never,
 		);
 		expect(() => controller.sources()).toThrow("Forbidden");
 		expect(() => controller.sources("Bearer wrong")).toThrow("Forbidden");

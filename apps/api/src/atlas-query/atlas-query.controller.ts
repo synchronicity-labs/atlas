@@ -13,6 +13,7 @@ import { AllowAnonymous } from "@thallesp/nestjs-better-auth";
 import type { EnvironmentVariables } from "../config/env.validation";
 import { AtlasQuestionQuery } from "./atlas-query.contracts";
 import { AtlasQueryService } from "./atlas-query.service";
+import { AtlasQbrService } from "./qbr/qbr.service";
 
 @Controller("internal/atlas")
 export class AtlasQueryController {
@@ -21,6 +22,7 @@ export class AtlasQueryController {
 	constructor(
 		private readonly atlas: AtlasQueryService,
 		config: ConfigService<EnvironmentVariables, true>,
+		private readonly qbr: AtlasQbrService,
 	) {
 		this.secret = config.get("ATLAS_QUERY_SECRET", { infer: true });
 	}
@@ -48,6 +50,16 @@ export class AtlasQueryController {
 	sources(@Headers("authorization") authorization?: string) {
 		this.authorize(authorization);
 		return this.atlas.sources();
+	}
+
+	@Get("reports/qbr/:quarter")
+	@AllowAnonymous()
+	qbrReport(
+		@Param("quarter") quarter: string,
+		@Headers("authorization") authorization?: string,
+	) {
+		this.authorize(authorization);
+		return this.qbr.exportReport(quarter);
 	}
 
 	private authorize(authorization?: string): void {

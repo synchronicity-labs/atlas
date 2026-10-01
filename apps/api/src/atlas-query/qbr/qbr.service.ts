@@ -1,0 +1,830 @@
+import { createHash, randomUUID } from "node:crypto";
+import {
+	DataSourceKind,
+	type Db,
+	type Prisma,
+	QueryLanguage,
+	QuestionPurpose,
+	QuestionStatus,
+	SourceStatus,
+} from "@crm/db";
+import {
+	BadRequestException,
+	ConflictException,
+	Injectable,
+	NotFoundException,
+} from "@nestjs/common";
+import { InjectDatabase } from "../../database/database.constants";
+import registry from "./registry.json";
+
+const SOURCE_KEY = "atlas:qbr";
+const QUESTION_LOCK_ID = 2_026_082_601;
+const REGISTRY_QUARTER = "2026-Q3";
+const REPORTING_PERIOD = "2026-Q3";
+const QUESTION_BASE_URL = "https://atlas.pr.sync.so/questions";
+const COHORT_METRICS = new Set([
+	"product_m3_requalification",
+	"product_m3_ndr",
+	"product_reactivation",
+]);
+const OBSERVATION_COLUMNS = [
+	"period",
+	"value",
+	"numerator",
+	"denominator",
+	"status",
+	"evidenceSource",
+	"asOf",
+	"dataThrough",
+	"cohortMonth",
+	"reportedBy",
+	"definitionHash",
+	"source_label",
+	"source_url",
+	"snapshotId",
+];
+const validPeriod = (period: string) =>
+	period === REPORTING_PERIOD || /^2026-0[6-9]$/.test(period);
+
+type RegistryMetric = (typeof registry.metrics)[number];
+type Observation = {
+	period: string;
+	value: number;
+	numerator: number | null;
+	denominator: number | null;
+	status: "provisional" | "reported";
+	evidenceSource: { label: string; url: string };
+	asOf: string;
+	dataThrough: string | null;
+	cohortMonth?: string;
+	reportedBy?: string;
+};
+type StoredObservation = Omit<Observation, "cohortMonth" | "reportedBy"> & {
+	cohortMonth?: string | null;
+	reportedBy?: string | null;
+	definitionHash: string;
+	source: { label: string; url: string };
+	snapshotId: string;
+};
+type QueryDefinition = { queryText: string; databaseExternalId: string };
+
+function hash(value: unknown): string {
+	const canonical = (item: unknown): unknown => {
+		if (Array.isArray(item)) return item.map(canonical);
+		if (item && typeof item === "object")
+			return Object.fromEntries(
+				Object.entries(item)
+					.sort(([left], [right]) => left.localeCompare(right))
+					.map(([key, entry]) => [key, canonical(entry)]),
+			);
+		return item;
+	};
+	return createHash("sha256")
+		.update(JSON.stringify(canonical(value)))
+		.digest("hex");
+}
+
+function json(value: unknown): Prisma.InputJsonValue {
+	return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
+}
+
+function metricDefinitionHash(metric: RegistryMetric): string {
+	return hash({ definition: metric.definition, unit: metric.unit });
+}
+
+function description(metric: RegistryMetric): string {
+	return [
+		metric.definition,
+		`Owner: ${metric.preparation.owner}`,
+		`Owner status: ${metric.preparation.ownerStatus}`,
+		`Owner source: ${metric.preparation.ownerSource.label} (${metric.preparation.ownerSource.url})`,
+		`Gap: ${metric.preparation.gap}`,
+		`Data location: ${metric.preparation.dataLocation}`,
+		`Manual ask: ${metric.preparation.manualAsk}`,
+		`Q4 build: ${metric.preparation.q4Build}`,
+		`Workstream: ${metric.preparation.workstream}`,
+		`Sources: ${metric.preparation.sources.map((source) => `${source.label} (${source.url})${source.limit ? ` — ${source.limit}` : ""}`).join("; ") || "none"}`,
+	].join("\n\n");
+}
+
+function validDate(value: string, field: string): Date {
+	const date = new Date(value);
+	if (
+		!value ||
+		Number.isNaN(date.getTime()) ||
+		!/^\d{4}-\d{2}-\d{2}T/.test(value)
+	) {
+		throw new BadRequestException(`${field} must be an ISO date.`);
+	}
+	return date;
+}
+
+function validateObservation(
+	metric: RegistryMetric,
+	observation: Observation,
+): void {
+	if (!["provisional", "reported"].includes(observation.status)) {
+		throw new BadRequestException(
+			"QBR inputs must be reported or provisional, never verified.",
+		);
+	}
+	const monthMatch = /^(2026)-(0[6-9])$/.exec(observation.period);
+	if (observation.period !== REPORTING_PERIOD && !monthMatch) {
+		throw new BadRequestException(
+			`Unsupported QBR period: ${observation.period}`,
+		);
+	}
+	if (
+		typeof observation.value !== "number" ||
+		!Number.isFinite(observation.value) ||
+		(observation.numerator !== null &&
+			(typeof observation.numerator !== "number" ||
+				!Number.isFinite(observation.numerator))) ||
+		(observation.denominator !== null &&
+			(typeof observation.denominator !== "number" ||
+				!Number.isFinite(observation.denominator)))
+	) {
+		throw new BadRequestException(
+			"QBR observations must contain finite numeric values.",
+		);
+	}
+	if (observation.denominator !== null && observation.denominator <= 0)
+		throw new BadRequestException(
+			"QBR observation denominator must be greater than zero.",
+		);
+	if (
+		!observation.evidenceSource?.label?.trim() ||
+		!observation.evidenceSource.url?.trim()
+	) {
+		throw new BadRequestException(
+			"QBR observations require a labeled evidence URL.",
+		);
+	}
+	let evidenceUrl: URL;
+	try {
+		evidenceUrl = new URL(observation.evidenceSource.url);
+	} catch {
+		throw new BadRequestException("QBR evidence URL is invalid.");
+	}
+	if (
+		evidenceUrl.protocol !== "https:" ||
+		evidenceUrl.username ||
+		evidenceUrl.password
+	)
+		throw new BadRequestException(
+			"Evidence URLs must use HTTPS without embedded credentials.",
+		);
+	const asOf = validDate(observation.asOf, "asOf");
+	if (asOf > new Date())
+		throw new BadRequestException("asOf cannot be in the future.");
+	const monthPeriod = monthMatch
+		? `${monthMatch[1]}-${monthMatch[2]}`
+		: "2026-09";
+	const year = Number(monthPeriod.slice(0, 4));
+	const month = Number(monthPeriod.slice(5, 7));
+	const monthClose = new Date(Date.UTC(year, month, 1));
+	if (asOf < monthClose)
+		throw new BadRequestException(
+			`${observation.period} is not closed as of ${observation.asOf}.`,
+		);
+	if (observation.dataThrough !== null) {
+		const dataThrough = validDate(observation.dataThrough, "dataThrough");
+		if (dataThrough > asOf)
+			throw new BadRequestException("dataThrough cannot be after asOf.");
+		if (dataThrough < monthClose)
+			throw new BadRequestException(
+				"dataThrough must reach the selected period close.",
+			);
+	}
+	if (COHORT_METRICS.has(metric.id)) {
+		if (
+			!observation.cohortMonth ||
+			!/^\d{4}-(0[1-9]|1[0-2])$/.test(observation.cohortMonth)
+		)
+			throw new BadRequestException(
+				"Cohort observations require a valid cohortMonth.",
+			);
+		const [cohortYear, cohortMonth] = [
+			Number(observation.cohortMonth.slice(0, 4)),
+			Number(observation.cohortMonth.slice(5, 7)),
+		];
+		const observationMonth = new Date(Date.UTC(cohortYear, cohortMonth + 1, 1))
+			.toISOString()
+			.slice(0, 7);
+		if (observation.period !== observationMonth)
+			throw new BadRequestException(
+				"cohortMonth must be two months before the observation period.",
+			);
+	}
+	if (
+		observation.cohortMonth !== undefined &&
+		!/^\d{4}-(0[1-9]|1[0-2])$/.test(observation.cohortMonth)
+	) {
+		throw new BadRequestException("cohortMonth must use YYYY-MM format.");
+	}
+	if (observation.status === "provisional" && !metric.automated) {
+		throw new BadRequestException(
+			"Only automated QBR metrics may have provisional observations.",
+		);
+	}
+	if (observation.status === "reported" && !observation.reportedBy?.trim()) {
+		throw new BadRequestException(
+			"Reported QBR observations require reportedBy.",
+		);
+	}
+	if (
+		metric.id === "finance_runway" &&
+		(!Number.isInteger(observation.value) ||
+			observation.value < 0 ||
+			observation.numerator !== null ||
+			observation.denominator !== null)
+	) {
+		throw new BadRequestException(
+			"Runway must be a directly reported whole number of months with no operands.",
+		);
+	}
+}
+
+function rowsFrom(
+	snapshotRows: Prisma.JsonValue,
+	snapshotColumns: Prisma.JsonValue,
+): StoredObservation[] {
+	if (!Array.isArray(snapshotRows) || !Array.isArray(snapshotColumns))
+		throw new ConflictException("Stored QBR snapshot rows are malformed.");
+	const columns = snapshotColumns.map((column) => {
+		if (typeof column === "string") return column;
+		if (
+			column &&
+			typeof column === "object" &&
+			!Array.isArray(column) &&
+			typeof (column as Record<string, unknown>).name === "string"
+		)
+			return (column as Record<string, string>).name;
+		throw new ConflictException("Stored QBR snapshot columns are malformed.");
+	});
+	const rows: StoredObservation[] = [];
+	for (const row of snapshotRows) {
+		if (!Array.isArray(row) || row.length !== columns.length)
+			throw new ConflictException("Stored QBR observation is malformed.");
+		const item = Object.fromEntries(
+			columns.map((column, index) => [column, row[index]]),
+		);
+		const evidenceValue = item.evidenceSource;
+		const evidenceSource =
+			evidenceValue &&
+			typeof evidenceValue === "object" &&
+			!Array.isArray(evidenceValue)
+				? (evidenceValue as Record<string, unknown>)
+				: null;
+		const sourceLabel = item.source_label;
+		const sourceUrl = item.source_url;
+		if (
+			typeof item.period !== "string" ||
+			!validPeriod(item.period) ||
+			typeof item.value !== "number" ||
+			!Number.isFinite(item.value) ||
+			(item.numerator !== null &&
+				(typeof item.numerator !== "number" ||
+					!Number.isFinite(item.numerator))) ||
+			(item.denominator !== null &&
+				(typeof item.denominator !== "number" ||
+					!Number.isFinite(item.denominator))) ||
+			typeof item.definitionHash !== "string" ||
+			typeof item.asOf !== "string" ||
+			!["reported", "provisional"].includes(String(item.status)) ||
+			(typeof item.dataThrough !== "string" && item.dataThrough !== null) ||
+			!item.evidenceSource ||
+			typeof item.snapshotId !== "string"
+		) {
+			throw new ConflictException("Stored QBR observation is malformed.");
+		}
+		if (
+			!evidenceSource ||
+			typeof evidenceSource.label !== "string" ||
+			typeof evidenceSource.url !== "string" ||
+			typeof sourceLabel !== "string" ||
+			typeof sourceUrl !== "string"
+		)
+			throw new ConflictException(
+				"Stored QBR observation source is malformed.",
+			);
+		validDate(item.asOf, "stored asOf");
+		if (item.dataThrough !== null)
+			validDate(item.dataThrough, "stored dataThrough");
+		const normalized = Object.fromEntries(
+			Object.entries(item).filter(
+				([key]) => key !== "source_label" && key !== "source_url",
+			),
+		);
+		rows.push({
+			...normalized,
+			evidenceSource: evidenceSource as Observation["evidenceSource"],
+			source: { label: sourceLabel, url: sourceUrl },
+		} as unknown as StoredObservation);
+	}
+	return rows;
+}
+
+function registeredDefinitionHash(
+	visualization: Prisma.JsonValue | null | undefined,
+	metricId: string,
+): string | null {
+	if (
+		!visualization ||
+		typeof visualization !== "object" ||
+		Array.isArray(visualization)
+	)
+		return null;
+	const qbr = (visualization as Record<string, Prisma.JsonValue>).qbr;
+	if (!qbr || typeof qbr !== "object" || Array.isArray(qbr)) return null;
+	const metadata = qbr as Record<string, Prisma.JsonValue>;
+	return metadata.metricId === metricId &&
+		typeof metadata.definitionHash === "string"
+		? metadata.definitionHash
+		: null;
+}
+
+@Injectable()
+export class AtlasQbrService {
+	constructor(@InjectDatabase() private readonly db: Db) {}
+
+	async register(
+		queries: Record<string, QueryDefinition>,
+	): Promise<Record<string, number>> {
+		this.assertQuarter(REGISTRY_QUARTER);
+		const automated = registry.metrics.filter((metric) => metric.automated);
+		for (const metric of automated) {
+			const query = queries[metric.id];
+			if (!query?.queryText?.trim() || !query.databaseExternalId?.trim()) {
+				throw new BadRequestException(
+					`Missing runnable query for ${metric.id}.`,
+				);
+			}
+		}
+		for (const id of Object.keys(queries)) {
+			if (!automated.some((metric) => metric.id === id))
+				throw new BadRequestException(`Unexpected automated query: ${id}`);
+		}
+
+		return this.db.$transaction(
+			async (tx) => {
+				await tx.$executeRaw`SELECT pg_advisory_xact_lock(${QUESTION_LOCK_ID})`;
+				const source = await tx.dataSource.upsert({
+					where: { key: SOURCE_KEY },
+					create: {
+						key: SOURCE_KEY,
+						kind: DataSourceKind.ATLAS,
+						label: "Atlas QBR",
+						state: SourceStatus.UNCONFIGURED,
+					},
+					update: { label: "Atlas QBR" },
+					select: { id: true },
+				});
+				const result: Record<string, number> = {};
+				const existingQuestions = await tx.question.findMany({
+					where: {
+						connector: DataSourceKind.ATLAS,
+						sourceExternalId: {
+							in: registry.metrics.map((metric) => `qbr:${metric.id}`),
+						},
+					},
+					include: { versions: { orderBy: { version: "desc" }, take: 1 } },
+				});
+				const existingByExternalId = new Map(
+					existingQuestions.map((question) => [
+						question.sourceExternalId,
+						question,
+					]),
+				);
+				const maximum = await tx.question.aggregate({ _max: { number: true } });
+				let nextNumber = maximum._max.number ?? 0;
+				const newQuestions: Array<
+					Prisma.QuestionCreateManyInput & { id: string }
+				> = [];
+				const newVersions: Prisma.QuestionVersionCreateManyInput[] = [];
+				for (const metric of registry.metrics) {
+					const externalId = `qbr:${metric.id}`;
+					const query = metric.automated ? queries[metric.id] : null;
+					const sql = query?.queryText ?? `qbr:manual:${metric.id}`;
+					const queryHash = hash({
+						queryText: sql,
+						databaseExternalId: query?.databaseExternalId ?? null,
+					});
+					const qbrMetadata = {
+						metricId: metric.id,
+						definitionHash: metricDefinitionHash(metric),
+						queryHash,
+						automated: metric.automated,
+					};
+					const existing = existingByExternalId.get(externalId);
+					if (existing) {
+						const latest = existing.versions[0];
+						const metadata =
+							latest?.visualization &&
+							typeof latest.visualization === "object" &&
+							!Array.isArray(latest.visualization)
+								? ((latest.visualization as Record<string, unknown>).qbr as
+										| Record<string, unknown>
+										| undefined)
+								: undefined;
+						const storedQueryHash = hash({
+							queryText: latest?.queryText,
+							databaseExternalId: existing.databaseExternalId,
+						});
+						if (
+							existing.name !== metric.label ||
+							existing.description !== description(metric) ||
+							existing.sourceId !== source.id ||
+							existing.status !==
+								(metric.automated
+									? QuestionStatus.ACTIVE
+									: QuestionStatus.DRAFT) ||
+							existing.purpose !== QuestionPurpose.RECONCILIATION ||
+							latest?.queryLanguage !==
+								(query ? QueryLanguage.SQL : QueryLanguage.API) ||
+							!latest ||
+							latest.createdBy !== "atlas-qbr" ||
+							metadata?.metricId !== metric.id ||
+							metadata.definitionHash !== qbrMetadata.definitionHash ||
+							metadata.automated !== metric.automated ||
+							metadata.queryHash !== storedQueryHash
+						) {
+							throw new ConflictException(
+								`Existing QBR question ${metric.id} has unexpected or user-edited state.`,
+							);
+						}
+						if (
+							latest.queryText !== sql ||
+							existing.databaseExternalId !==
+								(query?.databaseExternalId ?? null)
+						) {
+							const nextVersion = latest.version + 1;
+							await tx.question.update({
+								where: { id: existing.id },
+								data: { databaseExternalId: query?.databaseExternalId ?? null },
+							});
+							await tx.questionVersion.create({
+								data: {
+									questionId: existing.id,
+									version: nextVersion,
+									queryLanguage: query ? QueryLanguage.SQL : QueryLanguage.API,
+									queryText: sql,
+									display: "table",
+									visualization: json({ qbr: qbrMetadata }),
+									createdBy: "atlas-qbr",
+								},
+							});
+						}
+						result[metric.id] = existing.publicNumber;
+						continue;
+					}
+					const questionId = randomUUID();
+					newQuestions.push({
+						id: questionId,
+						number: ++nextNumber,
+						name: metric.label,
+						description: description(metric),
+						connector: DataSourceKind.ATLAS,
+						sourceId: source.id,
+						sourceExternalId: externalId,
+						databaseExternalId: query?.databaseExternalId ?? null,
+						status: metric.automated
+							? QuestionStatus.ACTIVE
+							: QuestionStatus.DRAFT,
+						purpose: QuestionPurpose.RECONCILIATION,
+					});
+					newVersions.push({
+						questionId,
+						version: 1,
+						queryLanguage: query ? QueryLanguage.SQL : QueryLanguage.API,
+						queryText: sql,
+						display: "table",
+						visualization: json({ qbr: qbrMetadata }),
+						createdBy: "atlas-qbr",
+					});
+				}
+				if (newQuestions.length) {
+					await tx.question.createMany({ data: newQuestions });
+					await tx.questionVersion.createMany({ data: newVersions });
+					const created = await tx.question.findMany({
+						where: { id: { in: newQuestions.map(({ id }) => id) } },
+						select: { publicNumber: true, sourceExternalId: true },
+					});
+					for (const question of created) {
+						if (!question.sourceExternalId)
+							throw new ConflictException(
+								"Registered QBR question lost its identity.",
+							);
+						result[question.sourceExternalId.slice(4)] = question.publicNumber;
+					}
+				}
+				return result;
+			},
+			{ maxWait: 10_000, timeout: 60_000 },
+		);
+	}
+
+	async recordObservations(metricId: string, observations: Observation[]) {
+		const metric = registry.metrics.find(
+			(candidate) => candidate.id === metricId,
+		);
+		if (!metric) throw new NotFoundException(`Unknown QBR metric: ${metricId}`);
+		if (metric.notApplicable)
+			throw new BadRequestException(
+				"Not-applicable QBR metrics cannot have observations.",
+			);
+		if (!Array.isArray(observations) || observations.length === 0)
+			throw new BadRequestException(
+				"At least one QBR observation is required.",
+			);
+		for (const observation of observations)
+			validateObservation(metric, observation);
+
+		return this.db.$transaction(async (tx) => {
+			await tx.$executeRaw`SELECT pg_advisory_xact_lock(${QUESTION_LOCK_ID})`;
+			const questionExternalId = `qbr:${metric.id}`;
+			const question = await tx.question.findUnique({
+				where: {
+					connector_sourceExternalId: {
+						connector: DataSourceKind.ATLAS,
+						sourceExternalId: questionExternalId,
+					},
+				},
+				select: {
+					id: true,
+					publicNumber: true,
+					sourceId: true,
+					versions: {
+						orderBy: { version: "desc" },
+						take: 1,
+						select: { visualization: true },
+					},
+				},
+			});
+			if (!question)
+				throw new ConflictException(
+					`Register QBR question ${metric.id} before saving observations.`,
+				);
+			if (!question.sourceId)
+				throw new ConflictException(
+					`Registered QBR question ${metric.id} has no Atlas source.`,
+				);
+			if (
+				registeredDefinitionHash(
+					question.versions[0]?.visualization,
+					metric.id,
+				) !== metricDefinitionHash(metric)
+			)
+				throw new ConflictException(
+					`Registered QBR question ${metric.id} has a mismatched definition hash.`,
+				);
+			const previous = await tx.resultSnapshot.findFirst({
+				where: {
+					sourceId: question.sourceId,
+					questionExternalId,
+					reportingPeriod: REPORTING_PERIOD,
+				},
+				orderBy: [{ capturedAt: "desc" }, { id: "desc" }],
+				select: { id: true, rows: true, columns: true },
+			});
+			const byPeriod = new Map(
+				previous
+					? rowsFrom(previous.rows, previous.columns).map((row) => [
+							row.period,
+							row,
+						])
+					: [],
+			);
+			for (const observation of observations) {
+				const old = byPeriod.get(observation.period);
+				if (old) {
+					if (old.definitionHash !== metricDefinitionHash(metric))
+						throw new ConflictException(
+							`Stored QBR observation ${metric.id}/${observation.period} uses another definition.`,
+						);
+					if (old.status === "reported" && observation.status === "provisional")
+						throw new ConflictException(
+							`Provisional refresh cannot replace reported QBR observation ${metric.id}/${observation.period}.`,
+						);
+					if (
+						validDate(observation.asOf, "asOf") <
+						validDate(old.asOf, "stored asOf")
+					)
+						throw new ConflictException(
+							`Stale QBR observation rejected for ${metric.id}/${observation.period}.`,
+						);
+					if (
+						old.dataThrough &&
+						(!observation.dataThrough ||
+							validDate(observation.dataThrough, "dataThrough") <
+								validDate(old.dataThrough, "stored dataThrough"))
+					)
+						throw new ConflictException(
+							`Stale QBR data-through rejected for ${metric.id}/${observation.period}.`,
+						);
+				}
+				byPeriod.set(observation.period, {
+					...observation,
+					cohortMonth: observation.cohortMonth ?? null,
+					reportedBy: observation.reportedBy?.trim() || null,
+					definitionHash: metricDefinitionHash(metric),
+					source: {
+						label: `Atlas question ${question.publicNumber}`,
+						url: `${QUESTION_BASE_URL}/${question.publicNumber}`,
+					},
+					snapshotId: "",
+				});
+			}
+			const sorted = [...byPeriod.values()].sort((a, b) =>
+				a.period.localeCompare(b.period),
+			);
+			const capturedAt = new Date();
+			const questionUrl = `${QUESTION_BASE_URL}/${question.publicNumber}`;
+			const contentHash = hash(
+				sorted.map(({ snapshotId: _snapshotId, ...row }) => ({
+					...row,
+					source: {
+						label: `Atlas question ${question.publicNumber}`,
+						url: questionUrl,
+					},
+				})),
+			);
+			const snapshotId = `qbr:${metric.id}:${contentHash.slice(0, 24)}`;
+			const stored = sorted.map((row) => ({
+				...row,
+				source: {
+					label: `Atlas question ${question.publicNumber}`,
+					url: questionUrl,
+				},
+				snapshotId,
+			}));
+			const snapshotRows = stored.map((row) =>
+				OBSERVATION_COLUMNS.map((column) =>
+					column === "source_label"
+						? row.source.label
+						: column === "source_url"
+							? row.source.url
+							: (row[column as keyof StoredObservation] ?? null),
+				),
+			);
+			const idempotencyKey = `qbr:${metric.id}:${contentHash}`;
+			const existingSnapshot = await tx.resultSnapshot.findUnique({
+				where: { idempotencyKey },
+				select: { id: true },
+			});
+			if (existingSnapshot)
+				return {
+					metricId,
+					snapshotId: existingSnapshot.id,
+					observationCount: observations.length,
+				};
+			const snapshot = await tx.resultSnapshot.create({
+				data: {
+					id: snapshotId,
+					idempotencyKey,
+					sourceId: question.sourceId,
+					questionExternalId,
+					reportingPeriod: REPORTING_PERIOD,
+					capturedAt,
+					contentHash,
+					columns: json(OBSERVATION_COLUMNS.map((name) => ({ name }))),
+					rows: json(snapshotRows),
+					rowCount: stored.length,
+				},
+				select: { id: true },
+			});
+			return {
+				metricId,
+				snapshotId: snapshot.id,
+				observationCount: observations.length,
+			};
+		});
+	}
+
+	async exportReport(quarter: string) {
+		this.assertQuarter(quarter);
+		const result: Record<string, unknown> = {};
+		const questionExternalIds = registry.metrics.map(
+			(metric) => `qbr:${metric.id}`,
+		);
+		const questions = await this.db.question.findMany({
+			where: {
+				connector: DataSourceKind.ATLAS,
+				sourceExternalId: { in: questionExternalIds },
+				source: { is: { key: SOURCE_KEY } },
+			},
+			select: {
+				publicNumber: true,
+				sourceId: true,
+				sourceExternalId: true,
+				versions: {
+					orderBy: { version: "desc" },
+					take: 1,
+					select: { visualization: true },
+				},
+			},
+		});
+		const questionById = new Map(
+			questions.map((question) => [question.sourceExternalId, question]),
+		);
+		const sourceIds = [
+			...new Set(
+				questions
+					.map((question) => question.sourceId)
+					.filter((id): id is string => id !== null),
+			),
+		];
+		const snapshots = sourceIds.length
+			? await this.db.resultSnapshot.findMany({
+					where: {
+						sourceId: { in: sourceIds },
+						questionExternalId: { in: questionExternalIds },
+						reportingPeriod: REPORTING_PERIOD,
+					},
+					orderBy: [{ capturedAt: "desc" }, { id: "desc" }],
+					distinct: ["sourceId", "questionExternalId"],
+					select: {
+						id: true,
+						sourceId: true,
+						questionExternalId: true,
+						rows: true,
+						columns: true,
+					},
+				})
+			: [];
+		const snapshotByQuestion = new Map(
+			snapshots.map((snapshot) => [
+				`${snapshot.sourceId}\0${snapshot.questionExternalId}`,
+				snapshot,
+			]),
+		);
+		for (const metric of registry.metrics) {
+			const question = questionById.get(`qbr:${metric.id}`);
+			if (
+				question &&
+				registeredDefinitionHash(
+					question.versions[0]?.visualization,
+					metric.id,
+				) !== metricDefinitionHash(metric)
+			)
+				throw new ConflictException(
+					`Registered QBR question ${metric.id} has a mismatched definition hash.`,
+				);
+			const observations: Record<string, unknown> = {};
+			const snapshot = question?.sourceId
+				? snapshotByQuestion.get(`${question.sourceId}\0qbr:${metric.id}`)
+				: null;
+			if (snapshot) {
+				for (const row of rowsFrom(snapshot.rows, snapshot.columns)) {
+					if (row.definitionHash !== metricDefinitionHash(metric))
+						throw new ConflictException(
+							`QBR observation ${metric.id}/${row.period} has a mismatched definition hash.`,
+						);
+					if (row.snapshotId !== snapshot.id)
+						throw new ConflictException(
+							`QBR observation ${metric.id}/${row.period} has a mismatched snapshot ID.`,
+						);
+					observations[row.period] = {
+						value: row.value,
+						numerator: row.numerator,
+						denominator: row.denominator,
+						status: row.status,
+						source: row.source,
+						asOf: row.asOf,
+						dataThrough: row.dataThrough,
+						...(row.cohortMonth ? { cohortMonth: row.cohortMonth } : {}),
+						...(row.reportedBy ? { reportedBy: row.reportedBy } : {}),
+						evidenceSource: row.evidenceSource,
+						snapshotId: snapshot.id,
+						definitionHash: row.definitionHash,
+					};
+				}
+			}
+			result[metric.id] = {
+				question: question
+					? {
+							number: question.publicNumber,
+							url: `${QUESTION_BASE_URL}/${question.publicNumber}`,
+						}
+					: null,
+				definition: metric.definition,
+				unit: metric.unit,
+				notApplicable: metric.notApplicable,
+				preparation: metric.preparation,
+				observations,
+			};
+		}
+		return {
+			schemaVersion: "atlas.qbr.v1",
+			quarter,
+			definitionVersion: registry.definitionVersion,
+			generatedAt: new Date().toISOString(),
+			metrics: result,
+		};
+	}
+
+	private assertQuarter(quarter: string): void {
+		if (quarter !== REGISTRY_QUARTER)
+			throw new NotFoundException(`QBR registry not found for ${quarter}.`);
+	}
+}

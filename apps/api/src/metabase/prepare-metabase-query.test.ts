@@ -1,6 +1,7 @@
 import { describe, expect, it, mock } from "bun:test";
 import type { MetabasePreviewInput } from "./metabase.client";
 import { prepareGovernedMetabaseQuery } from "./prepare-metabase-query";
+import type { RevenueDoorPolicyService } from "./revenue-door-policy.service";
 import {
 	buildTinybirdEligibility,
 	governTinybirdQuery,
@@ -47,6 +48,40 @@ const question = {
 };
 
 describe("shared Metabase preview and refresh preparation", () => {
+	it("requires complete door policy and paid activity eligibility for QBR PLG", async () => {
+		const { client, eligibility, policy } = dependencies();
+		const qbr = {
+			...question,
+			number: 9000,
+			sourceExternalId: "qbr:product_m3_ndr",
+			databaseExternalId: "166",
+		};
+		const input = {
+			language: "SQL" as const,
+			queryText: "select generationCostMillicents from sync_prod.sync_usage3",
+		};
+		await expect(
+			prepareGovernedMetabaseQuery(qbr, input, client, eligibility, policy),
+		).rejects.toThrow("complete applied revenue-door");
+		const compile = mock(
+			async (queryText: string) =>
+				({ queryText, evidence: { applied: true, complete: true } }) as Awaited<
+					ReturnType<RevenueDoorPolicyService["compile"]>
+				>,
+		);
+		const prepared = await prepareGovernedMetabaseQuery(
+			qbr,
+			input,
+			client,
+			eligibility,
+			{ ...policy, compile },
+		);
+		expect(compile).toHaveBeenCalledTimes(1);
+		expect(eligibility.currentForPaidActivity).toHaveBeenCalledTimes(1);
+		expect(eligibility.currentForRevenue).not.toHaveBeenCalled();
+		expect(prepared.governed?.eligibility.policy).toBe("PRODUCT_ACTIVITY");
+		expect(prepared.governed?.applied).toBe(true);
+	});
 	it("filters Product SQL at the source and limits identity result rows", async () => {
 		const { client, eligibility, policy } = dependencies();
 		const prepared = await prepareGovernedMetabaseQuery(

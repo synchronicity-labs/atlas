@@ -409,6 +409,11 @@ export class QuestionsService {
 				"This KPI question is a draft. Atlas still needs a runnable source query.",
 			);
 		}
+		if (question.source?.key === "atlas:qbr" && input.queryLanguage === "API") {
+			throw new BadRequestException(
+				"This QBR question needs source data. Follow its collection plan; reported inputs are submitted through Atlas.",
+			);
+		}
 		const startedAt = Date.now();
 		const result =
 			input.queryLanguage === "API"

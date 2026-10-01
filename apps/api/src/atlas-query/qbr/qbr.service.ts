@@ -47,6 +47,39 @@ const validPeriod = (period: string) =>
 	period === REPORTING_PERIOD || /^2026-0[6-9]$/.test(period);
 
 type RegistryMetric = (typeof registry.metrics)[number];
+type QbrReportObservation = {
+	value: number;
+	numerator: number | null;
+	denominator: number | null;
+	status: "provisional" | "reported";
+	source: { label: string; url: string };
+	asOf: string;
+	dataThrough: string | null;
+	cohortMonth?: string;
+	reportedBy?: string;
+	evidenceSource: { label: string; url: string };
+	snapshotId: string;
+	definitionHash: string;
+};
+export type AtlasQbrReport = {
+	schemaVersion: "atlas.qbr.v1";
+	quarter: string;
+	definitionVersion: string;
+	generatedAt: string;
+	metrics: Record<
+		string,
+		{
+			question: { number: number; url: string } | null;
+			label: string;
+			definition: string;
+			unit: string;
+			notApplicable: boolean;
+			automated: boolean;
+			preparation: RegistryMetric["preparation"];
+			observations: Record<string, QbrReportObservation>;
+		}
+	>;
+};
 type Observation = {
 	period: string;
 	value: number;
@@ -701,9 +734,9 @@ export class AtlasQbrService {
 		});
 	}
 
-	async exportReport(quarter: string) {
+	async exportReport(quarter: string): Promise<AtlasQbrReport> {
 		this.assertQuarter(quarter);
-		const result: Record<string, unknown> = {};
+		const result: AtlasQbrReport["metrics"] = {};
 		const questionExternalIds = registry.metrics.map(
 			(metric) => `qbr:${metric.id}`,
 		);
@@ -770,7 +803,7 @@ export class AtlasQbrService {
 				throw new ConflictException(
 					`Registered QBR question ${metric.id} has a mismatched definition hash.`,
 				);
-			const observations: Record<string, unknown> = {};
+			const observations: Record<string, QbrReportObservation> = {};
 			const snapshot = question?.sourceId
 				? snapshotByQuestion.get(`${question.sourceId}\0qbr:${metric.id}`)
 				: null;
@@ -807,9 +840,11 @@ export class AtlasQbrService {
 							url: `${QUESTION_BASE_URL}/${question.publicNumber}`,
 						}
 					: null,
+				label: metric.label,
 				definition: metric.definition,
 				unit: metric.unit,
 				notApplicable: metric.notApplicable,
+				automated: metric.automated,
 				preparation: metric.preparation,
 				observations,
 			};

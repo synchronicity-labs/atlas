@@ -30,6 +30,7 @@ import { ssoProviderListInput, registerSsoProviderInput, deleteSsoProviderInput 
 import { memberListInput, updateWorkspaceInput, setMemberRoleInput } from "../workspace/workspace.contracts";
 import type { ActivitiesRouter } from "../activities/activities.router";
 import type { AtlasDashboardsRouter } from "../atlas-dashboards/atlas-dashboards.router";
+import type { QbrRouter } from "../atlas-query/qbr/qbr.router";
 import type { CompaniesRouter } from "../companies/companies.router";
 import type { ContactsRouter } from "../contacts/contacts.router";
 import type { ConversationsRouter } from "../conversations/conversations.router";
@@ -77,6 +78,10 @@ const appRouter = t.router({
     updateLayout: publicProcedure
       .input(dashboardLayoutInput)
       .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<AtlasDashboardsRouter["updateLayout"]>>)
+    }),
+  qbr: t.router({
+    report: publicProcedure
+      .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<QbrRouter["report"]>>)
     }),
   companies: t.router({
     list: publicProcedure

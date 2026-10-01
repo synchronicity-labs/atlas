@@ -21,31 +21,31 @@
 					"label": "QBR outline lead assignment",
 					"url": "https://sync-qbr.pr.sync.so/#quarter=2026-Q3&slide=q3-product"
 				},
-				"gap": "June comparison / July and August observations are source-pulled and provisional. September and full Q3 remain unfilled until source close. Values follow current Atlas exclusions and can change with source corrections.",
+				"gap": "June comparison / July and August observations are source-pulled and provisional. September and full Q3 remain provisional until source completeness is confirmed; calendar close alone does not establish completeness. Values follow current Atlas exclusions and can change with source corrections.",
 				"dataLocation": "Product generation ledger (TinyBird usage facts and Product Postgres generation records), Stripe subscription history, and the canonical Product organization mapping. Use `sync_prod.sync_usage3` only for measures whose recorded contract matches its grain; use the completion ledger for completion-time measures.",
-				"manualAsk": "Functional lead: review the supplied population and interpretation. Nacho: run `doppler run --project atlas --config local -- bun apps/api/scripts/qbr.ts refresh` after September closes and source completeness is confirmed; review the resulting Atlas snapshots. No manual numeric entry is required for the supplied months.",
+				"manualAsk": "Functional lead: review the supplied population and interpretation. Nacho: run `doppler run --project atlas --config local -- bun apps/api/scripts/qbr.ts refresh` after source completeness is confirmed; calendar close alone does not establish completeness; review the resulting Atlas snapshots. No manual numeric entry is required for the supplied months.",
 				"q4Build": "Use `apps/api/src/atlas-query/qbr/queries.ts` for Atlas queries and `doppler run --project atlas --config local -- bun apps/api/scripts/qbr.ts refresh` to collect closed-period results. For future quarters, parameterize the registry period, confirm source-completeness watermarks, validate eligible populations and metric arithmetic, and publish reviewed Atlas snapshots. Compute quarter values using the authored aggregation, not a sum or average of unrelated monthly ratios.",
 				"workstream": "product_generation",
 				"sources": [
 					{
 						"label": "Canonical Atlas QBR question and saved observations",
 						"url": "https://atlas.pr.sync.so/questions/422",
-						"limit": "June comparison / July and August observations are source-pulled and provisional. September and full Q3 remain unfilled until source close. Values follow current Atlas exclusions and can change with source corrections."
+						"limit": "June comparison / July and August observations are source-pulled and provisional. September and full Q3 remain provisional until source completeness is confirmed; calendar close alone does not establish completeness. Values follow current Atlas exclusions and can change with source corrections."
 					},
 					{
 						"label": "Atlas Q15 — V2 self-serve - Primary professional orgs",
 						"url": "https://atlas.pr.sync.so/questions/15",
-						"limit": "Q15 and Q119 are V2-only; Q107 is a separate V3 population. V2/V3 counts cannot be added without an organization-level union because plan migrations may overlap. Q192 is archived. September is absent from the latest completed-month output. Sequential Q15 snapshots disagree by one August team, so use the independently governed combined pull for actuals."
+						"limit": "Q15 and Q119 are V2-only; Q107 is a separate V3 population. V2/V3 counts cannot be added without an organization-level union because plan migrations may overlap. Q192 is archived. The latest completed-month output may lag the reporting period; confirm its source-completeness watermark before relying on it. Calendar close alone does not establish completeness. Sequential Q15 snapshots disagree by one August team, so use the independently governed combined pull for actuals."
 					},
 					{
 						"label": "Atlas Q107 — V3 cohort - Primary professional orgs",
 						"url": "https://atlas.pr.sync.so/questions/107",
-						"limit": "Q15 and Q119 are V2-only; Q107 is a separate V3 population. V2/V3 counts cannot be added without an organization-level union because plan migrations may overlap. Q192 is archived. September is absent from the latest completed-month output. Sequential Q15 snapshots disagree by one August team, so use the independently governed combined pull for actuals."
+						"limit": "Q15 and Q119 are V2-only; Q107 is a separate V3 population. V2/V3 counts cannot be added without an organization-level union because plan migrations may overlap. Q192 is archived. The latest completed-month output may lag the reporting period; confirm its source-completeness watermark before relying on it. Calendar close alone does not establish completeness. Sequential Q15 snapshots disagree by one August team, so use the independently governed combined pull for actuals."
 					},
 					{
 						"label": "Atlas Q119 — V2 self-serve - Professional orgs + activated pool trend",
 						"url": "https://atlas.pr.sync.so/questions/119",
-						"limit": "Q15 and Q119 are V2-only; Q107 is a separate V3 population. V2/V3 counts cannot be added without an organization-level union because plan migrations may overlap. Q192 is archived. September is absent from the latest completed-month output. Sequential Q15 snapshots disagree by one August team, so use the independently governed combined pull for actuals."
+						"limit": "Q15 and Q119 are V2-only; Q107 is a separate V3 population. V2/V3 counts cannot be added without an organization-level union because plan migrations may overlap. Q192 is archived. The latest completed-month output may lag the reporting period; confirm its source-completeness watermark before relying on it. Calendar close alone does not establish completeness. Sequential Q15 snapshots disagree by one August team, so use the independently governed combined pull for actuals."
 					}
 				]
 			}
@@ -1383,16 +1383,16 @@
 					"label": "QBR outline lead assignment",
 					"url": "https://sync-qbr.pr.sync.so/#quarter=2026-Q3&slide=q3-product"
 				},
-				"gap": "Mature May and June starting cohorts are observed in July and August respectively. These are not July/August starting-cohort or full-Q3 results. Accrued NDR keeps nonqualifying cohort members and churn at zero. Source close and owner interpretation review remain pending.",
+				"gap": "Mature May and June starting cohorts are observed in July and August respectively. These are not July/August starting-cohort or full-Q3 results. Accrued NDR keeps nonqualifying cohort members and churn at zero. Source completeness and owner interpretation review remain pending.",
 				"dataLocation": "Versioned annotated benchmark/test sets, training-run metadata, generation feedback events, and quality-control adjudication records. Each metric needs a frozen population/version before automation.",
-				"manualAsk": "Functional lead: review the supplied population and interpretation. Nacho: run `doppler run --project atlas --config local -- bun apps/api/scripts/qbr.ts refresh` after September closes and source completeness is confirmed; review the resulting Atlas snapshots. No manual numeric entry is required for the supplied months.",
+				"manualAsk": "Functional lead: review the supplied population and interpretation. Nacho: run `doppler run --project atlas --config local -- bun apps/api/scripts/qbr.ts refresh` after source completeness is confirmed; calendar close alone does not establish completeness; review the resulting Atlas snapshots. No manual numeric entry is required for the supplied months.",
 				"q4Build": "Use `apps/api/src/atlas-query/qbr/queries.ts` for Atlas queries and `doppler run --project atlas --config local -- bun apps/api/scripts/qbr.ts refresh` to collect closed-period results. For future quarters, parameterize the registry period, confirm source-completeness watermarks, validate eligible populations and metric arithmetic, and publish reviewed Atlas snapshots. Keep cohort-entry and M3 observation months explicit; calculate cohort totals before ratios.",
 				"workstream": "evaluation_quality",
 				"sources": [
 					{
 						"label": "Canonical Atlas QBR question and saved observations",
 						"url": "https://atlas.pr.sync.so/questions/473",
-						"limit": "Mature May and June starting cohorts are observed in July and August respectively. These are not July/August starting-cohort or full-Q3 results. Accrued NDR keeps nonqualifying cohort members and churn at zero. Source close and owner interpretation review remain pending."
+						"limit": "Mature May and June starting cohorts are observed in July and August respectively. These are not July/August starting-cohort or full-Q3 results. Accrued NDR keeps nonqualifying cohort members and churn at zero. Source completeness and owner interpretation review remain pending."
 					}
 				]
 			}
@@ -1411,16 +1411,16 @@
 					"label": "QBR outline lead assignment",
 					"url": "https://sync-qbr.pr.sync.so/#quarter=2026-Q3&slide=q3-product"
 				},
-				"gap": "Mature May and June starting cohorts are observed in July and August respectively. These are not July/August starting-cohort or full-Q3 results. Accrued NDR keeps nonqualifying cohort members and churn at zero. Source close and owner interpretation review remain pending.",
+				"gap": "Mature May and June starting cohorts are observed in July and August respectively. These are not July/August starting-cohort or full-Q3 results. Accrued NDR keeps nonqualifying cohort members and churn at zero. Source completeness and owner interpretation review remain pending.",
 				"dataLocation": "Versioned annotated benchmark/test sets, training-run metadata, generation feedback events, and quality-control adjudication records. Each metric needs a frozen population/version before automation.",
-				"manualAsk": "Functional lead: review the supplied population and interpretation. Nacho: run `doppler run --project atlas --config local -- bun apps/api/scripts/qbr.ts refresh` after September closes and source completeness is confirmed; review the resulting Atlas snapshots. No manual numeric entry is required for the supplied months.",
+				"manualAsk": "Functional lead: review the supplied population and interpretation. Nacho: run `doppler run --project atlas --config local -- bun apps/api/scripts/qbr.ts refresh` after source completeness is confirmed; calendar close alone does not establish completeness; review the resulting Atlas snapshots. No manual numeric entry is required for the supplied months.",
 				"q4Build": "Use `apps/api/src/atlas-query/qbr/queries.ts` for Atlas queries and `doppler run --project atlas --config local -- bun apps/api/scripts/qbr.ts refresh` to collect closed-period results. For future quarters, parameterize the registry period, confirm source-completeness watermarks, validate eligible populations and metric arithmetic, and publish reviewed Atlas snapshots. Keep cohort-entry and M3 observation months explicit; calculate cohort totals before ratios.",
 				"workstream": "evaluation_quality",
 				"sources": [
 					{
 						"label": "Canonical Atlas QBR question and saved observations",
 						"url": "https://atlas.pr.sync.so/questions/474",
-						"limit": "Mature May and June starting cohorts are observed in July and August respectively. These are not July/August starting-cohort or full-Q3 results. Accrued NDR keeps nonqualifying cohort members and churn at zero. Source close and owner interpretation review remain pending."
+						"limit": "Mature May and June starting cohorts are observed in July and August respectively. These are not July/August starting-cohort or full-Q3 results. Accrued NDR keeps nonqualifying cohort members and churn at zero. Source completeness and owner interpretation review remain pending."
 					}
 				]
 			}
@@ -1439,16 +1439,16 @@
 					"label": "QBR outline lead assignment",
 					"url": "https://sync-qbr.pr.sync.so/#quarter=2026-Q3&slide=q3-product"
 				},
-				"gap": "Mature May and June starting cohorts are observed in July and August respectively. These are not July/August starting-cohort or full-Q3 results. Accrued NDR keeps nonqualifying cohort members and churn at zero. Source close and owner interpretation review remain pending.",
+				"gap": "Mature May and June starting cohorts are observed in July and August respectively. These are not July/August starting-cohort or full-Q3 results. Accrued NDR keeps nonqualifying cohort members and churn at zero. Source completeness and owner interpretation review remain pending.",
 				"dataLocation": "Versioned annotated benchmark/test sets, training-run metadata, generation feedback events, and quality-control adjudication records. Each metric needs a frozen population/version before automation.",
-				"manualAsk": "Functional lead: review the supplied population and interpretation. Nacho: run `doppler run --project atlas --config local -- bun apps/api/scripts/qbr.ts refresh` after September closes and source completeness is confirmed; review the resulting Atlas snapshots. No manual numeric entry is required for the supplied months.",
+				"manualAsk": "Functional lead: review the supplied population and interpretation. Nacho: run `doppler run --project atlas --config local -- bun apps/api/scripts/qbr.ts refresh` after source completeness is confirmed; calendar close alone does not establish completeness; review the resulting Atlas snapshots. No manual numeric entry is required for the supplied months.",
 				"q4Build": "Use `apps/api/src/atlas-query/qbr/queries.ts` for Atlas queries and `doppler run --project atlas --config local -- bun apps/api/scripts/qbr.ts refresh` to collect closed-period results. For future quarters, parameterize the registry period, confirm source-completeness watermarks, validate eligible populations and metric arithmetic, and publish reviewed Atlas snapshots. Keep cohort-entry and M3 observation months explicit; calculate cohort totals before ratios.",
 				"workstream": "evaluation_quality",
 				"sources": [
 					{
 						"label": "Canonical Atlas QBR question and saved observations",
 						"url": "https://atlas.pr.sync.so/questions/475",
-						"limit": "Mature May and June starting cohorts are observed in July and August respectively. These are not July/August starting-cohort or full-Q3 results. Accrued NDR keeps nonqualifying cohort members and churn at zero. Source close and owner interpretation review remain pending."
+						"limit": "Mature May and June starting cohorts are observed in July and August respectively. These are not July/August starting-cohort or full-Q3 results. Accrued NDR keeps nonqualifying cohort members and churn at zero. Source completeness and owner interpretation review remain pending."
 					}
 				]
 			}
@@ -1868,16 +1868,16 @@
 					"label": "QBR outline lead assignment",
 					"url": "https://sync-qbr.pr.sync.so/#quarter=2026-Q3&slide=q3-platform"
 				},
-				"gap": "Monthly completed / final non-deleted generation records, assigned by creation month. Rejected jobs are included in the final denominator; stale pending/processing jobs are disclosed separately. This differs from Q57, which counts non-FAILED statuses as success. July/August are provisional; September and Q3 remain unfilled.",
+				"gap": "Monthly completed / final non-deleted generation records, assigned by creation month. Rejected jobs are included in the final denominator; stale pending/processing jobs are disclosed separately. This differs from Q57, which counts non-FAILED statuses as success. July through September and full Q3 remain provisional until source completeness is confirmed; calendar close alone does not establish completeness.",
 				"dataLocation": "Provider usage and cost records joined to accepted generation outputs; completion request/job event history. No QBR-specific provider-cost dataset is identified in the source inventory.",
-				"manualAsk": "Functional lead: review the supplied population and interpretation. Nacho: run `doppler run --project atlas --config local -- bun apps/api/scripts/qbr.ts refresh` after September closes and source completeness is confirmed; review the resulting Atlas snapshots. No manual numeric entry is required for the supplied months.",
+				"manualAsk": "Functional lead: review the supplied population and interpretation. Nacho: run `doppler run --project atlas --config local -- bun apps/api/scripts/qbr.ts refresh` after source completeness is confirmed; calendar close alone does not establish completeness; review the resulting Atlas snapshots. No manual numeric entry is required for the supplied months.",
 				"q4Build": "Use `apps/api/src/atlas-query/qbr/queries.ts` for Atlas queries and `doppler run --project atlas --config local -- bun apps/api/scripts/qbr.ts refresh` to collect closed-period results. For future quarters, parameterize the registry period, confirm source-completeness watermarks, validate eligible populations and metric arithmetic, and publish reviewed Atlas snapshots. Compute quarter values using the authored aggregation, not a sum or average of unrelated monthly ratios.",
 				"workstream": "platform_runtime",
 				"sources": [
 					{
 						"label": "Canonical Atlas QBR question and saved observations",
 						"url": "https://atlas.pr.sync.so/questions/492",
-						"limit": "Monthly completed / final non-deleted generation records, assigned by creation month. Rejected jobs are included in the final denominator; stale pending/processing jobs are disclosed separately. This differs from Q57, which counts non-FAILED statuses as success. July/August are provisional; September and Q3 remain unfilled."
+						"limit": "Monthly completed / final non-deleted generation records, assigned by creation month. Rejected jobs are included in the final denominator; stale pending/processing jobs are disclosed separately. This differs from Q57, which counts non-FAILED statuses as success. July through September and full Q3 remain provisional until source completeness is confirmed; calendar close alone does not establish completeness."
 					},
 					{
 						"label": "Atlas Q8 — V2 self-serve - Weekly generation completion rate",
@@ -2219,16 +2219,16 @@
 					"label": "QBR outline lead assignment",
 					"url": "https://sync-qbr.pr.sync.so/#quarter=2026-Q3&slide=q3-product"
 				},
-				"gap": "June comparison / July and August observations are source-pulled and provisional. September and full Q3 remain unfilled until source close. Values follow current Atlas exclusions and can change with source corrections.",
+				"gap": "June comparison / July and August observations are source-pulled and provisional. September and full Q3 remain provisional until source completeness is confirmed; calendar close alone does not establish completeness. Values follow current Atlas exclusions and can change with source corrections.",
 				"dataLocation": "Product generation ledger (TinyBird usage facts and Product Postgres generation records), Stripe subscription history, and the canonical Product organization mapping. Use `sync_prod.sync_usage3` only for measures whose recorded contract matches its grain; use the completion ledger for completion-time measures.",
-				"manualAsk": "Functional lead: review the supplied population and interpretation. Nacho: run `doppler run --project atlas --config local -- bun apps/api/scripts/qbr.ts refresh` after September closes and source completeness is confirmed; review the resulting Atlas snapshots. No manual numeric entry is required for the supplied months.",
+				"manualAsk": "Functional lead: review the supplied population and interpretation. Nacho: run `doppler run --project atlas --config local -- bun apps/api/scripts/qbr.ts refresh` after source completeness is confirmed; calendar close alone does not establish completeness; review the resulting Atlas snapshots. No manual numeric entry is required for the supplied months.",
 				"q4Build": "Use `apps/api/src/atlas-query/qbr/queries.ts` for Atlas queries and `doppler run --project atlas --config local -- bun apps/api/scripts/qbr.ts refresh` to collect closed-period results. For future quarters, parameterize the registry period, confirm source-completeness watermarks, validate eligible populations and metric arithmetic, and publish reviewed Atlas snapshots. Compute quarter values using the authored aggregation, not a sum or average of unrelated monthly ratios.",
 				"workstream": "product_generation",
 				"sources": [
 					{
 						"label": "Canonical Atlas QBR question and saved observations",
 						"url": "https://atlas.pr.sync.so/questions/507",
-						"limit": "June comparison / July and August observations are source-pulled and provisional. September and full Q3 remain unfilled until source close. Values follow current Atlas exclusions and can change with source corrections."
+						"limit": "June comparison / July and August observations are source-pulled and provisional. September and full Q3 remain provisional until source completeness is confirmed; calendar close alone does not establish completeness. Values follow current Atlas exclusions and can change with source corrections."
 					},
 					{
 						"label": "Atlas Q119 — V2 self-serve - Professional orgs + activated pool trend",
@@ -2252,16 +2252,16 @@
 					"label": "QBR outline lead assignment",
 					"url": "https://sync-qbr.pr.sync.so/#quarter=2026-Q3&slide=q3-product"
 				},
-				"gap": "June comparison / July and August observations are source-pulled and provisional. September and full Q3 remain unfilled until source close. Values follow current Atlas exclusions and can change with source corrections.",
+				"gap": "June comparison / July and August observations are source-pulled and provisional. September and full Q3 remain provisional until source completeness is confirmed; calendar close alone does not establish completeness. Values follow current Atlas exclusions and can change with source corrections.",
 				"dataLocation": "Product generation ledger (TinyBird usage facts and Product Postgres generation records), Stripe subscription history, and the canonical Product organization mapping. Use `sync_prod.sync_usage3` only for measures whose recorded contract matches its grain; use the completion ledger for completion-time measures.",
-				"manualAsk": "Functional lead: review the supplied population and interpretation. Nacho: run `doppler run --project atlas --config local -- bun apps/api/scripts/qbr.ts refresh` after September closes and source completeness is confirmed; review the resulting Atlas snapshots. No manual numeric entry is required for the supplied months.",
+				"manualAsk": "Functional lead: review the supplied population and interpretation. Nacho: run `doppler run --project atlas --config local -- bun apps/api/scripts/qbr.ts refresh` after source completeness is confirmed; calendar close alone does not establish completeness; review the resulting Atlas snapshots. No manual numeric entry is required for the supplied months.",
 				"q4Build": "Use `apps/api/src/atlas-query/qbr/queries.ts` for Atlas queries and `doppler run --project atlas --config local -- bun apps/api/scripts/qbr.ts refresh` to collect closed-period results. For future quarters, parameterize the registry period, confirm source-completeness watermarks, validate eligible populations and metric arithmetic, and publish reviewed Atlas snapshots. Compute quarter values using the authored aggregation, not a sum or average of unrelated monthly ratios.",
 				"workstream": "product_generation",
 				"sources": [
 					{
 						"label": "Canonical Atlas QBR question and saved observations",
 						"url": "https://atlas.pr.sync.so/questions/508",
-						"limit": "June comparison / July and August observations are source-pulled and provisional. September and full Q3 remain unfilled until source close. Values follow current Atlas exclusions and can change with source corrections."
+						"limit": "June comparison / July and August observations are source-pulled and provisional. September and full Q3 remain provisional until source completeness is confirmed; calendar close alone does not establish completeness. Values follow current Atlas exclusions and can change with source corrections."
 					},
 					{
 						"label": "Atlas Q119 — V2 self-serve - Professional orgs + activated pool trend",
@@ -2285,16 +2285,16 @@
 					"label": "QBR outline lead assignment",
 					"url": "https://sync-qbr.pr.sync.so/#quarter=2026-Q3&slide=q3-product"
 				},
-				"gap": "June comparison / July and August observations are source-pulled and provisional. September and full Q3 remain unfilled until source close. Values follow current Atlas exclusions and can change with source corrections.",
+				"gap": "June comparison / July and August observations are source-pulled and provisional. September and full Q3 remain provisional until source completeness is confirmed; calendar close alone does not establish completeness. Values follow current Atlas exclusions and can change with source corrections.",
 				"dataLocation": "Product generation ledger (TinyBird usage facts and Product Postgres generation records), Stripe subscription history, and the canonical Product organization mapping. Use `sync_prod.sync_usage3` only for measures whose recorded contract matches its grain; use the completion ledger for completion-time measures.",
-				"manualAsk": "Functional lead: review the supplied population and interpretation. Nacho: run `doppler run --project atlas --config local -- bun apps/api/scripts/qbr.ts refresh` after September closes and source completeness is confirmed; review the resulting Atlas snapshots. No manual numeric entry is required for the supplied months.",
+				"manualAsk": "Functional lead: review the supplied population and interpretation. Nacho: run `doppler run --project atlas --config local -- bun apps/api/scripts/qbr.ts refresh` after source completeness is confirmed; calendar close alone does not establish completeness; review the resulting Atlas snapshots. No manual numeric entry is required for the supplied months.",
 				"q4Build": "Use `apps/api/src/atlas-query/qbr/queries.ts` for Atlas queries and `doppler run --project atlas --config local -- bun apps/api/scripts/qbr.ts refresh` to collect closed-period results. For future quarters, parameterize the registry period, confirm source-completeness watermarks, validate eligible populations and metric arithmetic, and publish reviewed Atlas snapshots. Compute quarter values using the authored aggregation, not a sum or average of unrelated monthly ratios.",
 				"workstream": "product_generation",
 				"sources": [
 					{
 						"label": "Canonical Atlas QBR question and saved observations",
 						"url": "https://atlas.pr.sync.so/questions/509",
-						"limit": "June comparison / July and August observations are source-pulled and provisional. September and full Q3 remain unfilled until source close. Values follow current Atlas exclusions and can change with source corrections."
+						"limit": "June comparison / July and August observations are source-pulled and provisional. September and full Q3 remain provisional until source completeness is confirmed; calendar close alone does not establish completeness. Values follow current Atlas exclusions and can change with source corrections."
 					},
 					{
 						"label": "Atlas Q119 — V2 self-serve - Professional orgs + activated pool trend",
@@ -3050,31 +3050,31 @@
 					"label": "QBR outline lead assignment",
 					"url": "https://sync-qbr.pr.sync.so/#quarter=2026-Q3&slide=q3-product"
 				},
-				"gap": "June comparison / July and August observations are source-pulled and provisional. September and full Q3 remain unfilled until source close. Values follow current Atlas exclusions and can change with source corrections.",
+				"gap": "June comparison / July and August observations are source-pulled and provisional. September and full Q3 remain provisional until source completeness is confirmed; calendar close alone does not establish completeness. Values follow current Atlas exclusions and can change with source corrections.",
 				"dataLocation": "Product generation ledger (TinyBird usage facts and Product Postgres generation records), Stripe subscription history, and the canonical Product organization mapping. Use `sync_prod.sync_usage3` only for measures whose recorded contract matches its grain; use the completion ledger for completion-time measures.",
-				"manualAsk": "Functional lead: review the supplied population and interpretation. Nacho: run `doppler run --project atlas --config local -- bun apps/api/scripts/qbr.ts refresh` after September closes and source completeness is confirmed; review the resulting Atlas snapshots. No manual numeric entry is required for the supplied months.",
+				"manualAsk": "Functional lead: review the supplied population and interpretation. Nacho: run `doppler run --project atlas --config local -- bun apps/api/scripts/qbr.ts refresh` after source completeness is confirmed; calendar close alone does not establish completeness; review the resulting Atlas snapshots. No manual numeric entry is required for the supplied months.",
 				"q4Build": "Use `apps/api/src/atlas-query/qbr/queries.ts` for Atlas queries and `doppler run --project atlas --config local -- bun apps/api/scripts/qbr.ts refresh` to collect closed-period results. For future quarters, parameterize the registry period, confirm source-completeness watermarks, validate eligible populations and metric arithmetic, and publish reviewed Atlas snapshots. Compute quarter values using the authored aggregation, not a sum or average of unrelated monthly ratios.",
 				"workstream": "product_generation",
 				"sources": [
 					{
 						"label": "Canonical Atlas QBR question and saved observations",
 						"url": "https://atlas.pr.sync.so/questions/543",
-						"limit": "June comparison / July and August observations are source-pulled and provisional. September and full Q3 remain unfilled until source close. Values follow current Atlas exclusions and can change with source corrections."
+						"limit": "June comparison / July and August observations are source-pulled and provisional. September and full Q3 remain provisional until source completeness is confirmed; calendar close alone does not establish completeness. Values follow current Atlas exclusions and can change with source corrections."
 					},
 					{
 						"label": "Atlas Q15 — V2 self-serve - Primary professional orgs",
 						"url": "https://atlas.pr.sync.so/questions/15",
-						"limit": "V2 and V3 sources are separate; the latest Q15/Q107 outputs end in August. No all-PLG September endpoint."
+						"limit": "Q15 and Q107 are separate V2/V3 populations and do not provide a combined all-PLG endpoint. Confirm a combined source-completeness watermark before using a reporting month; calendar close alone does not establish completeness."
 					},
 					{
 						"label": "Atlas Q107 — V3 cohort - Primary professional orgs",
 						"url": "https://atlas.pr.sync.so/questions/107",
-						"limit": "V2 and V3 sources are separate; the latest Q15/Q107 outputs end in August. No all-PLG September endpoint."
+						"limit": "Q15 and Q107 are separate V2/V3 populations and do not provide a combined all-PLG endpoint. Confirm a combined source-completeness watermark before using a reporting month; calendar close alone does not establish completeness."
 					},
 					{
 						"label": "Atlas Q119 — V2 self-serve - Professional orgs + activated pool trend",
 						"url": "https://atlas.pr.sync.so/questions/119",
-						"limit": "V2 and V3 sources are separate; the latest Q15/Q107 outputs end in August. No all-PLG September endpoint."
+						"limit": "Q15 and Q107 are separate V2/V3 populations and do not provide a combined all-PLG endpoint. Confirm a combined source-completeness watermark before using a reporting month; calendar close alone does not establish completeness."
 					}
 				]
 			}

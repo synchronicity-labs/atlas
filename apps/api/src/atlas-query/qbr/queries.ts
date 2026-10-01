@@ -13,6 +13,79 @@ export function isQbrPlgQuestion(externalId: string | null) {
 	return qbrPlgMetricIds.some((id) => externalId === `qbr:${id}`);
 }
 
+export function qbrQuarterValue(
+	metricId: string,
+	monthlyValues: {
+		period: string;
+		value: number;
+		numerator: number | null;
+		denominator: number | null;
+	}[],
+	now = new Date(),
+) {
+	if (now.getTime() < Date.UTC(2026, 9, 1)) return null;
+	if (
+		!["plg_teams", "plg_teams_period_end", "platform_completion"].includes(
+			metricId,
+		)
+	)
+		return null;
+	const quarterMonths = ["2026-07", "2026-08", "2026-09"];
+	const values = monthlyValues.filter((item) =>
+		quarterMonths.includes(item.period),
+	);
+	if (
+		values.length !== quarterMonths.length ||
+		quarterMonths.some(
+			(month) => values.filter((item) => item.period === month).length !== 1,
+		)
+	)
+		return null;
+	if (metricId === "plg_teams")
+		return {
+			period: "2026-Q3" as const,
+			value: values.reduce((sum, item) => sum + item.value, 0) / 3,
+			numerator: null,
+			denominator: null,
+		};
+	if (metricId === "plg_teams_period_end") {
+		const september = values.find((item) => item.period === "2026-09");
+		return september
+			? {
+					period: "2026-Q3" as const,
+					value: september.value,
+					numerator: null,
+					denominator: null,
+				}
+			: null;
+	}
+	if (
+		values.some(
+			(item) =>
+				item.numerator === null ||
+				item.denominator === null ||
+				!Number.isFinite(item.numerator) ||
+				!Number.isFinite(item.denominator),
+		)
+	)
+		return null;
+	const numerator = values.reduce(
+		(sum, item) => sum + (item.numerator ?? 0),
+		0,
+	);
+	const denominator = values.reduce(
+		(sum, item) => sum + (item.denominator ?? 0),
+		0,
+	);
+	if (denominator <= 0 || numerator < 0) return null;
+	return {
+		period: "2026-Q3" as const,
+		value: Math.round((10000 * numerator) / denominator) / 100,
+		numerator,
+		denominator,
+	};
+}
+
 export function qbrQueries(now = new Date()) {
 	const through = new Date(
 		Math.min(

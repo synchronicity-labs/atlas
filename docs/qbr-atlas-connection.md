@@ -26,6 +26,14 @@ The QBR importer uses `ATLAS_API_URL` and `ATLAS_QUERY_SECRET` only in its serve
 
 ## Missing data to acquire
 
+The authenticated Atlas **QBR review** page is at `/qbr`. Team links such as `/qbr?team=platform` keep the selected team in the URL. Groups follow the lead assignments in the QBR outline; a source category such as Finance does not reassign another team's accountability. Tentative owners remain labeled.
+
+The review separates saved results to verify, missing manual inputs, and Atlas calculation or refresh work owned by Nacho. Monthly and cohort observations remain visible. Supplied mature cohorts do not become requests for an undefined whole-quarter ratio. Structural N/A measures do not become requests for data. Each metric links to its canonical question and includes its definition, source, coverage, collection request and proposed automation.
+
+Use **Copy team request** to prepare the lead's message and **Copy team link** for the team's page. These copy text; they send no messages and certify no results. Copied links use the canonical Atlas host. Deploy the page before sharing those links with leads.
+
+For example, Platform asks Tanmay to review the supplied generation-completion result and provide the P95 generation-latency and inference-cost-per-output-minute records. The saved request contains the exact definitions and source requirements.
+
 These are collection workstreams, not requests to redefine Prady's settled metrics. The exact request and evidence limits are stored with each question.
 
 | Workstream | Lead to chase | What we need now | How Atlas should automate it |
@@ -58,6 +66,6 @@ Manual import records evidence without asserting verification. Automated refresh
 1. Review canonical Atlas questions and the supplied July/August observations with the functional leads.
 2. Resolve source access, account mapping and manual input gaps by workstream above. Confirm tentative Product/ML owners.
 3. Collect Finance and functional-lead evidence in Atlas; export it into the presentation.
-4. After Q3 closes and source coverage is confirmed, refresh September and provide separately supported quarter aggregations.
+4. Q3's calendar period is closed. Confirm source coverage and review September and the supported quarter aggregations. The refresh derives the PLG monthly average, September ending count and weighted completion rate only when all three months are available; cohort ratios and quarter-end movement need their own authored basis.
 5. In Q4, prioritize Finance/contract/Production event ingestion, then acquisition and evaluation feeds. Reuse existing connectors before adding a new source. Add approved source watermarks and metric verification before promoting provisional or reported answers.
 6. Generalize the reviewed Q3 registry to future quarter definitions and connect the importer to the QBR deployment pipeline. This first integration does not claim that future quarters or missing provider feeds are already automated.

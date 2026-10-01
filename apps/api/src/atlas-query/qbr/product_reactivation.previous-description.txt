@@ -1,0 +1,19 @@
+M1 professional orgs that fail qualification in M2 and qualify again in M3 / M1 orgs that dropped in M2. Campaign causation needs a comparison group.
+
+Owner: Noah (tentative)
+
+Owner status: Tentative lead in the outline
+
+Owner source: QBR outline lead assignment (https://sync-qbr.pr.sync.so/#quarter=2026-Q3&slide=q3-product)
+
+Gap: Mature May and June starting cohorts are observed in July and August respectively. These are not July/August starting-cohort or full-Q3 results. Accrued NDR keeps nonqualifying cohort members and churn at zero. Source close and owner interpretation review remain pending.
+
+Data location: Versioned annotated benchmark/test sets, training-run metadata, generation feedback events, and quality-control adjudication records. Each metric needs a frozen population/version before automation.
+
+Manual ask: Functional lead: review the supplied population and interpretation. Nacho: run `doppler run --project atlas --config local -- bun apps/api/scripts/qbr.ts refresh` after September closes and source completeness is confirmed; review the resulting Atlas snapshots. No manual numeric entry is required for the supplied months.
+
+Q4 build: Use `apps/api/src/atlas-query/qbr/queries.ts` for Atlas queries and `doppler run --project atlas --config local -- bun apps/api/scripts/qbr.ts refresh` to collect closed-period results. For future quarters, parameterize the registry period, confirm source-completeness watermarks, validate eligible populations and metric arithmetic, and publish reviewed Atlas snapshots. Keep cohort-entry and M3 observation months explicit; calculate cohort totals before ratios.
+
+Workstream: evaluation_quality
+
+Sources: Canonical Atlas QBR question and saved observations (https://atlas.pr.sync.so/questions/475) — Mature May and June starting cohorts are observed in July and August respectively. These are not July/August starting-cohort or full-Q3 results. Accrued NDR keeps nonqualifying cohort members and churn at zero. Source close and owner interpretation review remain pending.

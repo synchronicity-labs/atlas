@@ -47,6 +47,39 @@ const validPeriod = (period: string) =>
 	period === REPORTING_PERIOD || /^2026-0[6-9]$/.test(period);
 
 type RegistryMetric = (typeof registry.metrics)[number];
+type QbrReportObservation = {
+	value: number;
+	numerator: number | null;
+	denominator: number | null;
+	status: "provisional" | "reported";
+	source: { label: string; url: string };
+	asOf: string;
+	dataThrough: string | null;
+	cohortMonth?: string;
+	reportedBy?: string;
+	evidenceSource: { label: string; url: string };
+	snapshotId: string;
+	definitionHash: string;
+};
+export type AtlasQbrReport = {
+	schemaVersion: "atlas.qbr.v1";
+	quarter: string;
+	definitionVersion: string;
+	generatedAt: string;
+	metrics: Record<
+		string,
+		{
+			question: { number: number; url: string } | null;
+			label: string;
+			definition: string;
+			unit: string;
+			notApplicable: boolean;
+			automated: boolean;
+			preparation: RegistryMetric["preparation"];
+			observations: Record<string, QbrReportObservation>;
+		}
+	>;
+};
 type Observation = {
 	period: string;
 	value: number;
@@ -106,6 +139,26 @@ function description(metric: RegistryMetric): string {
 		`Sources: ${metric.preparation.sources.map((source) => `${source.label} (${source.url})${source.limit ? ` — ${source.limit}` : ""}`).join("; ") || "none"}`,
 	].join("\n\n");
 }
+
+const PREVIOUS_DESCRIPTION_HASHES: Partial<Record<string, string>> = {
+	plg_teams: "940a1ac2544877f854baf30b183f436d3f1e0b4ec075e80c901fe39a3bd04d3b",
+	product_m3_requalification:
+		"31d6a21a8b9b4cea95c039c883347703cdadfe50b405b75afcfc7a8a3d9899ef",
+	product_m3_ndr:
+		"5e83150805c8e6ddd9da94f7b975fba9c487bd82e48a636bbbdbc3cb07d70148",
+	product_reactivation:
+		"e3d11938c87b2daa53a2e631829047722f704df1cd93e11b0ad09575aa0ade65",
+	platform_completion:
+		"a0017c78eead656155655addbe87919f106431d691c6f6e868c67f1509c86cce",
+	plg_teams_adds:
+		"6e4758023316bfc49adcc2d98652c1476b395d3a96cd80b7121eca98ffd13855",
+	plg_teams_losses:
+		"06c476fff3883697ed7a96712c52677808675287ddbac34c0ad729e2bccbd086",
+	plg_teams_net:
+		"b1f54be2d0fc58d0489ca52e18dd4f287f152ebc66b4f90b5fc4477ef5399901",
+	plg_teams_period_end:
+		"8b6bbac2b691e8deebc785f2a6765d67280b3fa115228a2eb456e7d8e531f88e",
+};
 
 function validDate(value: string, field: string): Date {
 	const date = new Date(value);
@@ -433,7 +486,6 @@ export class AtlasQbrService {
 						});
 						if (
 							existing.name !== metric.label ||
-							existing.description !== description(metric) ||
 							existing.sourceId !== source.id ||
 							existing.status !==
 								(metric.automated
@@ -444,6 +496,9 @@ export class AtlasQbrService {
 								(query ? QueryLanguage.SQL : QueryLanguage.API) ||
 							!latest ||
 							latest.createdBy !== "atlas-qbr" ||
+							(existing.description !== description(metric) &&
+								PREVIOUS_DESCRIPTION_HASHES[metric.id] !==
+									hash(existing.description)) ||
 							metadata?.metricId !== metric.id ||
 							metadata.definitionHash !== qbrMetadata.definitionHash ||
 							metadata.automated !== metric.automated ||
@@ -452,6 +507,12 @@ export class AtlasQbrService {
 							throw new ConflictException(
 								`Existing QBR question ${metric.id} has unexpected or user-edited state.`,
 							);
+						}
+						if (existing.description !== description(metric)) {
+							await tx.question.update({
+								where: { id: existing.id },
+								data: { description: description(metric) },
+							});
 						}
 						if (
 							latest.queryText !== sql ||
@@ -701,9 +762,9 @@ export class AtlasQbrService {
 		});
 	}
 
-	async exportReport(quarter: string) {
+	async exportReport(quarter: string): Promise<AtlasQbrReport> {
 		this.assertQuarter(quarter);
-		const result: Record<string, unknown> = {};
+		const result: AtlasQbrReport["metrics"] = {};
 		const questionExternalIds = registry.metrics.map(
 			(metric) => `qbr:${metric.id}`,
 		);
@@ -770,7 +831,7 @@ export class AtlasQbrService {
 				throw new ConflictException(
 					`Registered QBR question ${metric.id} has a mismatched definition hash.`,
 				);
-			const observations: Record<string, unknown> = {};
+			const observations: Record<string, QbrReportObservation> = {};
 			const snapshot = question?.sourceId
 				? snapshotByQuestion.get(`${question.sourceId}\0qbr:${metric.id}`)
 				: null;
@@ -807,9 +868,11 @@ export class AtlasQbrService {
 							url: `${QUESTION_BASE_URL}/${question.publicNumber}`,
 						}
 					: null,
+				label: metric.label,
 				definition: metric.definition,
 				unit: metric.unit,
 				notApplicable: metric.notApplicable,
+				automated: metric.automated,
 				preparation: metric.preparation,
 				observations,
 			};

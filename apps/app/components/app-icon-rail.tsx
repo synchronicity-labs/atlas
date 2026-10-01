@@ -5,6 +5,7 @@ import type { CarbonIconType } from "@carbon/icons-react/es/CarbonIcon";
 import Catalog from "@carbon/icons-react/es/Catalog";
 import Customer from "@carbon/icons-react/es/Customer";
 import DashboardReference from "@carbon/icons-react/es/DashboardReference";
+import Report from "@carbon/icons-react/es/Report";
 import Settings from "@carbon/icons-react/es/Settings";
 import UserIdentification from "@carbon/icons-react/es/UserIdentification";
 import { Button } from "@crm/ui/components/button";
@@ -40,6 +41,7 @@ const ITEMS: RailItem[] = [
 		match: "prefix",
 	},
 	{ title: "Metrics", href: "/metrics", icon: Analytics, match: "prefix" },
+	{ title: "QBR review", href: "/qbr", icon: Report, match: "prefix" },
 	{ title: "Questions", href: "/questions", icon: Catalog, match: "prefix" },
 	{
 		title: "Clients",

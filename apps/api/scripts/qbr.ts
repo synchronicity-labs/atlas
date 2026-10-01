@@ -3,7 +3,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import { db } from "@crm/db";
 import { Logger } from "@nestjs/common";
 import { AtlasQbrService } from "../src/atlas-query/qbr/qbr.service";
-import { qbrQueries } from "../src/atlas-query/qbr/queries";
+import { qbrQuarterValue, qbrQueries } from "../src/atlas-query/qbr/queries";
 import registry from "../src/atlas-query/qbr/registry.json";
 import { MetabaseClient } from "../src/metabase/metabase.client";
 import { metabaseConfig } from "../src/metabase/metabase.config";
@@ -29,7 +29,8 @@ try {
 	} else if (command === "refresh") {
 		const config = metabaseConfig();
 		assert(config, "Metabase is not configured; no source pull was attempted.");
-		const queries = qbrQueries();
+		const refreshStartedAt = new Date();
+		const queries = qbrQueries(refreshStartedAt);
 		const bindings = await service.register(queries);
 		const client = new MetabaseClient(config);
 		const eligibility = new TinybirdEligibilityService();
@@ -37,6 +38,10 @@ try {
 		const results = new Map<
 			string,
 			Awaited<ReturnType<MetabaseClient["preview"]>>
+		>();
+		const pendingObservations = new Map<
+			string,
+			Parameters<AtlasQbrService["recordObservations"]>[1]
 		>();
 		let observations = 0;
 		for (const [id, query] of Object.entries(queries)) {
@@ -128,6 +133,20 @@ try {
 						: {}),
 				};
 			});
+			if (refreshStartedAt.getTime() >= Date.UTC(2026, 9, 1)) {
+				const quarter = qbrQuarterValue(id, values, refreshStartedAt);
+				if (quarter)
+					values.push({
+						...quarter,
+						status: "provisional",
+						asOf,
+						dataThrough: null,
+						evidenceSource: values[0].evidenceSource,
+					});
+			}
+			pendingObservations.set(id, values);
+		}
+		for (const [id, values] of pendingObservations) {
 			await service.recordObservations(id, values);
 			observations += values.length;
 			logger.log({

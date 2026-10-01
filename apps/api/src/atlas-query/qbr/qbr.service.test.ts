@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import type { Db } from "@crm/db";
 import { QueryLanguage } from "@crm/db";
-import { ConflictException } from "@nestjs/common";
+import { BadRequestException, ConflictException } from "@nestjs/common";
 import { AtlasQbrService } from "./qbr.service";
 import registry from "./registry.json";
 
@@ -30,6 +30,30 @@ const observation = (
 	...overrides,
 });
 
+const privatePreparation = (metricId = "plg_teams") => {
+	const canonical = registry.metrics.find(
+		(metric) => metric.id === metricId,
+	)?.preparation;
+	if (!canonical) throw new Error("Missing fixture metric.");
+	return {
+		owner: canonical.owner,
+		ownerStatus: canonical.ownerStatus,
+		ownerSource: canonical.ownerSource,
+		workstream: canonical.workstream,
+		gap: "Received a sample; full-period evidence is missing.",
+		dataLocation: "Private sample folder; source link below.",
+		manualAsk: "Provide the remaining monthly records.",
+		q4Build: "Capture evidence monthly with an accountable reviewer.",
+		sources: [
+			{
+				label: "Generic private sample",
+				url: "https://evidence.example/private/sample",
+				limit: "Partial coverage only; no numeric claim.",
+			},
+		],
+	};
+};
+
 function registeredQuestion(id: string, publicNumber = 215) {
 	return {
 		id: `question-${id}`,
@@ -46,6 +70,60 @@ function registeredQuestion(id: string, publicNumber = 215) {
 }
 
 describe("AtlasQbrService", () => {
+	test("rejects invalid preparation batches before opening a transaction", async () => {
+		const db = { $transaction: mock() } as unknown as Db;
+		const service = new AtlasQbrService(db);
+		const item = { metricId: "plg_teams", preparation: privatePreparation() };
+		const batch = { quarter: "2026-Q3", preparations: [item] };
+		for (const input of [
+			null,
+			{ ...batch, quarter: "2026-Q4" },
+			{ ...batch, preparations: [] },
+			{ ...batch, certification: "CERTIFIED" },
+			{ ...batch, preparations: [item, { ...item, metricId: "unknown" }] },
+			{ ...batch, preparations: [item, item] },
+			{ ...batch, preparations: Array(136).fill(item) },
+			...[
+				{ gap: " " },
+				{ gap: "x".repeat(4_001) },
+				{ value: 42 },
+				{ certification: "CERTIFIED" },
+				{ owner: "Changed owner" },
+				{ ownerStatus: "Changed status" },
+				{ workstream: "changed" },
+				{
+					ownerSource: {
+						label: "Changed source",
+						url: "https://evidence.example/owner",
+					},
+				},
+				{ sources: Array(21).fill(item.preparation.sources[0]) },
+				...[
+					"not-a-url",
+					"http://evidence.example",
+					"https://user:pass@evidence.example",
+					"javascript:alert(1)",
+				].map((url) => ({ sources: [{ label: "Invalid source", url }] })),
+			].map((change) => ({
+				...batch,
+				preparations: [
+					item,
+					{
+						metricId: "finance_net_burn",
+						preparation: {
+							...privatePreparation("finance_net_burn"),
+							...change,
+						},
+					},
+				],
+			})),
+		])
+			await expect(service.importPreparations(input)).rejects.toThrow(
+				BadRequestException,
+			);
+		expect(db.$transaction).not.toHaveBeenCalled();
+	});
+
 	test("accepts a mature May-to-July cohort but never accepts caller-asserted verification", async () => {
 		const transaction = mock(async () => ({}));
 		const service = new AtlasQbrService({
@@ -229,7 +307,7 @@ describe("AtlasQbrService", () => {
 		expect(tx.resultSnapshot.create).not.toHaveBeenCalled();
 	});
 
-	test("register reruns preserve question numbers and append a new Atlas-owned SQL version", async () => {
+	test("private preparations roundtrip without changing observations or trust and survive registration", async () => {
 		type Stored = {
 			id: string;
 			number: number;
@@ -249,11 +327,23 @@ describe("AtlasQbrService", () => {
 			}>;
 		};
 		const questions = new Map<string, Stored>();
+		let snapshot: Record<string, unknown> | undefined;
 		let nextNumber = 0;
 		const tx = {
 			$executeRaw: mock(async () => 1),
-			dataSource: { upsert: mock(async () => ({ id: "atlas-qbr-source" })) },
+			dataSource: {
+				upsert: mock(async () => ({ id: "atlas-qbr-source" })),
+				findUnique: mock(async () => ({ id: "atlas-qbr-source" })),
+			},
 			question: {
+				findUnique: mock(
+					async ({
+						where,
+					}: {
+						where: { connector_sourceExternalId: { sourceExternalId: string } };
+					}) =>
+						questions.get(where.connector_sourceExternalId.sourceExternalId),
+				),
 				findMany: mock(async () =>
 					[...questions.entries()].map(([sourceExternalId, question]) => ({
 						...question,
@@ -307,6 +397,15 @@ describe("AtlasQbrService", () => {
 					},
 				),
 			},
+			resultSnapshot: {
+				findFirst: mock(async () => snapshot ?? null),
+				findMany: mock(async () => (snapshot ? [snapshot] : [])),
+				findUnique: mock(async () => null),
+				create: mock(async ({ data }: { data: Record<string, unknown> }) => {
+					snapshot = data;
+					return data;
+				}),
+			},
 			questionVersion: {
 				createMany: mock(
 					async ({
@@ -342,6 +441,8 @@ describe("AtlasQbrService", () => {
 		};
 		const db = {
 			$transaction: (fn: (arg: typeof tx) => unknown) => fn(tx),
+			question: tx.question,
+			resultSnapshot: tx.resultSnapshot,
 		} as unknown as Db;
 		const service = new AtlasQbrService(db);
 		const queries = Object.fromEntries(
@@ -354,6 +455,101 @@ describe("AtlasQbrService", () => {
 		);
 		const first = await service.register(queries);
 		const originalNumber = first.plg_teams;
+		const question = questions.get("qbr:plg_teams");
+		if (!question) throw new Error("Missing fixture question.");
+		const original = structuredClone(question);
+		const initialVersion = question.versions[0];
+		if (!initialVersion) throw new Error("Missing fixture version.");
+		const metadata = question.versions[0]?.visualization.qbr as Record<
+			string,
+			unknown
+		>;
+		initialVersion.visualization.customDisplay = { color: "blue" };
+		metadata.futureMetadata = { preserved: true };
+		await service.recordObservations("plg_teams", [
+			observation("2026-07", 12, {
+				status: "reported",
+				reportedBy: "Generic reviewer",
+			}),
+		]);
+		const before = await service.exportReport("2026-Q3");
+		const storedSnapshot = structuredClone(snapshot);
+		const batch = {
+			quarter: "2026-Q3",
+			preparations: [
+				{ metricId: "plg_teams", preparation: privatePreparation() },
+				{
+					metricId: "finance_net_burn",
+					preparation: privatePreparation("finance_net_burn"),
+				},
+			],
+		};
+		expect(await service.importPreparations(batch)).toEqual({
+			quarter: "2026-Q3",
+			imported: 2,
+			unchanged: 0,
+		});
+		expect(await service.importPreparations(batch)).toEqual({
+			quarter: "2026-Q3",
+			imported: 0,
+			unchanged: 2,
+		});
+		const after = await service.exportReport("2026-Q3");
+		const beforeMetric = before.metrics.plg_teams;
+		const afterMetric = after.metrics.plg_teams;
+		if (!beforeMetric || !afterMetric)
+			throw new Error("Missing fixture metric in exported report.");
+		expect(afterMetric).toEqual({
+			...beforeMetric,
+			preparation: privatePreparation(),
+		});
+		expect(after.metrics.finance_net_burn?.observations).toEqual({});
+		expect(after.metrics.finance_net_burn?.preparation).toEqual(
+			privatePreparation("finance_net_burn"),
+		);
+		expect(snapshot).toEqual(storedSnapshot);
+		expect(tx.resultSnapshot.create).toHaveBeenCalledTimes(1);
+		expect(question).toEqual({ ...original, versions: question.versions });
+		expect(question.versions[0]?.queryText).toBe(
+			original.versions[0]?.queryText,
+		);
+		expect(question.versions[0]?.visualization).toEqual({
+			customDisplay: { color: "blue" },
+			qbr: { ...metadata, preparation: privatePreparation() },
+		});
+		const versionsBeforeFailure = structuredClone(question.versions);
+		const manual = questions.get("qbr:finance_net_burn");
+		if (!manual) throw new Error("Missing manual fixture.");
+		const manualDescription = manual.description;
+		manual.description = "User-edited description";
+		await expect(
+			service.importPreparations({
+				...batch,
+				preparations: batch.preparations.map((item) => ({
+					...item,
+					preparation: { ...item.preparation, gap: "Another missing source" },
+				})),
+			}),
+		).rejects.toThrow(ConflictException);
+		expect(question.versions).toEqual(versionsBeforeFailure);
+		manual.description = manualDescription;
+		const storedMetadata = question.versions[0]?.visualization.qbr as Record<
+			string,
+			unknown
+		>;
+		storedMetadata.preparation = {
+			...privatePreparation(),
+			unknownField: "Preserve future data",
+		};
+		await expect(service.importPreparations(batch)).rejects.toThrow(
+			"unsupported fields",
+		);
+		storedMetadata.preparation = privatePreparation();
+		await service.recordObservations("plg_teams", [observation("2026-08", 14)]);
+		expect(
+			(await service.exportReport("2026-Q3")).metrics.plg_teams?.preparation,
+		).toEqual(privatePreparation());
+
 		await service.register(queries);
 		expect(tx.questionVersion.create).not.toHaveBeenCalled();
 		const migrationQuestion = questions.get("qbr:product_reactivation");
@@ -390,6 +586,23 @@ describe("AtlasQbrService", () => {
 		const rerun = await service.register(changed);
 		expect(rerun.plg_teams).toBe(originalNumber);
 		expect(tx.questionVersion.create).toHaveBeenCalledTimes(1);
+		const latestVersion = question.versions[0];
+		if (!latestVersion)
+			throw new Error("Missing fixture version after registration.");
+		expect(question.versions[0]?.visualization).toEqual({
+			customDisplay: { color: "blue" },
+			qbr: {
+				...metadata,
+				queryHash: (latestVersion.visualization.qbr as Record<string, unknown>)
+					.queryHash,
+				preparation: privatePreparation(),
+			},
+		});
+		expect(
+			(await service.exportReport("2026-Q3")).metrics.plg_teams?.preparation,
+		).toEqual(privatePreparation());
+		await service.register(changed);
+
 		expect(questions.get("qbr:plg_teams")?.versions[0]?.queryText).toBe(
 			changed.plg_teams.queryText,
 		);

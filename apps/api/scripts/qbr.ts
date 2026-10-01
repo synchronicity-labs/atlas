@@ -17,8 +17,14 @@ const service = new AtlasQbrService(db);
 
 try {
 	assert(
-		["register", "refresh", "import-manual", "export"].includes(command ?? ""),
-		"Usage: qbr.ts register|refresh|import-manual file.json|export report.json",
+		[
+			"register",
+			"refresh",
+			"import-manual",
+			"import-preparations",
+			"export",
+		].includes(command ?? ""),
+		"Usage: qbr.ts register|refresh|import-manual file.json|import-preparations file.json|export report.json",
 	);
 	if (command === "register") {
 		const bindings = await service.register(qbrQueries());
@@ -166,6 +172,15 @@ try {
 			metrics: Object.keys(queries).length,
 			observations,
 		});
+	} else if (command === "import-preparations") {
+		assert(file, "Supply a private preparation JSON file.");
+		const text = await readFile(file, "utf8");
+		assert(
+			Buffer.byteLength(text) <= 1_000_000,
+			"Preparation input exceeds 1 MB.",
+		);
+		const result = await service.importPreparations(JSON.parse(text));
+		logger.log({ message: "Private QBR preparations imported", ...result });
 	} else if (command === "import-manual") {
 		assert(file, "Supply a reviewed manual-input JSON file.");
 		const text = await readFile(file, "utf8");

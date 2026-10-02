@@ -917,15 +917,18 @@ function q3Periods(dataThrough: Date): Array<{ start: Date; end: Date }> {
 	}));
 }
 
-async function q3LifecycleStageMetrics(
-	client: HubspotClient,
+export async function q3LifecycleStageMetrics(
+	client: Pick<HubspotClient, "searchTotal">,
 	capturedAt: Date,
 ) {
 	const dataThrough = new Date(
-		Date.UTC(
-			capturedAt.getUTCFullYear(),
-			capturedAt.getUTCMonth(),
-			capturedAt.getUTCDate(),
+		Math.min(
+			Date.UTC(
+				capturedAt.getUTCFullYear(),
+				capturedAt.getUTCMonth(),
+				capturedAt.getUTCDate(),
+			),
+			Q3_END.getTime(),
 		),
 	);
 	const rows = [];
@@ -974,7 +977,7 @@ function changePercent(current: number | null, previous: number | null) {
 }
 
 async function totalOrUnavailable(
-	client: HubspotClient,
+	client: Pick<HubspotClient, "searchTotal">,
 	object: string,
 	filters: HubspotSearchFilter[],
 ) {

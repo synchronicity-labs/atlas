@@ -1,6 +1,22 @@
 import { expect, test } from "bun:test";
 import type { Layout } from "react-grid-layout";
-import { packDashboardLayout, stackDashboardLayout } from "./dashboard-layout";
+import {
+	layoutToPersist,
+	packDashboardLayout,
+	stackDashboardLayout,
+} from "./dashboard-layout";
+
+test("a no-op edit preserves authored card coordinates", () => {
+	const authored: Layout = [
+		{ i: "left", x: 0, y: 0, w: 12, h: 6 },
+		{ i: "right", x: 12, y: 1, w: 12, h: 6 },
+	];
+	const displayed = packDashboardLayout(authored);
+
+	expect(displayed).not.toEqual(authored);
+	expect(layoutToPersist(displayed, authored, false)).toEqual(authored);
+	expect(layoutToPersist(displayed, authored, true)).toEqual(displayed);
+});
 
 test("dashboard rows fill the grid without gaps, overlaps, or mobile height inflation", () => {
 	const saved: Layout = [

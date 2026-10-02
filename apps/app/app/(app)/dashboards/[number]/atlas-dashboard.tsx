@@ -72,6 +72,7 @@ import {
 	metricDisplayFamily,
 } from "@/lib/chart-visualization";
 import {
+	layoutToPersist,
 	packDashboardLayout,
 	stackDashboardLayout,
 } from "@/lib/dashboard-layout";
@@ -381,7 +382,7 @@ function CardHeading({ card }: { card: DashboardCard }) {
 			<div className="atlas-card-meta">
 				<span className="min-w-0 truncate">{timeframe}</span>
 				{checkedAt ? (
-					<span className="shrink-0">
+					<span className="min-w-0">
 						<RelativeTimestamp value={checkedAt} prefix="Checked" />
 					</span>
 				) : null}
@@ -711,55 +712,56 @@ function BarSeriesChart({ card }: { card: DashboardCard }) {
 	const visualization = displaySettings(card);
 
 	return (
-		<div
-			className={cn(
-				"relative h-full min-h-[180px] px-3 pb-3",
-				timeframeLabel(card) ? "pt-20" : "pt-12",
-			)}
-		>
+		<div className="atlas-card-chart-content">
 			<CardHeading card={card} />
-			<div className="flex h-full min-h-0 flex-col gap-2">
-				<BlockLegend config={config} className="shrink-0" />
-				<div className="min-h-0 flex-1">
-					<BarChart
-						data={source.data}
-						config={config}
-						stackType={cardStackType(card)}
-						bloom="low"
-						bloomOnHover
-						margins={{ left: 54, right: 18, top: 4, bottom: 24 }}
-					>
-						<Grid strokeDasharray="2 4" />
-						<XAxis
-							dataKey={source.xKey}
-							tickFormatter={(value) => chartPeriod(value, true)}
-							maxTicks={7}
-						/>
-						<YAxis
-							tickFormatter={(value) =>
-								formatAxisMetric(value, series[0]?.metric ?? "", visualization)
-							}
-						/>
-						<Tooltip
-							labelKey={source.xKey}
-							labelFormatter={(value) => chartPeriod(value)}
-							valueFormatter={(value, name) =>
-								formatMetric(
-									value,
-									seriesByKey.get(name)?.metric ?? name,
-									visualization,
-								)
-							}
-						/>
-						{series.map((item, index) => (
-							<Bar
-								key={item.key}
-								dataKey={item.key}
-								variant={index % 2 === 0 ? "gradient" : "hatched"}
-								isClickable
+			<div className="atlas-card-chart-plot">
+				<div className="flex h-full min-h-0 flex-col gap-2">
+					<BlockLegend config={config} className="shrink-0" />
+					<div className="min-h-0 flex-1">
+						<BarChart
+							data={source.data}
+							config={config}
+							stackType={cardStackType(card)}
+							bloom="low"
+							bloomOnHover
+							margins={{ left: 54, right: 18, top: 4, bottom: 24 }}
+						>
+							<Grid strokeDasharray="2 4" />
+							<XAxis
+								dataKey={source.xKey}
+								tickFormatter={(value) => chartPeriod(value, true)}
+								maxTicks={7}
 							/>
-						))}
-					</BarChart>
+							<YAxis
+								tickFormatter={(value) =>
+									formatAxisMetric(
+										value,
+										series[0]?.metric ?? "",
+										visualization,
+									)
+								}
+							/>
+							<Tooltip
+								labelKey={source.xKey}
+								labelFormatter={(value) => chartPeriod(value)}
+								valueFormatter={(value, name) =>
+									formatMetric(
+										value,
+										seriesByKey.get(name)?.metric ?? name,
+										visualization,
+									)
+								}
+							/>
+							{series.map((item, index) => (
+								<Bar
+									key={item.key}
+									dataKey={item.key}
+									variant={index % 2 === 0 ? "gradient" : "hatched"}
+									isClickable
+								/>
+							))}
+						</BarChart>
+					</div>
 				</div>
 			</div>
 		</div>
@@ -845,64 +847,65 @@ function SeriesChart({ card }: { card: DashboardCard }) {
 	};
 
 	return (
-		<div
-			className={cn(
-				"relative h-full min-h-[180px] px-3 pb-3",
-				timeframeLabel(card) ? "pt-20" : "pt-12",
-			)}
-		>
+		<div className="atlas-card-chart-content">
 			<CardHeading card={card} />
-			<div className="flex h-full min-h-0 flex-col gap-2">
-				<BlockLegend config={config} className="shrink-0" />
-				<div className="min-h-0 flex-1">
-					<LineChart
-						data={data}
-						config={config}
-						bloom="off"
-						margins={{ left: 44, right: dual ? 54 : 18, top: 4, bottom: 24 }}
-					>
-						<Grid strokeDasharray="2 4" />
-						<XAxis
-							dataKey={source.xKey}
-							tickFormatter={(value) => chartPeriod(value, true)}
-							maxTicks={5}
-						/>
-						<YAxis
-							tickFormatter={(value) =>
-								formatAxisMetric(value, leftSeries?.metric ?? "", visualization)
-							}
-						/>
-						{dual ? (
-							<RightYAxis
+			<div className="atlas-card-chart-plot">
+				<div className="flex h-full min-h-0 flex-col gap-2">
+					<BlockLegend config={config} className="shrink-0" />
+					<div className="min-h-0 flex-1">
+						<LineChart
+							data={data}
+							config={config}
+							bloom="off"
+							margins={{ left: 44, right: dual ? 54 : 18, top: 4, bottom: 24 }}
+						>
+							<Grid strokeDasharray="2 4" />
+							<XAxis
+								dataKey={source.xKey}
+								tickFormatter={(value) => chartPeriod(value, true)}
+								maxTicks={5}
+							/>
+							<YAxis
 								tickFormatter={(value) =>
 									formatAxisMetric(
-										inverseRight(value),
-										rightSeries?.metric ?? "",
+										value,
+										leftSeries?.metric ?? "",
 										visualization,
 									)
 								}
 							/>
-						) : null}
-						<Tooltip
-							labelKey={source.xKey}
-							labelFormatter={(value) => chartPeriod(value)}
-							valueFormatter={(value, name) =>
-								formatMetric(
-									rightKeySet.has(name) ? inverseRight(value) : value,
-									seriesByKey.get(name)?.metric ?? name,
-									visualization,
-								)
-							}
-						/>
-						{source.series.map((item, index) => (
-							<Line
-								key={item.key}
-								dataKey={item.key}
-								variant={index % 2 === 0 ? "gradient" : "hatched"}
-								isClickable
+							{dual ? (
+								<RightYAxis
+									tickFormatter={(value) =>
+										formatAxisMetric(
+											inverseRight(value),
+											rightSeries?.metric ?? "",
+											visualization,
+										)
+									}
+								/>
+							) : null}
+							<Tooltip
+								labelKey={source.xKey}
+								labelFormatter={(value) => chartPeriod(value)}
+								valueFormatter={(value, name) =>
+									formatMetric(
+										rightKeySet.has(name) ? inverseRight(value) : value,
+										seriesByKey.get(name)?.metric ?? name,
+										visualization,
+									)
+								}
 							/>
-						))}
-					</LineChart>
+							{source.series.map((item, index) => (
+								<Line
+									key={item.key}
+									dataKey={item.key}
+									variant={index % 2 === 0 ? "gradient" : "hatched"}
+									isClickable
+								/>
+							))}
+						</LineChart>
+					</div>
 				</div>
 			</div>
 		</div>
@@ -917,39 +920,39 @@ function TableCard({ card }: { card: DashboardCard }) {
 	const visualization = displaySettings(card);
 	if (columnEntries.length === 0) return <CardUnavailable />;
 	return (
-		<div
-			className={cn(
-				"relative h-full overflow-auto",
-				timeframeLabel(card) ? "pt-20" : "pt-12",
-			)}
-		>
+		<div className="atlas-card-table-content">
 			<CardHeading card={card} />
-			<table className="w-full text-left text-xs">
-				<thead className="sticky top-0 bg-card text-muted-foreground">
-					<tr>
-						{columnEntries.map(({ column }) => (
-							<th key={column.name} className="border-b px-3 py-2 font-normal">
-								{columnVisualization(visualization, column.name).title ??
-									humanize(column.displayName ?? column.name)}
-							</th>
-						))}
-					</tr>
-				</thead>
-				<tbody>
-					{sourceRows.map((row) => (
-						<tr
-							key={`${card.id}:${JSON.stringify(row)}`}
-							className="border-b last:border-0"
-						>
-							{columnEntries.map(({ column, index }) => (
-								<td key={column.name} className="max-w-48 truncate px-3 py-2">
-									{formatCell(row[index], column, visualization)}
-								</td>
+			<div className="atlas-card-table-scroll">
+				<table className="w-full text-left text-xs">
+					<thead className="sticky top-0 bg-card text-muted-foreground">
+						<tr>
+							{columnEntries.map(({ column }) => (
+								<th
+									key={column.name}
+									className="border-b px-3 py-2 font-normal"
+								>
+									{columnVisualization(visualization, column.name).title ??
+										humanize(column.displayName ?? column.name)}
+								</th>
 							))}
 						</tr>
-					))}
-				</tbody>
-			</table>
+					</thead>
+					<tbody>
+						{sourceRows.map((row) => (
+							<tr
+								key={`${card.id}:${JSON.stringify(row)}`}
+								className="border-b last:border-0"
+							>
+								{columnEntries.map(({ column, index }) => (
+									<td key={column.name} className="max-w-48 truncate px-3 py-2">
+										{formatCell(row[index], column, visualization)}
+									</td>
+								))}
+							</tr>
+						))}
+					</tbody>
+				</table>
+			</div>
 		</div>
 	);
 }
@@ -1361,22 +1364,20 @@ const QuestionCard = memo(
 					) : null}
 				</div>
 				{card.snapshot && rows(card.snapshot).length === 0 ? (
-					<>
+					<div className="atlas-card-empty-content">
 						<CardHeading card={card} />
-						<div className="h-full pt-14">
-							<CardUnavailable
-								title="No data for this period"
-								message={
-									card.verification?.checks.find(
-										(check) =>
-											check.name === "result_non_empty" &&
-											check.status === "PENDING",
-									)?.detail ??
-									"The saved result has no rows for the selected period. This does not mean the value is zero."
-								}
-							/>
-						</div>
-					</>
+						<CardUnavailable
+							title="No data for this period"
+							message={
+								card.verification?.checks.find(
+									(check) =>
+										check.name === "result_non_empty" &&
+										check.status === "PENDING",
+								)?.detail ??
+								"The saved result has no rows for the selected period. This does not mean the value is zero."
+							}
+						/>
+					</div>
 				) : presentation === "metric-strip" ? (
 					<MetricStripCard card={card} />
 				) : presentation === "forecast-stage" ? (
@@ -1416,6 +1417,7 @@ function AtlasGrid({
 	editing,
 	layout,
 	visualizations,
+	onLayoutInteraction,
 	onLayout,
 	onVisualization,
 }: {
@@ -1423,6 +1425,7 @@ function AtlasGrid({
 	editing: boolean;
 	layout: Layout;
 	visualizations: Record<string, Visualization>;
+	onLayoutInteraction: () => void;
 	onLayout: (layout: Layout) => void;
 	onVisualization: (id: string, visualization: Visualization) => void;
 }) {
@@ -1502,7 +1505,23 @@ function AtlasGrid({
 					onDragStart={() => {
 						dragStart.current = latest.current;
 					}}
-					onDragStop={stopDrag}
+					onDragStop={(result, oldItem, newItem) => {
+						if (
+							oldItem &&
+							newItem &&
+							(oldItem.x !== newItem.x || oldItem.y !== newItem.y)
+						)
+							onLayoutInteraction();
+						stopDrag(result, oldItem, newItem);
+					}}
+					onResizeStop={(_, oldItem, newItem) => {
+						if (
+							oldItem &&
+							newItem &&
+							(oldItem.w !== newItem.w || oldItem.h !== newItem.h)
+						)
+							onLayoutInteraction();
+					}}
 				>
 					{cards.map((card) => (
 						<div key={card.id}>
@@ -1543,6 +1562,7 @@ export function AtlasDashboard({ number }: { number: number }) {
 		: historyFilters;
 	const [editing, setEditing] = useState(false);
 	const [draft, setDraft] = useState<Layout>([]);
+	const layoutWasEdited = useRef(false);
 	const [visualizations, setVisualizations] = useState<
 		Record<string, Visualization>
 	>({});
@@ -1643,6 +1663,7 @@ export function AtlasDashboard({ number }: { number: number }) {
 	}, [data, selectedTab, setTabNumber, tabNumber]);
 
 	function beginEditing() {
+		layoutWasEdited.current = false;
 		setDraft(packDashboardLayout(toLayout(baseCards)));
 		setVisualizations({});
 		setEditing(true);
@@ -1650,7 +1671,11 @@ export function AtlasDashboard({ number }: { number: number }) {
 
 	function saveLayout() {
 		if (!selectedTab) return;
-		const layout = new Map(draft.map((item) => [item.i, item]));
+		const layout = new Map(
+			layoutToPersist(draft, toLayout(baseCards), layoutWasEdited.current).map(
+				(item) => [item.i, item],
+			),
+		);
 		save.mutate({
 			number,
 			tabNumber: selectedTab.number,
@@ -1985,6 +2010,9 @@ export function AtlasDashboard({ number }: { number: number }) {
 							editing={editing}
 							layout={editing ? draft : toLayout(visibleCards)}
 							visualizations={visualizations}
+							onLayoutInteraction={() => {
+								layoutWasEdited.current = true;
+							}}
 							onLayout={setDraft}
 							onVisualization={(id, visualization) =>
 								setVisualizations((current) => ({

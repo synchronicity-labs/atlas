@@ -35,6 +35,14 @@ export function packDashboardLayout(layout: Layout): Layout {
 	return result;
 }
 
+export function layoutToPersist(
+	draft: Layout,
+	authored: Layout,
+	wasEdited: boolean,
+): Layout {
+	return wasEdited ? draft : authored;
+}
+
 export function stackDashboardLayout(layout: Layout, original: Layout): Layout {
 	const heights = new Map(original.map((item) => [item.i, item.h]));
 	let nextY = 0;

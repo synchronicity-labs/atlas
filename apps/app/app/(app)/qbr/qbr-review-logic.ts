@@ -30,6 +30,74 @@ export function sortedObservations(metric: QbrMetric) {
 	);
 }
 
+const verificationEvidenceKinds = [
+	"definition",
+	"population",
+	"coverage",
+	"reconciliation",
+] as const;
+
+export function hasReviewProof(observation: QbrMetric["observations"][string]) {
+	const verification = observation.verification;
+	if (
+		!verification ||
+		!observation.sourceQueryHash ||
+		verification.reviewedQueryHash !== observation.sourceQueryHash
+	)
+		return false;
+	return Boolean(
+		verification.verifiedBy?.trim() &&
+			verification.verifiedAt &&
+			verification.reviewedSnapshotId &&
+			verificationEvidenceKinds.every(
+				(kind) => verification[kind]?.label?.trim() && verification[kind]?.url,
+			),
+	);
+}
+
+export function observationReviewLabel(
+	observation: QbrMetric["observations"][string],
+) {
+	if (observation.status === "verified")
+		return hasReviewProof(observation)
+			? "Reviewed source · verified"
+			: "Verified status · review evidence incomplete";
+	if (observation.sourceType === "reported")
+		return observation.reportedBy
+			? `External input · ${observation.status === "provisional" ? "provisional · " : ""}reported by ${observation.reportedBy.trim()}`
+			: `Reported input${observation.status === "provisional" ? " · provisional" : ""} · review required`;
+	if (observation.status === "reported")
+		return observation.reportedBy
+			? `External input · reported by ${observation.reportedBy}`
+			: "Reported input · review required";
+	if (
+		observation.status === "provisional" &&
+		(observation.sourceType === "automated_query" ||
+			(observation.sourceType === undefined &&
+				/source query/i.test(observation.evidenceSource.label)))
+	)
+		return "Atlas query result · provisional";
+	return "Provisional · review required";
+}
+
+export function needsObservationReview(metric: QbrMetric) {
+	return Object.values(metric.observations).some(
+		(observation) =>
+			observation.status !== "verified" || !hasReviewProof(observation),
+	);
+}
+
+export function hasReviewedObservations(metric: QbrMetric) {
+	const observations = Object.values(metric.observations);
+	return (
+		observations.length > 0 &&
+		observations.every(
+			(observation) =>
+				observation.status === "verified" && hasReviewProof(observation),
+		)
+	);
+}
+
 function hasCohortObservation(metric: QbrMetric) {
 	return Object.values(metric.observations).some(
 		(observation) => observation.cohortMonth,
@@ -60,15 +128,15 @@ export function buildTeamRequest(
 	url: string,
 ) {
 	const active = metrics.filter(([, metric]) => !metric.notApplicable);
-	const supplied = active.filter(
-		([, metric]) => Object.keys(metric.observations).length > 0,
+	const supplied = active.filter(([, metric]) =>
+		needsObservationReview(metric),
 	);
 	const missing = active.filter(([, metric]) => isManualMissing(metric));
 	const atlasFollowups = active.filter(([, metric]) => isAtlasFollowup(metric));
 	return [
 		`Hi ${team} team,`,
 		"",
-		`Please review the supplied observations and any follow-ups below. This is a review request; nothing here is certified.`,
+		`Please review any supplied observations and follow-ups below. Already reviewed observations are omitted from verification requests.`,
 		"",
 		`Team review: ${url}`,
 		...(supplied.length
@@ -76,10 +144,16 @@ export function buildTeamRequest(
 					"",
 					"Please verify these supplied observations:",
 					...supplied.flatMap(([id, metric]) =>
-						sortedObservations(metric).map(
-							([period, observation]) =>
-								`- ${metric.label} (${id}): ${metric.definition} ${period}${observation.cohortMonth ? ` (cohort ${observation.cohortMonth})` : ""}: ${observation.value} ${metric.unit}, ${observation.status}; Atlas question: ${metric.question?.url ?? "not registered"}; source: ${observation.evidenceSource.url}; as of ${observation.asOf}; data through ${observation.dataThrough ?? "unknown"}`,
-						),
+						sortedObservations(metric)
+							.filter(
+								([, observation]) =>
+									observation.status !== "verified" ||
+									!hasReviewProof(observation),
+							)
+							.map(
+								([period, observation]) =>
+									`- ${metric.label} (${id}): ${metric.definition} ${period}${observation.cohortMonth ? ` (cohort ${observation.cohortMonth})` : ""}: ${observation.value} ${metric.unit}, ${observationReviewLabel(observation)}; Atlas question: ${metric.question?.url ?? "not registered"}; source: ${observation.evidenceSource.url}; as of ${observation.asOf}; data through ${observation.dataThrough ?? "unknown"}`,
+							),
 					),
 				]
 			: []),

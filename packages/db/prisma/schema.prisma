@@ -1485,6 +1485,7 @@ model Question {
   updatedAt                 DateTime        @updatedAt
 
   versions                QuestionVersion[]
+  qbrPreparations         QbrPreparation[]
   dashboardCards          DashboardCard[]
   changeProposals         QuestionChangeProposal[]
   catalogEvidence         MetricCatalogEvidence[]
@@ -1494,6 +1495,19 @@ model Question {
   @@index([status, updatedAt])
   @@index([metricVersionId, purpose])
   @@map("question")
+  @@schema("public")
+}
+
+model QbrPreparation {
+  questionId  String
+  question    Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  quarter     String
+  version     Int
+  preparation Json
+  createdAt   DateTime @default(now())
+
+  @@id([questionId, quarter, version])
+  @@map("qbrPreparation")
   @@schema("public")
 }
 

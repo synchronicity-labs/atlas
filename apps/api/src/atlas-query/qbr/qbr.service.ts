@@ -14,6 +14,7 @@ import {
 	Injectable,
 	NotFoundException,
 } from "@nestjs/common";
+import { z } from "zod";
 import { InjectDatabase } from "../../database/database.constants";
 import registry from "./registry.json";
 
@@ -47,6 +48,67 @@ const validPeriod = (period: string) =>
 	period === REPORTING_PERIOD || /^2026-0[6-9]$/.test(period);
 
 type RegistryMetric = (typeof registry.metrics)[number];
+
+const preparationText = z.string().trim().min(1).max(4_000);
+const preparationSource = z
+	.object({
+		label: z.string().trim().min(1).max(240),
+		url: z
+			.string()
+			.trim()
+			.max(2_048)
+			.url()
+			.refine((value) => {
+				try {
+					const url = new URL(value);
+					return url.protocol === "https:" && !url.username && !url.password;
+				} catch {
+					return false;
+				}
+			}),
+	})
+	.strict();
+const preparationSchema = z
+	.object({
+		owner: z.string().trim().min(1).max(240),
+		ownerStatus: preparationText,
+		ownerSource: preparationSource,
+		gap: preparationText,
+		dataLocation: preparationText,
+		manualAsk: preparationText,
+		q4Build: preparationText,
+		workstream: z.string().trim().min(1).max(240),
+		sources: z
+			.array(
+				preparationSource.extend({
+					limit: z.string().trim().max(4_000).default(""),
+				}),
+			)
+			.max(20),
+	})
+	.strict();
+const preparationBatchSchema = z
+	.object({
+		quarter: z.literal(REGISTRY_QUARTER),
+		preparations: z
+			.array(
+				z
+					.object({
+						metricId: z
+							.string()
+							.max(120)
+							.refine((id) =>
+								registry.metrics.some((metric) => metric.id === id),
+							),
+						preparation: preparationSchema,
+					})
+					.strict(),
+			)
+			.min(1)
+			.max(registry.metrics.length),
+	})
+	.strict();
+
 type QbrReportObservation = {
 	value: number;
 	numerator: number | null;
@@ -378,23 +440,71 @@ function rowsFrom(
 	return rows;
 }
 
-function registeredDefinitionHash(
-	visualization: Prisma.JsonValue | null | undefined,
-	metricId: string,
-): string | null {
+function qbrMetadata(visualization: Prisma.JsonValue | null | undefined) {
 	if (
 		!visualization ||
 		typeof visualization !== "object" ||
 		Array.isArray(visualization)
 	)
 		return null;
-	const qbr = (visualization as Record<string, Prisma.JsonValue>).qbr;
-	if (!qbr || typeof qbr !== "object" || Array.isArray(qbr)) return null;
-	const metadata = qbr as Record<string, Prisma.JsonValue>;
-	return metadata.metricId === metricId &&
+	const qbr = visualization.qbr;
+	return qbr && typeof qbr === "object" && !Array.isArray(qbr) ? qbr : null;
+}
+
+function registeredDefinitionHash(
+	visualization: Prisma.JsonValue | null | undefined,
+	metricId: string,
+): string | null {
+	const metadata = qbrMetadata(visualization);
+	return metadata?.metricId === metricId &&
 		typeof metadata.definitionHash === "string"
 		? metadata.definitionHash
 		: null;
+}
+
+function assertRegisteredQuestion(
+	metric: RegistryMetric,
+	question: Prisma.QuestionGetPayload<{ include: { versions: true } }>,
+	sourceId: string,
+) {
+	const latest = question.versions[0];
+	const metadata = qbrMetadata(latest?.visualization);
+	if (
+		question.name !== metric.label ||
+		question.sourceId !== sourceId ||
+		question.status !==
+			(metric.automated ? QuestionStatus.ACTIVE : QuestionStatus.DRAFT) ||
+		question.purpose !== QuestionPurpose.RECONCILIATION ||
+		!latest ||
+		latest.createdBy !== "atlas-qbr" ||
+		latest.queryLanguage !==
+			(metric.automated ? QueryLanguage.SQL : QueryLanguage.API) ||
+		(question.description !== description(metric) &&
+			PREVIOUS_DESCRIPTION_HASHES[metric.id] !== hash(question.description)) ||
+		!metadata ||
+		metadata.metricId !== metric.id ||
+		metadata.definitionHash !== metricDefinitionHash(metric) ||
+		metadata.automated !== metric.automated ||
+		metadata.queryHash !==
+			hash({
+				queryText: latest.queryText,
+				databaseExternalId: question.databaseExternalId,
+			})
+	)
+		throw new ConflictException(
+			`Existing QBR question ${metric.id} has unexpected or user-edited state.`,
+		);
+	return { latest, metadata };
+}
+
+function storedPreparation(preparation: Prisma.JsonValue | undefined) {
+	if (preparation === undefined) return undefined;
+	const parsed = preparationSchema.safeParse(preparation);
+	if (!parsed.success)
+		throw new ConflictException(
+			"Stored QBR preparation is malformed or has unsupported fields.",
+		);
+	return parsed.data;
 }
 
 @Injectable()
@@ -471,43 +581,11 @@ export class AtlasQbrService {
 					};
 					const existing = existingByExternalId.get(externalId);
 					if (existing) {
-						const latest = existing.versions[0];
-						const metadata =
-							latest?.visualization &&
-							typeof latest.visualization === "object" &&
-							!Array.isArray(latest.visualization)
-								? ((latest.visualization as Record<string, unknown>).qbr as
-										| Record<string, unknown>
-										| undefined)
-								: undefined;
-						const storedQueryHash = hash({
-							queryText: latest?.queryText,
-							databaseExternalId: existing.databaseExternalId,
-						});
-						if (
-							existing.name !== metric.label ||
-							existing.sourceId !== source.id ||
-							existing.status !==
-								(metric.automated
-									? QuestionStatus.ACTIVE
-									: QuestionStatus.DRAFT) ||
-							existing.purpose !== QuestionPurpose.RECONCILIATION ||
-							latest?.queryLanguage !==
-								(query ? QueryLanguage.SQL : QueryLanguage.API) ||
-							!latest ||
-							latest.createdBy !== "atlas-qbr" ||
-							(existing.description !== description(metric) &&
-								PREVIOUS_DESCRIPTION_HASHES[metric.id] !==
-									hash(existing.description)) ||
-							metadata?.metricId !== metric.id ||
-							metadata.definitionHash !== qbrMetadata.definitionHash ||
-							metadata.automated !== metric.automated ||
-							metadata.queryHash !== storedQueryHash
-						) {
-							throw new ConflictException(
-								`Existing QBR question ${metric.id} has unexpected or user-edited state.`,
-							);
-						}
+						const { latest, metadata } = assertRegisteredQuestion(
+							metric,
+							existing,
+							source.id,
+						);
 						if (existing.description !== description(metric)) {
 							await tx.question.update({
 								where: { id: existing.id },
@@ -530,8 +608,12 @@ export class AtlasQbrService {
 									version: nextVersion,
 									queryLanguage: query ? QueryLanguage.SQL : QueryLanguage.API,
 									queryText: sql,
-									display: "table",
-									visualization: json({ qbr: qbrMetadata }),
+									display: latest.display,
+									sourceCardExternalId: latest.sourceCardExternalId,
+									visualization: json({
+										...(latest.visualization as Prisma.JsonObject),
+										qbr: { ...metadata, ...qbrMetadata },
+									}),
 									createdBy: "atlas-qbr",
 								},
 							});
@@ -580,6 +662,97 @@ export class AtlasQbrService {
 					}
 				}
 				return result;
+			},
+			{ maxWait: 10_000, timeout: 60_000 },
+		);
+	}
+
+	async importPreparations(input: unknown) {
+		const parsed = preparationBatchSchema.safeParse(input);
+		if (!parsed.success)
+			throw new BadRequestException("Invalid QBR preparation batch.");
+		const { quarter, preparations } = parsed.data;
+		if (Buffer.byteLength(JSON.stringify(parsed.data)) > 1_000_000)
+			throw new BadRequestException("QBR preparation batch exceeds 1 MB.");
+		if (
+			new Set(preparations.map(({ metricId }) => metricId)).size !==
+			preparations.length
+		)
+			throw new BadRequestException("Duplicate QBR preparation metric IDs.");
+		for (const { metricId, preparation } of preparations) {
+			const canonical = registry.metrics.find(
+				(metric) => metric.id === metricId,
+			)?.preparation;
+			for (const key of [
+				"owner",
+				"ownerStatus",
+				"ownerSource",
+				"workstream",
+			] as const) {
+				if (!canonical || hash(preparation[key]) !== hash(canonical[key]))
+					throw new BadRequestException(
+						`QBR preparation ${key} must match the registry.`,
+					);
+			}
+		}
+		return this.db.$transaction(
+			async (tx) => {
+				await tx.$executeRaw`SELECT pg_advisory_xact_lock(${QUESTION_LOCK_ID})`;
+				const source = await tx.dataSource.findUnique({
+					where: { key: SOURCE_KEY },
+					select: { id: true },
+				});
+				if (!source)
+					throw new ConflictException(
+						"Register QBR questions before importing preparations.",
+					);
+				const questions = await tx.question.findMany({
+					where: {
+						connector: DataSourceKind.ATLAS,
+						sourceExternalId: {
+							in: preparations.map(({ metricId }) => `qbr:${metricId}`),
+						},
+					},
+					include: {
+						versions: { orderBy: { version: "desc" }, take: 1 },
+						qbrPreparations: {
+							where: { quarter },
+							orderBy: { version: "desc" },
+							take: 1,
+							select: { version: true, preparation: true },
+						},
+					},
+				});
+				const byId = new Map(
+					questions.map((question) => [question.sourceExternalId, question]),
+				);
+				const newPreparations: Prisma.QbrPreparationCreateManyInput[] = [];
+				for (const { metricId, preparation } of preparations) {
+					const metric = registry.metrics.find((item) => item.id === metricId);
+					const question = byId.get(`qbr:${metricId}`);
+					if (!metric || !question)
+						throw new ConflictException(
+							"Register all QBR questions before importing preparations.",
+						);
+					assertRegisteredQuestion(metric, question, source.id);
+					const previous = question.qbrPreparations[0];
+					const parsedPrevious = storedPreparation(previous?.preparation);
+					if (parsedPrevious && hash(parsedPrevious) === hash(preparation))
+						continue;
+					newPreparations.push({
+						questionId: question.id,
+						quarter,
+						version: (previous?.version ?? 0) + 1,
+						preparation: json(preparation),
+					});
+				}
+				if (newPreparations.length)
+					await tx.qbrPreparation.createMany({ data: newPreparations });
+				return {
+					quarter,
+					imported: newPreparations.length,
+					unchanged: preparations.length - newPreparations.length,
+				};
 			},
 			{ maxWait: 10_000, timeout: 60_000 },
 		);
@@ -783,6 +956,12 @@ export class AtlasQbrService {
 					take: 1,
 					select: { visualization: true },
 				},
+				qbrPreparations: {
+					where: { quarter },
+					orderBy: { version: "desc" },
+					take: 1,
+					select: { version: true, preparation: true },
+				},
 			},
 		});
 		const questionById = new Map(
@@ -873,7 +1052,9 @@ export class AtlasQbrService {
 				unit: metric.unit,
 				notApplicable: metric.notApplicable,
 				automated: metric.automated,
-				preparation: metric.preparation,
+				preparation:
+					storedPreparation(question?.qbrPreparations[0]?.preparation) ??
+					metric.preparation,
 				observations,
 			};
 		}

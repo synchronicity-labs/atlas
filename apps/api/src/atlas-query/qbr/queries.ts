@@ -229,7 +229,7 @@ function enterpriseUsageRetentionSource(through: string) {
   cross join q2_unmapped
   group by q2_unmapped.unmapped_base_customers
 )
-select monthly.period_start, monthly.cohort_month,
+select monthly.period_start as period_start, monthly.cohort_month as cohort_month,
   if(monthly_unmapped.unmapped_base_customers = 0, monthly.numerator, null) as numerator,
   if(monthly_unmapped.unmapped_base_customers = 0, monthly.denominator, null) as denominator,
   if(monthly_unmapped.unmapped_base_customers = 0,

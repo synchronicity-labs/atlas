@@ -14,11 +14,13 @@ doppler run --project atlas --config local -- bun apps/api/scripts/qbr.ts refres
 doppler run --project atlas --config local -- bun apps/api/scripts/qbr.ts export /tmp/atlas-q3-report.json
 ```
 
-Registration creates stable Atlas question URLs for all 135 Q3 definitions. Repeated registration retains those IDs. Nine source-backed definitions have runnable SQL; the remaining questions carry their collection plan. The three structural N/A measures stay N/A and require no input. Existing questions owned by a person are not overwritten by this registration.
+Registration creates stable Atlas question URLs for all 135 Q3 definitions. Repeated registration retains those IDs. Eleven source-backed definitions have runnable SQL; the remaining questions carry their collection plan. The three structural N/A measures stay N/A and require no input. Existing questions owned by a person are not overwritten by this registration. A managed, unedited manual placeholder can become automated without changing its question URL.
 
 The initial shared registration includes [PLG teams Q422](https://atlas.pr.sync.so/questions/422), [M3 accrued NDR Q474](https://atlas.pr.sync.so/questions/474), [generation completion Q492](https://atlas.pr.sync.so/questions/492), [Productions revenue Q525](https://atlas.pr.sync.so/questions/525) and [Finance runway Q535](https://atlas.pr.sync.so/questions/535). The exported report contains the complete mapping; consumers must use it rather than calculate question numbers.
 
 Refresh uses the same Atlas clean-population and revenue-door controls as question preview. Results remain provisional. It reads only complete UTC calendar months, stops at the Q3 boundary, preserves M3 starting-cohort labels, and never constructs a quarter value from an incomplete monthly series. The source cutoff advances after month end; a completed calendar month is not proof of source completeness. Unknown data-through watermarks remain null.
+
+Quarterly PLG adds, losses and net change compare June and September membership sets. They do not sum monthly movements. Feedback and attribution coverage pool their monthly numerators and denominators. The current subscription mirror cannot reconstruct the quarter-ending paid population, so it is not used to publish historical active rate.
 
 The read endpoint is `GET /internal/atlas/reports/qbr/2026-Q3`, protected by the existing `ATLAS_QUERY_SECRET`. It reads saved answers and never triggers provider queries. Deploy the Atlas API change before using that route from the QBR host. Until deployment, the export command produces the same envelope for a local end-to-end preview.
 
@@ -60,6 +62,30 @@ doppler run --project atlas --config local -- bun apps/api/scripts/qbr.ts import
 The file contains `metricId` and `observations`. Each observation includes `period`, finite `value`, nullable `numerator`/`denominator`, `status: "reported"`, `reportedBy`, `evidenceSource: { label, url }`, `asOf` and nullable `dataThrough`. Use the actual source coverage date when known; a submission timestamp is not data-through. The metric's definition, unit and required inputs remain those of its Atlas question. Zero is a value; missing data is not zero. Do not submit structural N/A measures.
 
 Manual import records evidence without asserting verification. Automated refresh cannot replace a reported answer silently. Whole-quarter inputs must describe a completed quarter; September 30 before 00:00 UTC on October 1 is not a closed Q3. No emails or messages are sent by these commands.
+
+## Verify an existing answer
+
+An authorized Atlas operator can record completed evidence review without re-entering a number:
+
+```sh
+doppler run --project atlas --config prd -- bun apps/api/scripts/qbr.ts verify /path/to/review.json
+```
+
+The review file names `metricId`, the exact `snapshotId` and `definitionHash` from an export, and an `observations` array. Each item names its `period`, the independently established `dataThrough`, and `verification`. Verification records `verifiedBy`, `verifiedAt`, and four labeled HTTPS evidence references: `definition`, `population`, `coverage`, and `reconciliation`.
+
+Only record a review after checking those sources. The command validates the review record; it cannot establish that an external source is complete. A calendar boundary, a latest event timestamp, and a successful query alone are not source completeness evidence. Review links must substantiate the selected period and result, not merely point to a question awaiting review.
+
+Verification preserves the saved value and its original extraction time. It fails if the answer or definition changed, the period is incomplete, evidence is missing, or another refresh changed the snapshot during review. Manual and automatic observation imports still cannot assert verified status. A new automated refresh returns the current result to provisional and preserves the reviewed version in snapshot history. Verified reported values remain protected from replacement by automated pulls.
+
+Private preparations can include supporting result tables with their query, source, extraction time and limitations. These preserve useful breakdowns without substituting them for a missing headline or asserting verification. Tables are bounded and validated before import. Deploy the compatible API before saving verification records or supporting tables to a shared database; older API versions cannot read the new fields. Local previews can use an isolated database until deployment.
+
+Collect the current supporting tables with the read-only collector. It writes a private JSON payload and does not update the shared Atlas database:
+
+```sh
+doppler run --project atlas --config prd -- bun apps/api/scripts/qbr-supporting.ts /path/to/private-supporting-results.json
+```
+
+The collector records the exact governed queries, canonical question URLs, extraction times, row counts and limitations. It fails if a result exceeds the import bounds instead of dropping rows. Product return-lift maturity is calculated using the collection time; the Q3 reporting cutoff stays fixed.
 
 ## Friday review and Q4 sequence
 

@@ -1481,7 +1481,7 @@
 			"unit": "percent",
 			"definition": "Rated eligible completed app generations / all eligible completed app generations. Separate Product and Engineering populations, preserve feedback-UX version, and monitor generations per professional org-month. Targets require a new quarterly commitment.",
 			"notApplicable": false,
-			"automated": false,
+			"automated": true,
 			"preparation": {
 				"owner": "Noah (tentative)",
 				"ownerStatus": "Tentative lead in the outline",
@@ -1525,7 +1525,7 @@
 			"unit": "percent",
 			"definition": "Eligible new orgs with valid stored first-touch attribution / eligible new orgs. Show unknown source and join failures explicitly.",
 			"notApplicable": false,
-			"automated": false,
+			"automated": true,
 			"preparation": {
 				"owner": "Noah (tentative)",
 				"ownerStatus": "Tentative lead in the outline",

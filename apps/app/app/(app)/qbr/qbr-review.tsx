@@ -13,8 +13,12 @@ import { useState } from "react";
 import { useTRPC } from "@/lib/trpc/client";
 import {
 	buildTeamRequest,
+	hasReviewedObservations,
+	hasReviewProof,
 	isAtlasFollowup,
 	isManualMissing,
+	needsObservationReview,
+	observationReviewLabel,
 	type QbrMetric,
 	sortedObservations,
 	teamForOwner,
@@ -23,7 +27,7 @@ import {
 
 type Metric = QbrMetric;
 
-function observationLabel(period: string) {
+function periodLabel(period: string) {
 	return period === "2026-Q3" ? "Q3 2026" : period;
 }
 
@@ -54,7 +58,7 @@ function MetricItem({
 					</div>
 					<span className="text-xs text-muted-foreground">
 						{quarter
-							? `${quarter.status === "provisional" ? "Provisional · verify" : "Reported · verify"}`
+							? observationReviewLabel(quarter)
 							: hasCohort
 								? "Cohort observation · review"
 								: metric.automated
@@ -85,7 +89,7 @@ function MetricItem({
 					{observations.map(([period, observation]) => (
 						<div key={period} className="rounded-md border p-3">
 							<dt className="font-medium">
-								{observationLabel(period)} · {observation.status}
+								{periodLabel(period)} · {observationReviewLabel(observation)}
 							</dt>
 							<dd>
 								{observation.value} {metric.unit}
@@ -108,6 +112,40 @@ function MetricItem({
 								As of {observation.asOf}; data through{" "}
 								{observation.dataThrough ?? "unknown"}
 							</dd>
+							{hasReviewProof(observation) && observation.verification ? (
+								<dd className="text-muted-foreground">
+									Reviewed by {observation.verification.verifiedBy} at{" "}
+									{observation.verification.verifiedAt}; snapshot{" "}
+									{observation.verification.reviewedSnapshotId}
+									<div className="flex flex-wrap gap-2">
+										{(
+											[
+												"definition",
+												"population",
+												"coverage",
+												"reconciliation",
+											] as const
+										).map((kind) => {
+											const evidence = observation.verification?.[kind];
+											return evidence ? (
+												<a
+													key={kind}
+													href={evidence.url}
+													target="_blank"
+													rel="noreferrer"
+													className="underline underline-offset-4"
+												>
+													{kind}: {evidence.label}
+												</a>
+											) : null;
+										})}
+									</div>
+								</dd>
+							) : observation.verification ? (
+								<dd className="text-muted-foreground">
+									Review evidence does not match the current source query.
+								</dd>
+							) : null}
 						</div>
 					))}
 				</dl>
@@ -120,6 +158,72 @@ function MetricItem({
 				{metric.preparation.ownerStatus}. Collection location:{" "}
 				{metric.preparation.dataLocation}
 			</p>
+			{metric.preparation.supportingResults?.map((result) => (
+				<details key={`${id}-${result.label}`} className="min-w-0 text-sm">
+					<summary className="cursor-pointer font-medium">
+						{result.label} · supporting source result
+					</summary>
+					<div className="mt-3 grid min-w-0 gap-3">
+						<p>
+							As of {result.asOf} ·{" "}
+							<a
+								className="underline underline-offset-4"
+								href={result.source.url}
+								target="_blank"
+								rel="noreferrer"
+							>
+								{result.source.label}
+							</a>
+						</p>
+						<div className="max-w-full overflow-x-auto">
+							<table className="w-max min-w-full text-left text-sm">
+								<thead>
+									<tr>
+										{result.columns.map((column) => (
+											<th
+												key={column}
+												scope="col"
+												className="px-3 py-2 font-medium"
+											>
+												{column}
+											</th>
+										))}
+									</tr>
+								</thead>
+								<tbody>
+									{result.rows.map((row) => (
+										<tr
+											key={`${id}-${result.label}-${JSON.stringify(row)}`}
+											className="border-t"
+										>
+											{row.map((cell, cellIndex) => (
+												<td
+													key={result.columns[cellIndex]}
+													className="px-3 py-2 align-top"
+												>
+													{cell === null ? "—" : String(cell)}
+												</td>
+											))}
+										</tr>
+									))}
+								</tbody>
+							</table>
+						</div>
+						<p>
+							<span className="font-medium">Limitations: </span>
+							{result.limitations}
+						</p>
+						<details>
+							<summary className="cursor-pointer font-medium">
+								Source query
+							</summary>
+							<pre className="mt-2 max-w-full overflow-x-auto whitespace-pre-wrap break-words">
+								{result.queryText}
+							</pre>
+						</details>
+					</div>
+				</details>
+			))}
 			{mode === "manual" ? (
 				<details className="text-sm">
 					<summary className="cursor-pointer font-medium">
@@ -195,8 +299,11 @@ export function QbrReview() {
 	if (!selected) return <p>No team groups are available in the QBR report.</p>;
 	const metrics = grouped[selected] ?? [];
 	const active = metrics.filter(([, metric]) => !metric.notApplicable);
-	const supplied = active.filter(
-		([, metric]) => Object.keys(metric.observations).length > 0,
+	const supplied = active.filter(([, metric]) =>
+		needsObservationReview(metric),
+	);
+	const reviewed = active.filter(([, metric]) =>
+		hasReviewedObservations(metric),
 	);
 	const missing = active.filter(([, metric]) => isManualMissing(metric));
 	const atlasFollowups = active.filter(([, metric]) => isAtlasFollowup(metric));
@@ -263,12 +370,16 @@ export function QbrReview() {
 			<p className="text-sm text-muted-foreground" aria-live="polite">
 				{copyStatus}
 			</p>
-			<div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+			<div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
 				<div className="rounded-lg border p-4">
 					<p className="text-sm text-muted-foreground">
-						Metrics with results to verify
+						Metrics with observations needing review
 					</p>
 					<p className="text-2xl font-semibold">{supplied.length}</p>
+				</div>
+				<div className="rounded-lg border p-4">
+					<p className="text-sm text-muted-foreground">Reviewed metrics</p>
+					<p className="text-2xl font-semibold">{reviewed.length}</p>
 				</div>
 				<div className="rounded-lg border p-4">
 					<p className="text-sm text-muted-foreground">Manual inputs missing</p>
@@ -295,10 +406,22 @@ export function QbrReview() {
 					))
 				) : (
 					<p className="text-sm text-muted-foreground">
-						No observations are saved for this team.
+						No unreviewed observations need follow-up for this team.
 					</p>
 				)}
 			</section>
+			{reviewed.length ? (
+				<section className="grid gap-3" aria-labelledby="reviewed-heading">
+					<h2 id="reviewed-heading" className="text-lg font-semibold">
+						Reviewed results
+					</h2>
+					{reviewed.map(([id, metric]) => (
+						<article key={id} className="grid gap-3">
+							<MetricItem id={id} metric={metric} mode="supplied" />
+						</article>
+					))}
+				</section>
+			) : null}
 			{notApplicable.length ? (
 				<section className="grid gap-3" aria-labelledby="na-heading">
 					<h2 id="na-heading" className="text-lg font-semibold">
@@ -361,8 +484,10 @@ export function QbrReview() {
 				)}
 			</section>
 			<p className="text-xs text-muted-foreground">
-				Generated {data.generatedAt}. Reported and provisional values remain
-				unverified until a lead reviews them.
+				Generated {data.generatedAt}. Verification requires complete period
+				coverage, definition, population, coverage and reconciliation evidence,
+				plus a recorded reviewer and time. It does not assume a separate lead
+				sign-off.
 			</p>
 		</div>
 	);

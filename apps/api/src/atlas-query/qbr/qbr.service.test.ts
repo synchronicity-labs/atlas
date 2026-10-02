@@ -62,7 +62,11 @@ function registeredQuestion(id: string, publicNumber = 215) {
 		versions: [
 			{
 				visualization: {
-					qbr: { metricId: id, definitionHash: definitionHash(id) },
+					qbr: {
+						metricId: id,
+						definitionHash: definitionHash(id),
+						queryHash: "source-query-hash",
+					},
 				},
 			},
 		],
@@ -70,6 +74,131 @@ function registeredQuestion(id: string, publicNumber = 215) {
 }
 
 describe("AtlasQbrService", () => {
+	test("verification binds reviewed values to an unchanged snapshot and refresh invalidates that review", async () => {
+		setSystemTime(new Date("2026-10-02T12:00:00.000Z"));
+		try {
+			let latest: Record<string, unknown> | null = null;
+			const question = {
+				...registeredQuestion("plg_teams"),
+				sourceExternalId: "qbr:plg_teams",
+				qbrPreparations: [],
+			};
+			const tx = {
+				$executeRaw: mock(async () => 1),
+				question: {
+					findUnique: mock(async () => question),
+					findMany: mock(async () => [question]),
+				},
+				resultSnapshot: {
+					findFirst: mock(async () => latest),
+					findMany: mock(async () => (latest ? [latest] : [])),
+					findUnique: mock(async () => null),
+					create: mock(async ({ data }: { data: Record<string, unknown> }) => {
+						latest = data;
+						return { id: data.id };
+					}),
+				},
+			};
+			const db = {
+				...tx,
+				$transaction: (fn: (arg: typeof tx) => unknown) => fn(tx),
+			} as unknown as Db;
+			const service = new AtlasQbrService(db);
+			const initial = await service.recordObservations("plg_teams", [
+				observation("2026-Q3", 542, {
+					evidenceSource: {
+						label:
+							"Atlas governed source query; current-clean history; source-close verification pending",
+						url: "https://evidence.example/q3",
+					},
+				}),
+			]);
+			const evidence = {
+				label: "Reviewed source evidence",
+				url: "https://evidence.example/q3",
+			};
+			const review = {
+				metricId: "plg_teams",
+				snapshotId: initial.snapshotId,
+				definitionHash: definitionHash("plg_teams"),
+				observations: [
+					{
+						period: "2026-Q3",
+						dataThrough: "2026-10-01T00:00:00.000Z",
+						verification: {
+							verifiedBy: "Source reviewer",
+							verifiedAt: "2026-10-02T12:00:00.000Z",
+							definition: evidence,
+							population: evidence,
+							coverage: evidence,
+							reconciliation: evidence,
+						},
+					},
+				],
+			};
+			await expect(
+				service.verifyObservations({ ...review, definitionHash: "changed" }),
+			).rejects.toThrow("changed");
+			await expect(
+				service.verifyObservations({
+					...review,
+					observations: [
+						{
+							...review.observations[0],
+							dataThrough: "2026-09-30T23:59:59.000Z",
+						},
+					],
+				}),
+			).rejects.toThrow("period close");
+			await expect(
+				service.verifyObservations({
+					...review,
+					observations: [
+						{
+							...review.observations[0],
+							verification: {
+								...review.observations[0]?.verification,
+								coverage: undefined,
+							},
+						},
+					],
+				}),
+			).rejects.toThrow("Invalid QBR verification");
+			tx.resultSnapshot.findFirst.mockImplementationOnce(async () => ({
+				...latest,
+				id: "concurrent-refresh",
+			}));
+			await expect(service.verifyObservations(review)).rejects.toThrow(
+				"changed during verification",
+			);
+			await service.verifyObservations(review);
+			let result = (await service.exportReport("2026-Q3")).metrics.plg_teams
+				?.observations["2026-Q3"];
+			expect(result).toMatchObject({
+				value: 542,
+				status: "verified",
+				asOf: "2026-10-02T12:00:00.000Z",
+				evidenceSource: {
+					label: "Atlas governed source query; current-clean history",
+				},
+			});
+			expect(result?.verification?.reviewedSnapshotId).toBe(initial.snapshotId);
+			await expect(service.verifyObservations(review)).rejects.toThrow(
+				"changed",
+			);
+			await service.recordObservations("plg_teams", [
+				observation("2026-Q3", 543),
+			]);
+			result = (await service.exportReport("2026-Q3")).metrics.plg_teams
+				?.observations["2026-Q3"];
+			expect(result?.value).toBe(543);
+			expect(result?.status).toBe("provisional");
+			expect(result?.verification).toBeUndefined();
+		} finally {
+			setSystemTime();
+		}
+	});
+
 	test("rejects invalid preparation batches before opening a transaction", async () => {
 		const db = { $transaction: mock() } as unknown as Db;
 		const service = new AtlasQbrService(db);
@@ -104,6 +233,54 @@ describe("AtlasQbrService", () => {
 					"https://user:pass@evidence.example",
 					"javascript:alert(1)",
 				].map((url) => ({ sources: [{ label: "Invalid source", url }] })),
+				{
+					supportingResults: [
+						{
+							label: "Source rows",
+							asOf: "2026-10-01T12:00:00.000Z",
+							source: {
+								label: "Evidence",
+								url: "https://evidence.example/report",
+							},
+							queryText: '{"dataset":"sample"}',
+							columns: ["Month", "Usage"],
+							rows: [["2026-07"]],
+							limitations: "Partial period only.",
+						},
+					],
+				},
+				{
+					supportingResults: [
+						{
+							label: "Source rows",
+							asOf: "2999-10-01T12:00:00.000Z",
+							source: {
+								label: "Evidence",
+								url: "https://evidence.example/report",
+							},
+							queryText: '{"dataset":"sample"}',
+							columns: ["Month", "Usage"],
+							rows: [["2026-07", 42]],
+							limitations: "Partial period only.",
+						},
+					],
+				},
+				{
+					supportingResults: [
+						{
+							label: "Source rows",
+							asOf: "2026-10-01T12:00:00.000Z",
+							source: {
+								label: "Evidence",
+								url: "http://evidence.example/report",
+							},
+							queryText: '{"dataset":"sample"}',
+							columns: ["Month", "Usage"],
+							rows: [["2026-07", 42]],
+							limitations: "Partial period only.",
+						},
+					],
+				},
 			].map((change) => ({
 				...batch,
 				preparations: [

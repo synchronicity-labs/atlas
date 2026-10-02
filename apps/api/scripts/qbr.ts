@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFile, writeFile } from "node:fs/promises";
+import { chmod, readFile, writeFile } from "node:fs/promises";
 import { db } from "@crm/db";
 import { Logger } from "@nestjs/common";
 import { AtlasQbrService } from "../src/atlas-query/qbr/qbr.service";
@@ -20,13 +20,75 @@ try {
 		[
 			"register",
 			"refresh",
+			"preview",
+			"verify",
 			"import-manual",
 			"import-preparations",
 			"export",
 		].includes(command ?? ""),
-		"Usage: qbr.ts register|refresh|import-manual file.json|import-preparations file.json|export report.json",
+		"Usage: qbr.ts register|refresh|preview report.json|verify file.json|import-manual file.json|import-preparations file.json|export report.json",
 	);
-	if (command === "register") {
+	if (command === "preview") {
+		assert(file, "Supply a private output path for the read-only preview.");
+		const config = metabaseConfig();
+		assert(config, "Metabase is not configured; no source pull was attempted.");
+		const client = new MetabaseClient(config);
+		const eligibility = new TinybirdEligibilityService();
+		const doorPolicy = new RevenueDoorPolicyService(db);
+		const queries = qbrQueries();
+		const rows: Record<string, unknown> = {};
+		for (const [id, query] of Object.entries(queries)) {
+			const prepared = await prepareGovernedMetabaseQuery(
+				{
+					number: 0,
+					name:
+						registry.metrics.find((metric) => metric.id === id)?.label ?? id,
+					sourceExternalId: `qbr:${id}`,
+					databaseExternalId: query.databaseExternalId,
+				},
+				{ language: "SQL", queryText: query.queryText },
+				client,
+				eligibility,
+				doorPolicy,
+			);
+			assert(
+				prepared.governed?.applied && prepared.governed.eligibility.complete,
+				`Eligibility governance is incomplete for ${id}.`,
+			);
+			assert.equal(prepared.governed.eligibility.policy, "PRODUCT_ACTIVITY");
+			assert.equal(
+				prepared.governed.eligibility.scope,
+				query.databaseExternalId === "166"
+					? "SUBSCRIBED_ORGANIZATIONS"
+					: "ALL_IDENTITIES",
+			);
+			if (query.databaseExternalId === "166")
+				assert(
+					prepared.revenueDoor?.evidence.applied &&
+						prepared.revenueDoor.evidence.complete,
+				);
+			const result = await client.preview(prepared.input);
+			rows[id] = {
+				columns: result.columns.map((column) => column.name),
+				rows: result.rows,
+				governance: {
+					...prepared.governed.eligibility,
+					revenueDoorComplete: prepared.revenueDoor?.evidence.complete ?? null,
+				},
+			};
+		}
+		await writeFile(
+			file,
+			`${JSON.stringify({ schemaVersion: "atlas.qbr.preview.v1", capturedAt: new Date().toISOString(), readOnly: true, rows }, null, 2)}\n`,
+			{ mode: 0o600 },
+		);
+		await chmod(file, 0o600);
+		logger.log({
+			message: "QBR read-only preview complete",
+			queryCount: Object.keys(queries).length,
+			output: file,
+		});
+	} else if (command === "register") {
 		const bindings = await service.register(qbrQueries());
 		logger.log({
 			message: "QBR questions registered",
@@ -109,6 +171,8 @@ try {
 				const numerator = row.numerator == null ? null : numeric(row.numerator);
 				const denominator =
 					row.denominator == null ? null : numeric(row.denominator);
+				const quarterValue =
+					row.quarter_value == null ? null : numeric(row.quarter_value);
 				if (denominator !== null) {
 					assert(
 						denominator > 0 && numerator !== null && numerator >= 0,
@@ -126,12 +190,12 @@ try {
 					value,
 					numerator,
 					denominator,
+					quarterValue,
 					status: "provisional" as const,
 					asOf,
 					dataThrough: null,
 					evidenceSource: {
-						label:
-							"Atlas governed source query; current-clean history; source-close verification pending",
+						label: "Atlas governed source query; current-clean history",
 						url: `https://atlas.pr.sync.so/questions/${bindings[id]}`,
 					},
 					...(typeof row.cohort_month === "string"
@@ -141,16 +205,24 @@ try {
 			});
 			if (refreshStartedAt.getTime() >= Date.UTC(2026, 9, 1)) {
 				const quarter = qbrQuarterValue(id, values, refreshStartedAt);
+				const observations = values.map(
+					({ quarterValue: _, ...value }) => value,
+				);
 				if (quarter)
-					values.push({
+					observations.push({
 						...quarter,
 						status: "provisional",
 						asOf,
 						dataThrough: null,
 						evidenceSource: values[0].evidenceSource,
 					});
+				pendingObservations.set(id, observations);
+			} else {
+				pendingObservations.set(
+					id,
+					values.map(({ quarterValue: _, ...value }) => value),
+				);
 			}
-			pendingObservations.set(id, values);
 		}
 		for (const [id, values] of pendingObservations) {
 			await service.recordObservations(id, values);
@@ -171,6 +243,28 @@ try {
 			message: "QBR source refresh complete",
 			metrics: Object.keys(queries).length,
 			observations,
+		});
+	} else if (command === "verify") {
+		assert(file, "Supply snapshot-bound verification evidence.");
+		const text = await readFile(file, "utf8");
+		assert(
+			Buffer.byteLength(text) <= 1_000_000,
+			"Verification input exceeds 1 MB.",
+		);
+		const input = JSON.parse(text) as {
+			metricId?: string;
+			observations?: unknown[];
+		};
+		assert(
+			typeof input.metricId === "string" &&
+				Array.isArray(input.observations) &&
+				input.observations.length > 0,
+		);
+		await service.verifyObservations(JSON.parse(text));
+		logger.log({
+			message: "Snapshot-bound QBR verification evidence applied",
+			metricId: input.metricId,
+			observations: input.observations.length,
 		});
 	} else if (command === "import-preparations") {
 		assert(file, "Supply a private preparation JSON file.");

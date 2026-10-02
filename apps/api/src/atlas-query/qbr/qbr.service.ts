@@ -43,6 +43,8 @@ const OBSERVATION_COLUMNS = [
 	"source_label",
 	"source_url",
 	"snapshotId",
+	"verification",
+	"sourceQueryHash",
 ];
 const validPeriod = (period: string) =>
 	period === REPORTING_PERIOD || /^2026-0[6-9]$/.test(period);
@@ -85,6 +87,43 @@ const preparationSchema = z
 				}),
 			)
 			.max(20),
+		supportingResults: z
+			.array(
+				z
+					.object({
+						label: z.string().trim().min(1).max(240),
+						asOf: z
+							.string()
+							.datetime({ offset: true })
+							.refine((value) => Date.parse(value) <= Date.now()),
+						source: preparationSource,
+						queryText: z.string().trim().min(1).max(50_000),
+						columns: z.array(z.string().trim().min(1).max(120)).min(1).max(20),
+						rows: z
+							.array(
+								z
+									.array(
+										z.union([
+											z.string().max(1_000),
+											z.number().finite(),
+											z.boolean(),
+											z.null(),
+										]),
+									)
+									.max(20),
+							)
+							.max(200),
+						limitations: preparationText,
+					})
+					.strict()
+					.refine(
+						(result) =>
+							new Set(result.columns).size === result.columns.length &&
+							result.rows.every((row) => row.length === result.columns.length),
+					),
+			)
+			.max(5)
+			.optional(),
 	})
 	.strict();
 const preparationBatchSchema = z
@@ -109,11 +148,45 @@ const preparationBatchSchema = z
 	})
 	.strict();
 
+const verificationSchema = z
+	.object({
+		verifiedBy: z.string().trim().min(1).max(240),
+		verifiedAt: z.string().datetime(),
+		definition: preparationSource,
+		population: preparationSource,
+		coverage: preparationSource,
+		reconciliation: preparationSource,
+	})
+	.strict();
+const verificationBatchSchema = z
+	.object({
+		metricId: z.string().min(1),
+		snapshotId: z.string().min(1),
+		definitionHash: z.string().min(1),
+		observations: z
+			.array(
+				z
+					.object({
+						period: z.string(),
+						dataThrough: z.string().datetime(),
+						verification: verificationSchema,
+					})
+					.strict(),
+			)
+			.min(1)
+			.max(5),
+	})
+	.strict();
+type QbrVerification = z.infer<typeof verificationSchema> & {
+	reviewedSnapshotId: string;
+	reviewedQueryHash: string;
+};
+
 type QbrReportObservation = {
 	value: number;
 	numerator: number | null;
 	denominator: number | null;
-	status: "provisional" | "reported";
+	status: "provisional" | "reported" | "verified";
 	source: { label: string; url: string };
 	asOf: string;
 	dataThrough: string | null;
@@ -122,6 +195,8 @@ type QbrReportObservation = {
 	evidenceSource: { label: string; url: string };
 	snapshotId: string;
 	definitionHash: string;
+	verification?: QbrVerification;
+	sourceQueryHash?: string;
 };
 export type AtlasQbrReport = {
 	schemaVersion: "atlas.qbr.v1";
@@ -137,7 +212,7 @@ export type AtlasQbrReport = {
 			unit: string;
 			notApplicable: boolean;
 			automated: boolean;
-			preparation: RegistryMetric["preparation"];
+			preparation: z.infer<typeof preparationSchema>;
 			observations: Record<string, QbrReportObservation>;
 		}
 	>;
@@ -147,12 +222,13 @@ type Observation = {
 	value: number;
 	numerator: number | null;
 	denominator: number | null;
-	status: "provisional" | "reported";
+	status: "provisional" | "reported" | "verified";
 	evidenceSource: { label: string; url: string };
 	asOf: string;
 	dataThrough: string | null;
 	cohortMonth?: string;
 	reportedBy?: string;
+	verification?: QbrVerification;
 };
 type StoredObservation = Omit<Observation, "cohortMonth" | "reportedBy"> & {
 	cohortMonth?: string | null;
@@ -160,6 +236,7 @@ type StoredObservation = Omit<Observation, "cohortMonth" | "reportedBy"> & {
 	definitionHash: string;
 	source: { label: string; url: string };
 	snapshotId: string;
+	sourceQueryHash?: string;
 };
 type QueryDefinition = { queryText: string; databaseExternalId: string };
 
@@ -236,12 +313,10 @@ function validDate(value: string, field: string): Date {
 
 function validateObservation(
 	metric: RegistryMetric,
-	observation: Observation,
+	observation: Observation | StoredObservation,
 ): void {
-	if (!["provisional", "reported"].includes(observation.status)) {
-		throw new BadRequestException(
-			"QBR inputs must be reported or provisional, never verified.",
-		);
+	if (!["provisional", "reported", "verified"].includes(observation.status)) {
+		throw new BadRequestException("Unsupported QBR observation status.");
 	}
 	const monthMatch = /^(2026)-(0[6-9])$/.exec(observation.period);
 	if (observation.period !== REPORTING_PERIOD && !monthMatch) {
@@ -311,6 +386,45 @@ function validateObservation(
 				"dataThrough must reach the selected period close.",
 			);
 	}
+	if (observation.status === "verified") {
+		if (
+			metric.unit === "percent" &&
+			(observation.numerator === null ||
+				observation.denominator === null ||
+				Math.abs(
+					observation.value -
+						(100 * observation.numerator) / observation.denominator,
+				) > 0.011)
+		)
+			throw new BadRequestException(
+				"Verified percentages require a numerator and denominator that reconcile to the value.",
+			);
+		const verification = observation.verification;
+		if (
+			!verification?.reviewedSnapshotId ||
+			!verification.reviewedQueryHash ||
+			observation.dataThrough === null
+		)
+			throw new BadRequestException(
+				"Verified QBR observations require a reviewed snapshot and complete source coverage.",
+			);
+		const {
+			reviewedSnapshotId: _,
+			reviewedQueryHash: __,
+			...proof
+		} = verification;
+		if (!verificationSchema.safeParse(proof).success)
+			throw new BadRequestException("QBR verification evidence is incomplete.");
+		const verifiedAt = validDate(verification.verifiedAt, "verifiedAt");
+		if (verifiedAt < asOf || verifiedAt > new Date())
+			throw new BadRequestException(
+				"Verification must follow the observation and cannot be in the future.",
+			);
+	} else if (observation.verification) {
+		throw new BadRequestException(
+			"Only verified observations may carry verification evidence.",
+		);
+	}
 	if (COHORT_METRICS.has(metric.id)) {
 		if (
 			!observation.cohortMonth ||
@@ -332,7 +446,7 @@ function validateObservation(
 			);
 	}
 	if (
-		observation.cohortMonth !== undefined &&
+		observation.cohortMonth != null &&
 		!/^\d{4}-(0[1-9]|1[0-2])$/.test(observation.cohortMonth)
 	) {
 		throw new BadRequestException("cohortMonth must use YYYY-MM format.");
@@ -406,7 +520,7 @@ function rowsFrom(
 					!Number.isFinite(item.denominator))) ||
 			typeof item.definitionHash !== "string" ||
 			typeof item.asOf !== "string" ||
-			!["reported", "provisional"].includes(String(item.status)) ||
+			!["reported", "provisional", "verified"].includes(String(item.status)) ||
 			(typeof item.dataThrough !== "string" && item.dataThrough !== null) ||
 			!item.evidenceSource ||
 			typeof item.snapshotId !== "string"
@@ -428,7 +542,12 @@ function rowsFrom(
 			validDate(item.dataThrough, "stored dataThrough");
 		const normalized = Object.fromEntries(
 			Object.entries(item).filter(
-				([key]) => key !== "source_label" && key !== "source_url",
+				([key, value]) =>
+					key !== "source_label" &&
+					key !== "source_url" &&
+					!(
+						["verification", "sourceQueryHash"].includes(key) && value === null
+					),
 			),
 		);
 		rows.push({
@@ -469,22 +588,31 @@ function assertRegisteredQuestion(
 ) {
 	const latest = question.versions[0];
 	const metadata = qbrMetadata(latest?.visualization);
+	const managedPromotion =
+		metric.automated &&
+		metadata?.automated === false &&
+		question.status === QuestionStatus.DRAFT &&
+		latest?.queryLanguage === QueryLanguage.API &&
+		latest.queryText === `qbr:manual:${metric.id}` &&
+		question.databaseExternalId === null;
 	if (
 		question.name !== metric.label ||
 		question.sourceId !== sourceId ||
-		question.status !==
-			(metric.automated ? QuestionStatus.ACTIVE : QuestionStatus.DRAFT) ||
+		(!managedPromotion &&
+			question.status !==
+				(metric.automated ? QuestionStatus.ACTIVE : QuestionStatus.DRAFT)) ||
 		question.purpose !== QuestionPurpose.RECONCILIATION ||
 		!latest ||
 		latest.createdBy !== "atlas-qbr" ||
-		latest.queryLanguage !==
-			(metric.automated ? QueryLanguage.SQL : QueryLanguage.API) ||
+		(!managedPromotion &&
+			latest.queryLanguage !==
+				(metric.automated ? QueryLanguage.SQL : QueryLanguage.API)) ||
 		(question.description !== description(metric) &&
 			PREVIOUS_DESCRIPTION_HASHES[metric.id] !== hash(question.description)) ||
 		!metadata ||
 		metadata.metricId !== metric.id ||
 		metadata.definitionHash !== metricDefinitionHash(metric) ||
-		metadata.automated !== metric.automated ||
+		(!managedPromotion && metadata.automated !== metric.automated) ||
 		metadata.queryHash !==
 			hash({
 				queryText: latest.queryText,
@@ -600,7 +728,12 @@ export class AtlasQbrService {
 							const nextVersion = latest.version + 1;
 							await tx.question.update({
 								where: { id: existing.id },
-								data: { databaseExternalId: query?.databaseExternalId ?? null },
+								data: {
+									databaseExternalId: query?.databaseExternalId ?? null,
+									status: metric.automated
+										? QuestionStatus.ACTIVE
+										: QuestionStatus.DRAFT,
+								},
 							});
 							await tx.questionVersion.create({
 								data: {
@@ -758,7 +891,80 @@ export class AtlasQbrService {
 		);
 	}
 
+	async verifyObservations(input: unknown) {
+		const parsed = verificationBatchSchema.safeParse(input);
+		if (!parsed.success)
+			throw new BadRequestException("Invalid QBR verification evidence.");
+		const review = parsed.data;
+		const report = await this.exportReport(REGISTRY_QUARTER);
+		const metric = report.metrics[review.metricId];
+		if (!metric)
+			throw new NotFoundException(`Unknown QBR metric: ${review.metricId}`);
+		if (
+			new Set(review.observations.map((item) => item.period)).size !==
+			review.observations.length
+		)
+			throw new BadRequestException("Verification periods must be unique.");
+		const observations = review.observations.map((item): Observation => {
+			const saved = metric.observations[item.period];
+			if (
+				!saved ||
+				!saved.sourceQueryHash ||
+				saved.snapshotId !== review.snapshotId ||
+				saved.definitionHash !== review.definitionHash
+			)
+				throw new ConflictException(
+					"The QBR answer changed or is missing; review the current snapshot.",
+				);
+			return {
+				period: item.period,
+				value: saved.value,
+				numerator: saved.numerator,
+				denominator: saved.denominator,
+				status: "verified",
+				asOf: saved.asOf,
+				dataThrough: item.dataThrough,
+				evidenceSource: {
+					...saved.evidenceSource,
+					label: saved.evidenceSource.label.replace(
+						"; source-close verification pending",
+						"",
+					),
+				},
+				...(saved.cohortMonth ? { cohortMonth: saved.cohortMonth } : {}),
+				...(saved.reportedBy ? { reportedBy: saved.reportedBy } : {}),
+				verification: {
+					...item.verification,
+					reviewedSnapshotId: review.snapshotId,
+					reviewedQueryHash: saved.sourceQueryHash,
+				},
+			};
+		});
+		return this.saveObservations(
+			review.metricId,
+			observations,
+			review.snapshotId,
+		);
+	}
+
 	async recordObservations(metricId: string, observations: Observation[]) {
+		if (
+			Array.isArray(observations) &&
+			observations.some(
+				(item) => item.status === "verified" || item.verification,
+			)
+		)
+			throw new BadRequestException(
+				"QBR inputs must be reported or provisional, never verified. Use snapshot-bound verification.",
+			);
+		return this.saveObservations(metricId, observations);
+	}
+
+	private async saveObservations(
+		metricId: string,
+		observations: Observation[],
+		expectedSnapshotId?: string,
+	) {
 		const metric = registry.metrics.find(
 			(candidate) => candidate.id === metricId,
 		);
@@ -812,6 +1018,18 @@ export class AtlasQbrService {
 				throw new ConflictException(
 					`Registered QBR question ${metric.id} has a mismatched definition hash.`,
 				);
+			const sourceQueryHash = qbrMetadata(
+				question.versions[0]?.visualization,
+			)?.queryHash;
+			if (
+				expectedSnapshotId &&
+				observations.some(
+					(item) => item.verification?.reviewedQueryHash !== sourceQueryHash,
+				)
+			)
+				throw new ConflictException(
+					"The QBR source query changed. Refresh and review the current answer.",
+				);
 			const previous = await tx.resultSnapshot.findFirst({
 				where: {
 					sourceId: question.sourceId,
@@ -821,6 +1039,10 @@ export class AtlasQbrService {
 				orderBy: [{ capturedAt: "desc" }, { id: "desc" }],
 				select: { id: true, rows: true, columns: true },
 			});
+			if (expectedSnapshotId && previous?.id !== expectedSnapshotId)
+				throw new ConflictException(
+					"The QBR snapshot changed during verification. Review the current answer.",
+				);
 			const byPeriod = new Map(
 				previous
 					? rowsFrom(previous.rows, previous.columns).map((row) => [
@@ -836,7 +1058,10 @@ export class AtlasQbrService {
 						throw new ConflictException(
 							`Stored QBR observation ${metric.id}/${observation.period} uses another definition.`,
 						);
-					if (old.status === "reported" && observation.status === "provisional")
+					if (
+						(old.status === "reported" || old.reportedBy) &&
+						observation.status === "provisional"
+					)
 						throw new ConflictException(
 							`Provisional refresh cannot replace reported QBR observation ${metric.id}/${observation.period}.`,
 						);
@@ -849,6 +1074,9 @@ export class AtlasQbrService {
 						);
 					if (
 						old.dataThrough &&
+						!(
+							old.status === "verified" && observation.status === "provisional"
+						) &&
 						(!observation.dataThrough ||
 							validDate(observation.dataThrough, "dataThrough") <
 								validDate(old.dataThrough, "stored dataThrough"))
@@ -862,6 +1090,8 @@ export class AtlasQbrService {
 					cohortMonth: observation.cohortMonth ?? null,
 					reportedBy: observation.reportedBy?.trim() || null,
 					definitionHash: metricDefinitionHash(metric),
+					sourceQueryHash:
+						typeof sourceQueryHash === "string" ? sourceQueryHash : undefined,
 					source: {
 						label: `Atlas question ${question.publicNumber}`,
 						url: `${QUESTION_BASE_URL}/${question.publicNumber}`,
@@ -1024,6 +1254,16 @@ export class AtlasQbrService {
 						throw new ConflictException(
 							`QBR observation ${metric.id}/${row.period} has a mismatched snapshot ID.`,
 						);
+					if (row.status === "verified") {
+						validateObservation(metric, row);
+						if (
+							!row.sourceQueryHash ||
+							row.verification?.reviewedQueryHash !== row.sourceQueryHash
+						)
+							throw new ConflictException(
+								"QBR verification is bound to another source query.",
+							);
+					}
 					observations[row.period] = {
 						value: row.value,
 						numerator: row.numerator,
@@ -1037,6 +1277,10 @@ export class AtlasQbrService {
 						evidenceSource: row.evidenceSource,
 						snapshotId: snapshot.id,
 						definitionHash: row.definitionHash,
+						...(row.verification ? { verification: row.verification } : {}),
+						...(row.sourceQueryHash
+							? { sourceQueryHash: row.sourceQueryHash }
+							: {}),
 					};
 				}
 			}

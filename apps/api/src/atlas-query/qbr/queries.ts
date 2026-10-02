@@ -1,3 +1,5 @@
+import { productCollectionQueries } from "./product-collection";
+
 export const qbrPlgMetricIds = [
 	"plg_teams",
 	"plg_teams_period_end",
@@ -13,6 +15,12 @@ export function isQbrPlgQuestion(externalId: string | null) {
 	return qbrPlgMetricIds.some((id) => externalId === `qbr:${id}`);
 }
 
+export function isQbrEnterpriseUsageRetentionQuestion(
+	externalId: string | null,
+) {
+	return externalId === "qbr:enterprise_usage_retention";
+}
+
 export function qbrQuarterValue(
 	metricId: string,
 	monthlyValues: {
@@ -20,14 +28,47 @@ export function qbrQuarterValue(
 		value: number;
 		numerator: number | null;
 		denominator: number | null;
+		quarterValue?: number | null;
+		quarterNumerator?: number | null;
+		quarterDenominator?: number | null;
 	}[],
 	now = new Date(),
 ) {
 	if (now.getTime() < Date.UTC(2026, 9, 1)) return null;
-	if (
-		!["plg_teams", "plg_teams_period_end", "platform_completion"].includes(
-			metricId,
+	if (metricId === "product_return_lift") {
+		if (now.getTime() < Date.UTC(2026, 9, 15)) return null;
+		const quarterValues = monthlyValues
+			.map((item) => item.quarterValue)
+			.filter((value): value is number => value != null);
+		const quarterValue = quarterValues[0];
+		if (
+			quarterValue === undefined ||
+			quarterValues.some((value) => !Number.isFinite(value)) ||
+			new Set(quarterValues).size !== 1
 		)
+			return null;
+		return {
+			period: "2026-Q3" as const,
+			value: quarterValue,
+			numerator: null,
+			denominator: null,
+		};
+	}
+	const endpointMovements = [
+		"plg_teams_adds",
+		"plg_teams_losses",
+		"plg_teams_net",
+		"enterprise_usage_retention",
+	];
+	if (
+		![
+			"plg_teams",
+			"plg_teams_period_end",
+			"platform_completion",
+			"product_feedback_coverage",
+			"product_attribution",
+			...endpointMovements,
+		].includes(metricId)
 	)
 		return null;
 	const quarterMonths = ["2026-07", "2026-08", "2026-09"];
@@ -41,6 +82,26 @@ export function qbrQuarterValue(
 		)
 	)
 		return null;
+	if (endpointMovements.includes(metricId)) {
+		const september = values.find((item) => item.period === "2026-09");
+		if (
+			september?.quarterValue == null ||
+			!Number.isFinite(september.quarterValue)
+		)
+			return null;
+		return {
+			period: "2026-Q3" as const,
+			value: september.quarterValue,
+			numerator:
+				metricId === "enterprise_usage_retention"
+					? (september.quarterNumerator ?? null)
+					: september.numerator,
+			denominator:
+				metricId === "enterprise_usage_retention"
+					? (september.quarterDenominator ?? null)
+					: september.denominator,
+		};
+	}
 	if (metricId === "plg_teams")
 		return {
 			period: "2026-Q3" as const,
@@ -54,8 +115,8 @@ export function qbrQuarterValue(
 			? {
 					period: "2026-Q3" as const,
 					value: september.value,
-					numerator: null,
-					denominator: null,
+					numerator: september.numerator,
+					denominator: september.denominator,
 				}
 			: null;
 	}
@@ -86,6 +147,105 @@ export function qbrQuarterValue(
 	};
 }
 
+function monthlyProfessionalSource(through: string) {
+	return `select toStartOfMonth(toTimeZone(generationEndedAt, 'UTC')) as month, organizationId,
+  uniqExact(generationId) as billable_generations,
+  uniqExact(toDate(generationEndedAt, 'UTC')) as active_days,
+  sum(generationCostMillicents) / 100000.0 as accrued_value
+from sync_prod.sync_usage3
+where generationEndedAt >= toDateTime('2026-05-01 00:00:00', 'UTC')
+  and generationEndedAt < toDateTime('${through} 00:00:00', 'UTC')
+  and organizationId != ''
+  and organizationPlanType in ('hobbyist','creator','growth','scale','starter','pro','team')
+group by month, organizationId`;
+}
+
+function enterpriseUsageRetentionSource(through: string) {
+	return `with organization_usage as (
+  select toStartOfMonth(toTimeZone(generationEndedAt, 'UTC')) as month_start,
+    organizationId as organization_id,
+    stripeCustomerId as stripe_customer_id,
+    sumIf(generationCostMillicents / 100000.0,
+      frameCount > 0 and costPerFrameMillicents > 0 and generationCostMillicents > 0) as usage_value_usd
+  from sync_prod.sync_usage3
+  where generationEndedAt >= toDateTime('2026-04-01 00:00:00', 'UTC')
+    and generationEndedAt < toDateTime('${through} 00:00:00', 'UTC')
+  group by month_start, organization_id, stripe_customer_id
+), customer_usage as (
+  select month_start, stripe_customer_id, sum(usage_value_usd) as usage_value_usd
+  from organization_usage
+  where stripe_customer_id is not null and stripe_customer_id != ''
+  group by month_start, stripe_customer_id
+), monthly_periods as (
+  select toDate('2026-07-01') as period_start, toDate('2026-06-01') as cohort_month
+  union all select toDate('2026-08-01'), toDate('2026-07-01')
+  union all select toDate('2026-09-01'), toDate('2026-08-01')
+), monthly_metrics as (
+  select periods.period_start, periods.cohort_month,
+    sum(ifNull(current.usage_value_usd, 0)) as numerator,
+    sum(base.usage_value_usd) as denominator
+  from monthly_periods periods
+  inner join customer_usage base
+    on base.month_start = periods.cohort_month and base.usage_value_usd > 0
+  left join customer_usage current
+    on current.month_start = periods.period_start
+      and current.stripe_customer_id = base.stripe_customer_id
+  where periods.period_start < toDate('${through}')
+  group by periods.period_start, periods.cohort_month
+), monthly_unmapped as (
+  select periods.period_start,
+    countIf(usage.usage_value_usd > 0) as unmapped_base_customers
+  from monthly_periods periods
+  left join organization_usage usage
+    on usage.month_start = periods.cohort_month
+      and (usage.stripe_customer_id is null or usage.stripe_customer_id = '')
+  where periods.period_start < toDate('${through}')
+  group by periods.period_start
+), q2_unmapped as (
+  select uniqExactIf(organization_id, usage_value_usd > 0) as unmapped_base_customers
+  from organization_usage
+  where month_start >= toDate('2026-04-01') and month_start < toDate('2026-07-01')
+    and (stripe_customer_id is null or stripe_customer_id = '')
+), q2_base as (
+  select stripe_customer_id, sum(usage_value_usd) as usage_value_usd
+  from customer_usage
+  where month_start >= toDate('2026-04-01') and month_start < toDate('2026-07-01')
+  group by stripe_customer_id
+  having usage_value_usd > 0
+), q3_usage as (
+  select stripe_customer_id, sum(usage_value_usd) as usage_value_usd
+  from customer_usage
+  where month_start >= toDate('2026-07-01') and month_start < toDate('${through}')
+  group by stripe_customer_id
+), q2_to_q3 as (
+  select
+    if(q2_unmapped.unmapped_base_customers = 0,
+      sum(ifNull(q3.usage_value_usd, 0)), null) as numerator,
+    if(q2_unmapped.unmapped_base_customers = 0,
+      sum(q2.usage_value_usd), null) as denominator,
+    q2_unmapped.unmapped_base_customers
+  from q2_base q2
+  left join q3_usage q3 using (stripe_customer_id)
+  cross join q2_unmapped
+  group by q2_unmapped.unmapped_base_customers
+)
+select monthly.period_start as period_start, monthly.cohort_month as cohort_month,
+  if(monthly_unmapped.unmapped_base_customers = 0, monthly.numerator, null) as numerator,
+  if(monthly_unmapped.unmapped_base_customers = 0, monthly.denominator, null) as denominator,
+  if(monthly_unmapped.unmapped_base_customers = 0,
+    round(100.0 * monthly.numerator / nullIf(monthly.denominator, 0), 2), null) as value,
+  if(monthly.period_start = toDate('2026-09-01'), q2_to_q3.numerator, null) as quarter_numerator,
+  if(monthly.period_start = toDate('2026-09-01'), q2_to_q3.denominator, null) as quarter_denominator,
+  if(monthly.period_start = toDate('2026-09-01') and q2_to_q3.unmapped_base_customers = 0,
+    round(100.0 * q2_to_q3.numerator / nullIf(q2_to_q3.denominator, 0), 2), null) as quarter_value,
+  monthly_unmapped.unmapped_base_customers,
+  q2_to_q3.unmapped_base_customers as quarter_unmapped_base_customers
+from monthly_metrics monthly
+inner join monthly_unmapped using (period_start)
+cross join q2_to_q3
+order by monthly.period_start`;
+}
+
 export function qbrQueries(now = new Date()) {
 	const through = new Date(
 		Math.min(
@@ -97,16 +257,7 @@ export function qbrQueries(now = new Date()) {
 		.slice(0, 10);
 	if (through <= "2026-07-01")
 		throw new Error("No complete Q3 month is available.");
-	const monthlyOrgs = `select toStartOfMonth(toTimeZone(generationEndedAt, 'UTC')) as month, organizationId,
-  uniqExact(generationId) as billable_generations,
-  uniqExact(toDate(generationEndedAt, 'UTC')) as active_days,
-  sum(generationCostMillicents) / 100000.0 as accrued_value
-from sync_prod.sync_usage3
-where generationEndedAt >= toDateTime('2026-05-01 00:00:00', 'UTC')
-  and generationEndedAt < toDateTime('${through} 00:00:00', 'UTC')
-  and organizationId != ''
-  and organizationPlanType in ('hobbyist','creator','growth','scale','starter','pro','team')
-group by month, organizationId`;
+	const monthlyOrgs = monthlyProfessionalSource(through);
 	const movement = `with monthly_orgs as (${monthlyOrgs}), professional as (
   select month, organizationId, 1 as qualified from monthly_orgs
   where billable_generations >= 3 and active_days >= 2 and accrued_value >= 100
@@ -125,6 +276,22 @@ left join professional c on c.month = s.month and c.organizationId = s.organizat
 left join professional p on p.month = addMonths(s.month, -1) and p.organizationId = s.organizationId
 where s.month >= toDate('2026-06-01') and s.month < toDate('${through}')
 group by s.month`;
+	const quarterMovement = `with monthly_orgs as (${monthlyOrgs}), professional as (
+  select month, organizationId from monthly_orgs
+  where billable_generations >= 3 and active_days >= 2 and accrued_value >= 100
+)
+select
+  countIf(september = 1 and june = 0) as gross_adds,
+  countIf(june = 1 and september = 0) as gross_losses,
+  countIf(september = 1) - countIf(june = 1) as net_change
+from (
+  select organizationId,
+    maxIf(1, month = toDate('2026-06-01')) as june,
+    maxIf(1, month = toDate('2026-09-01')) as september
+  from professional
+  where month in (toDate('2026-06-01'), toDate('2026-09-01'))
+  group by organizationId
+)`;
 	const cohorts = `with monthly_orgs as (${monthlyOrgs}), starting as (
   select * from monthly_orgs where billable_generations >= 3 and active_days >= 2 and accrued_value >= 100
 )
@@ -151,9 +318,22 @@ group by p.month`;
 		plg_teams_losses: "gross_losses",
 		plg_teams_net: "net_change",
 	})) {
+		const quarterColumn =
+			id === "plg_teams_adds"
+				? "gross_adds"
+				: id === "plg_teams_losses"
+					? "gross_losses"
+					: id === "plg_teams_net"
+						? "net_change"
+						: null;
 		queries[id] = {
 			databaseExternalId: "166",
-			queryText: `select period_start, ${column} as value from (${movement}) order by period_start`,
+			queryText: quarterColumn
+				? `with monthly as (${movement}), quarter as (${quarterMovement})
+select period_start, ${column} as value,
+  if(period_start = toDate('2026-09-01'), quarter.${quarterColumn}, null) as quarter_value
+from monthly cross join quarter order by period_start`
+				: `select period_start, ${column} as value from (${movement}) order by period_start`,
 		};
 	}
 	for (const [id, [numerator, denominator]] of Object.entries({
@@ -168,6 +348,10 @@ group by p.month`;
 from (${cohorts}) order by period_start`,
 		};
 	}
+	queries.enterprise_usage_retention = {
+		databaseExternalId: "166",
+		queryText: enterpriseUsageRetentionSource(through),
+	};
 	queries.platform_completion = {
 		databaseExternalId: "34",
 		queryText: `select date_trunc('month', g.created_at at time zone 'UTC') as period_start,
@@ -181,5 +365,5 @@ where g.created_at >= timestamptz '2026-07-01 00:00:00+00'
   and g.deleted_at is null
 group by 1 order by 1`,
 	};
-	return queries;
+	return { ...queries, ...productCollectionQueries(through, now) };
 }

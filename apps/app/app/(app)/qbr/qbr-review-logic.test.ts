@@ -1,8 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import {
 	buildTeamRequest,
+	hasReviewedObservations,
 	isAtlasFollowup,
 	isManualMissing,
+	needsObservationReview,
+	observationReviewLabel,
 	type QbrMetric,
 	teamForOwner,
 } from "./qbr-review-logic";
@@ -23,7 +26,8 @@ const suppliedAndMissing = {
 			value: 12,
 			status: "provisional",
 			evidenceSource: {
-				label: "Atlas",
+				label:
+					"Atlas governed source query; current-clean history; source-close verification pending",
 				url: "https://atlas.pr.sync.so/questions/422",
 			},
 			asOf: "2026-09-01T00:00:00.000Z",
@@ -48,7 +52,9 @@ describe("QBR review drafts", () => {
 		expect(draft).toContain("Hi Product team,");
 		expect(draft).toContain("Please verify these supplied observations:");
 		expect(draft).toContain("Quarter average of active teams.");
-		expect(draft).toContain("2026-08: 12 count, provisional");
+		expect(draft).toContain(
+			"2026-08: 12 count, Atlas query result · provisional",
+		);
 		expect(draft).toContain(
 			"The Q3 aggregate is missing; current monthly observations are 2026-08: 12 count (provisional)",
 		);
@@ -56,6 +62,128 @@ describe("QBR review drafts", () => {
 			"Manual ask: Return the Q3 count with source evidence.",
 		);
 		expect(draft).not.toContain("Hi Tanmay");
+	});
+
+	test("labels each selected period from its own source type", () => {
+		expect(
+			observationReviewLabel({
+				...suppliedAndMissing.observations["2026-08"],
+				sourceType: "automated_query",
+				evidenceSource: {
+					label: "Governed report snapshot",
+					url: "https://atlas.pr.sync.so/questions/422",
+				},
+			} as QbrMetric["observations"][string]),
+		).toBe("Atlas query result · provisional");
+		expect(
+			observationReviewLabel({
+				...suppliedAndMissing.observations["2026-08"],
+				status: "reported",
+				reportedBy: "Platform owner",
+				sourceType: "reported",
+			} as QbrMetric["observations"][string]),
+		).toBe("External input · reported by Platform owner");
+		expect(
+			observationReviewLabel({
+				...suppliedAndMissing.observations["2026-08"],
+				status: "provisional",
+				reportedBy: "Platform owner",
+				sourceType: "reported",
+				evidenceSource: {
+					label: "Source query export",
+					url: "https://atlas.pr.sync.so/questions/422",
+				},
+			} as QbrMetric["observations"][string]),
+		).toBe("External input · provisional · reported by Platform owner");
+	});
+
+	test("labels reviewed evidence distinctly and never requests it again", () => {
+		const previousObservation = suppliedAndMissing.observations["2026-08"];
+		if (!previousObservation)
+			throw new Error("The monthly fixture observation is missing.");
+		const verifiedObservation = {
+			...previousObservation,
+			status: "verified",
+			sourceQueryHash: "query-current",
+			dataThrough: "2026-09-30T23:59:59.000Z",
+			verification: {
+				verifiedBy: "Source reviewer",
+				verifiedAt: "2026-10-02T15:00:00.000Z",
+				reviewedSnapshotId: "snapshot-current",
+				reviewedQueryHash: "query-current",
+				definition: {
+					label: "Definition",
+					url: "https://example.com/definition",
+				},
+				population: {
+					label: "Population",
+					url: "https://example.com/population",
+				},
+				coverage: { label: "Coverage", url: "https://example.com/coverage" },
+				reconciliation: {
+					label: "Reconciliation",
+					url: "https://example.com/reconciliation",
+				},
+			},
+		};
+		const reviewedMetric = {
+			...suppliedAndMissing,
+			observations: { "2026-Q3": verifiedObservation },
+		} as unknown as QbrMetric;
+		expect(
+			observationReviewLabel(
+				verifiedObservation as QbrMetric["observations"][string],
+			),
+		).toBe("Reviewed source · verified");
+		expect(hasReviewedObservations(reviewedMetric)).toBe(true);
+		expect(needsObservationReview(reviewedMetric)).toBe(false);
+		const reviewedDraft = buildTeamRequest(
+			"Product",
+			[["active_teams", reviewedMetric]],
+			"https://atlas.pr.sync.so/qbr?team=product",
+		);
+		expect(reviewedDraft).not.toContain(
+			"Please verify these supplied observations:",
+		);
+		expect(reviewedDraft).not.toContain("active_teams");
+		const unprovenMetric = {
+			...reviewedMetric,
+			observations: {
+				"2026-Q3": { ...verifiedObservation, verification: undefined },
+			},
+		} as unknown as QbrMetric;
+		const unprovenObservation = unprovenMetric.observations["2026-Q3"];
+		if (!unprovenObservation)
+			throw new Error("The unproven fixture observation is missing.");
+		expect(observationReviewLabel(unprovenObservation)).toBe(
+			"Verified status · review evidence incomplete",
+		);
+		expect(needsObservationReview(unprovenMetric)).toBe(true);
+		const staleReview = {
+			...verifiedObservation,
+			sourceQueryHash: "query-updated",
+		};
+		expect(
+			observationReviewLabel(staleReview as QbrMetric["observations"][string]),
+		).toBe("Verified status · review evidence incomplete");
+		expect(
+			hasReviewedObservations({
+				...reviewedMetric,
+				observations: { "2026-Q3": staleReview },
+			} as QbrMetric),
+		).toBe(false);
+		const incompleteProof = {
+			...verifiedObservation,
+			verification: {
+				...verifiedObservation.verification,
+				coverage: undefined,
+			},
+		} as unknown as QbrMetric["observations"][string];
+		expect(
+			observationReviewLabel(
+				incompleteProof as QbrMetric["observations"][string],
+			),
+		).toBe("Verified status · review evidence incomplete");
 	});
 
 	test("routes automated non-cohort gaps to Atlas and leaves observed cohorts review-only", () => {

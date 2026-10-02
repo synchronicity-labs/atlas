@@ -62,7 +62,11 @@ function registeredQuestion(id: string, publicNumber = 215) {
 		versions: [
 			{
 				visualization: {
-					qbr: { metricId: id, definitionHash: definitionHash(id) },
+					qbr: {
+						metricId: id,
+						definitionHash: definitionHash(id),
+						queryHash: "source-query-hash",
+					},
 				},
 			},
 		],
@@ -70,6 +74,170 @@ function registeredQuestion(id: string, publicNumber = 215) {
 }
 
 describe("AtlasQbrService", () => {
+	test("verification binds reviewed values to an unchanged snapshot and refresh invalidates that review", async () => {
+		setSystemTime(new Date("2026-10-02T12:00:00.000Z"));
+		try {
+			let latest: Record<string, unknown> | null = null;
+			const createdSnapshots: { rows: unknown[][] }[] = [];
+			const question = {
+				...registeredQuestion("plg_teams"),
+				sourceExternalId: "qbr:plg_teams",
+				qbrPreparations: [],
+			};
+			const tx = {
+				$executeRaw: mock(async () => 1),
+				question: {
+					findUnique: mock(async () => question),
+					findMany: mock(async () => [question]),
+				},
+				resultSnapshot: {
+					findFirst: mock(async () => latest),
+					findMany: mock(async () => (latest ? [latest] : [])),
+					findUnique: mock(async () => null),
+					create: mock(async ({ data }: { data: Record<string, unknown> }) => {
+						latest = data;
+						createdSnapshots.push({ rows: data.rows as unknown[][] });
+						return { id: data.id };
+					}),
+				},
+			};
+			const db = {
+				...tx,
+				$transaction: (fn: (arg: typeof tx) => unknown) => fn(tx),
+			} as unknown as Db;
+			const service = new AtlasQbrService(db);
+			const initial = await service.recordObservations("plg_teams", [
+				observation("2026-Q3", 542, {
+					evidenceSource: {
+						label:
+							"Atlas governed source query; current-clean history; source-close verification pending",
+						url: "https://evidence.example/q3",
+					},
+				}),
+			]);
+			const evidence = {
+				label: "Reviewed source evidence",
+				url: "https://evidence.example/q3",
+			};
+			const review = {
+				metricId: "plg_teams",
+				snapshotId: initial.snapshotId,
+				definitionHash: definitionHash("plg_teams"),
+				observations: [
+					{
+						period: "2026-Q3",
+						dataThrough: "2026-10-01T00:00:00.000Z",
+						verification: {
+							verifiedBy: "Source reviewer",
+							verifiedAt: "2026-10-02T12:00:00.000Z",
+							definition: evidence,
+							population: evidence,
+							coverage: evidence,
+							reconciliation: evidence,
+						},
+					},
+				],
+			};
+			await expect(
+				service.verifyObservations({ ...review, definitionHash: "changed" }),
+			).rejects.toThrow("changed");
+			await expect(
+				service.verifyObservations({
+					...review,
+					observations: [
+						{
+							...review.observations[0],
+							dataThrough: "2026-09-30T23:59:59.000Z",
+						},
+					],
+				}),
+			).rejects.toThrow("period close");
+			await expect(
+				service.verifyObservations({
+					...review,
+					observations: [
+						{
+							...review.observations[0],
+							verification: {
+								...review.observations[0]?.verification,
+								coverage: undefined,
+							},
+						},
+					],
+				}),
+			).rejects.toThrow("Invalid QBR verification");
+			tx.resultSnapshot.findFirst.mockImplementationOnce(async () => ({
+				...latest,
+				id: "concurrent-refresh",
+			}));
+			await expect(service.verifyObservations(review)).rejects.toThrow(
+				"changed during verification",
+			);
+			await service.verifyObservations(review);
+			let result = (await service.exportReport("2026-Q3")).metrics.plg_teams
+				?.observations["2026-Q3"];
+			expect(result).toMatchObject({
+				value: 542,
+				status: "verified",
+				asOf: "2026-10-02T12:00:00.000Z",
+				evidenceSource: {
+					label: "Atlas governed source query; current-clean history",
+				},
+			});
+			expect(result?.verification?.reviewedSnapshotId).toBe(initial.snapshotId);
+			const sourceMetadata = question.versions[0]?.visualization.qbr;
+			if (!sourceMetadata) throw new Error("Missing QBR source metadata.");
+			sourceMetadata.queryHash = "changed-query-hash";
+			await expect(service.verifyObservations(review)).rejects.toThrow(
+				"source query",
+			);
+			await expect(service.exportReport("2026-Q3")).rejects.toThrow(
+				"another source query",
+			);
+			sourceMetadata.queryHash = "source-query-hash";
+			await service.recordObservations(
+				"plg_teams",
+				[observation("2026-07", 7), observation("2026-09", 9)],
+				{ replaceMissingAutomatedPeriods: true },
+			);
+			const partial = (await service.exportReport("2026-Q3")).metrics.plg_teams
+				?.observations;
+			expect(partial?.["2026-Q3"]).toBeUndefined();
+			expect(partial?.["2026-08"]).toBeUndefined();
+			expect(partial?.["2026-07"]?.value).toBe(7);
+			expect(partial?.["2026-09"]?.value).toBe(9);
+			expect(
+				createdSnapshots.some((snapshot) =>
+					snapshot.rows.some(
+						(row) => row[0] === "2026-Q3" && row[4] === "verified",
+					),
+				),
+			).toBe(true);
+			await expect(service.verifyObservations(review)).rejects.toThrow(
+				"changed",
+			);
+			await service.recordObservations("plg_teams", [
+				observation("2026-Q3", 543),
+			]);
+			result = (await service.exportReport("2026-Q3")).metrics.plg_teams
+				?.observations["2026-Q3"];
+			expect(result?.value).toBe(543);
+			expect(result?.status).toBe("provisional");
+			expect(result?.verification).toBeUndefined();
+			await service.recordObservations(
+				"plg_teams",
+				[observation("2026-07", 7), observation("2026-09", 9)],
+				{ replaceMissingAutomatedPeriods: true },
+			);
+			const refreshed = (await service.exportReport("2026-Q3")).metrics
+				.plg_teams?.observations;
+			expect(refreshed?.["2026-Q3"]).toBeUndefined();
+			expect(refreshed?.["2026-08"]).toBeUndefined();
+		} finally {
+			setSystemTime();
+		}
+	});
+
 	test("rejects invalid preparation batches before opening a transaction", async () => {
 		const db = { $transaction: mock() } as unknown as Db;
 		const service = new AtlasQbrService(db);
@@ -104,6 +272,54 @@ describe("AtlasQbrService", () => {
 					"https://user:pass@evidence.example",
 					"javascript:alert(1)",
 				].map((url) => ({ sources: [{ label: "Invalid source", url }] })),
+				{
+					supportingResults: [
+						{
+							label: "Source rows",
+							asOf: "2026-10-01T12:00:00.000Z",
+							source: {
+								label: "Evidence",
+								url: "https://evidence.example/report",
+							},
+							queryText: '{"dataset":"sample"}',
+							columns: ["Month", "Usage"],
+							rows: [["2026-07"]],
+							limitations: "Partial period only.",
+						},
+					],
+				},
+				{
+					supportingResults: [
+						{
+							label: "Source rows",
+							asOf: "2999-10-01T12:00:00.000Z",
+							source: {
+								label: "Evidence",
+								url: "https://evidence.example/report",
+							},
+							queryText: '{"dataset":"sample"}',
+							columns: ["Month", "Usage"],
+							rows: [["2026-07", 42]],
+							limitations: "Partial period only.",
+						},
+					],
+				},
+				{
+					supportingResults: [
+						{
+							label: "Source rows",
+							asOf: "2026-10-01T12:00:00.000Z",
+							source: {
+								label: "Evidence",
+								url: "http://evidence.example/report",
+							},
+							queryText: '{"dataset":"sample"}',
+							columns: ["Month", "Usage"],
+							rows: [["2026-07", 42]],
+							limitations: "Partial period only.",
+						},
+					],
+				},
 			].map((change) => ({
 				...batch,
 				preparations: [
@@ -249,7 +465,7 @@ describe("AtlasQbrService", () => {
 		setSystemTime();
 	});
 
-	test("keeps reported observations from being replaced by provisional refreshes", async () => {
+	test("keeps reportedBy verified observations from being replaced by automated refreshes", async () => {
 		const cols = [
 			"period",
 			"value",
@@ -271,7 +487,7 @@ describe("AtlasQbrService", () => {
 			10,
 			null,
 			null,
-			"reported",
+			"verified",
 			{ label: "Evidence", url: "https://evidence.example/report" },
 			"2026-08-01T00:00:00.000Z",
 			null,
@@ -696,17 +912,18 @@ describe("AtlasQbrService", () => {
 		);
 	});
 
-	test("exports observations in one batch with canonical question URLs and separate evidence URLs", async () => {
+	test("exports observation provenance per period with canonical question and evidence URLs", async () => {
 		const question = {
 			publicNumber: 246,
 			sourceId: "atlas-qbr-source",
-			sourceExternalId: "qbr:finance_net_burn",
+			sourceExternalId: "qbr:platform_latency",
 			versions: [
 				{
 					visualization: {
 						qbr: {
-							metricId: "finance_net_burn",
-							definitionHash: definitionHash("finance_net_burn"),
+							metricId: "platform_latency",
+							definitionHash: definitionHash("platform_latency"),
+							queryHash: "governed-query-hash",
 						},
 					},
 				},
@@ -728,22 +945,46 @@ describe("AtlasQbrService", () => {
 			"source_label",
 			"source_url",
 			"snapshotId",
+			"sourceQueryHash",
 		];
 		const values = [
-			"2026-07",
-			9200,
-			null,
-			null,
-			"reported",
-			{ label: "Finance close", url: "https://finance.example/close" },
-			"2026-08-01T00:00:00.000Z",
-			null,
-			null,
-			"Finance owner",
-			definitionHash("finance_net_burn"),
-			"Atlas question 246",
-			"https://atlas.pr.sync.so/questions/246",
-			"snapshot-qbr",
+			[
+				"2026-07",
+				9200,
+				null,
+				null,
+				"reported",
+				{ label: "Platform owner", url: "https://platform.example/review" },
+				"2026-08-01T00:00:00.000Z",
+				null,
+				null,
+				"Platform owner",
+				definitionHash("platform_latency"),
+				"Atlas question 246",
+				"https://atlas.pr.sync.so/questions/246",
+				"snapshot-qbr",
+				"governed-query-hash",
+			],
+			[
+				"2026-08",
+				8800,
+				null,
+				null,
+				"provisional",
+				{
+					label: "Atlas source query result",
+					url: "https://atlas.pr.sync.so/questions/246",
+				},
+				"2026-09-01T00:00:00.000Z",
+				null,
+				null,
+				null,
+				definitionHash("platform_latency"),
+				"Atlas question 246",
+				"https://atlas.pr.sync.so/questions/246",
+				"snapshot-qbr",
+				"governed-query-hash",
+			],
 		];
 		const questionsFindMany = mock(
 			async (args: {
@@ -763,8 +1004,8 @@ describe("AtlasQbrService", () => {
 			{
 				id: "snapshot-qbr",
 				sourceId: "atlas-qbr-source",
-				questionExternalId: "qbr:finance_net_burn",
-				rows: [values],
+				questionExternalId: "qbr:platform_latency",
+				rows: values,
 				columns: names.map((name) => ({ name })),
 			},
 		]);
@@ -773,14 +1014,17 @@ describe("AtlasQbrService", () => {
 			resultSnapshot: { findMany: snapshotsFindMany },
 		} as unknown as Db;
 		const report = await new AtlasQbrService(db).exportReport("2026-Q3");
-		const metric = report.metrics.finance_net_burn as {
+		const metric = report.metrics.platform_latency as {
 			question: { url: string };
 			observations: Record<
 				string,
 				{
 					source: { url: string };
 					evidenceSource: { url: string };
-					reportedBy: string;
+					reportedBy?: string;
+					sourceType: string;
+					status: string;
+					dataThrough: string | null;
 				}
 			>;
 		};
@@ -800,8 +1044,18 @@ describe("AtlasQbrService", () => {
 			metric.question.url,
 		);
 		expect(metric.observations["2026-07"]?.evidenceSource.url).toBe(
-			"https://finance.example/close",
+			"https://platform.example/review",
 		);
-		expect(metric.observations["2026-07"]?.reportedBy).toBe("Finance owner");
+		expect(metric.observations["2026-07"]).toMatchObject({
+			reportedBy: "Platform owner",
+			sourceType: "reported",
+			status: "reported",
+			dataThrough: null,
+		});
+		expect(metric.observations["2026-08"]).toMatchObject({
+			sourceType: "automated_query",
+			status: "provisional",
+			dataThrough: null,
+		});
 	});
 });

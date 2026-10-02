@@ -908,8 +908,7 @@ export class AtlasQbrService {
 		const observations = review.observations.map((item): Observation => {
 			const saved = metric.observations[item.period];
 			if (
-				!saved ||
-				!saved.sourceQueryHash ||
+				!saved?.sourceQueryHash ||
 				saved.snapshotId !== review.snapshotId ||
 				saved.definitionHash !== review.definitionHash
 			)
@@ -947,7 +946,11 @@ export class AtlasQbrService {
 		);
 	}
 
-	async recordObservations(metricId: string, observations: Observation[]) {
+	async recordObservations(
+		metricId: string,
+		observations: Observation[],
+		options: { replaceMissingAutomatedPeriods?: boolean } = {},
+	) {
 		if (
 			Array.isArray(observations) &&
 			observations.some(
@@ -957,13 +960,14 @@ export class AtlasQbrService {
 			throw new BadRequestException(
 				"QBR inputs must be reported or provisional, never verified. Use snapshot-bound verification.",
 			);
-		return this.saveObservations(metricId, observations);
+		return this.saveObservations(metricId, observations, undefined, options);
 	}
 
 	private async saveObservations(
 		metricId: string,
 		observations: Observation[],
 		expectedSnapshotId?: string,
+		options: { replaceMissingAutomatedPeriods?: boolean } = {},
 	) {
 		const metric = registry.metrics.find(
 			(candidate) => candidate.id === metricId,
@@ -1051,6 +1055,20 @@ export class AtlasQbrService {
 						])
 					: [],
 			);
+			if (options.replaceMissingAutomatedPeriods) {
+				const incomingPeriods = new Set(
+					observations.map((item) => item.period),
+				);
+				for (const [period, old] of byPeriod) {
+					if (
+						(period === REPORTING_PERIOD || /^2026-0[6-9]$/.test(period)) &&
+						(old.status === "provisional" || old.status === "verified") &&
+						!old.reportedBy &&
+						!incomingPeriods.has(period)
+					)
+						byPeriod.delete(period);
+				}
+			}
 			for (const observation of observations) {
 				const old = byPeriod.get(observation.period);
 				if (old) {
@@ -1256,9 +1274,13 @@ export class AtlasQbrService {
 						);
 					if (row.status === "verified") {
 						validateObservation(metric, row);
+						const currentQueryHash = qbrMetadata(
+							question?.versions[0]?.visualization,
+						)?.queryHash;
 						if (
 							!row.sourceQueryHash ||
-							row.verification?.reviewedQueryHash !== row.sourceQueryHash
+							row.verification?.reviewedQueryHash !== row.sourceQueryHash ||
+							row.sourceQueryHash !== currentQueryHash
 						)
 							throw new ConflictException(
 								"QBR verification is bound to another source query.",

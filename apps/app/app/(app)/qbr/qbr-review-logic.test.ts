@@ -65,8 +65,11 @@ describe("QBR review drafts", () => {
 	});
 
 	test("labels reviewed evidence distinctly and never requests it again", () => {
+		const previousObservation = suppliedAndMissing.observations["2026-08"];
+		if (!previousObservation)
+			throw new Error("The monthly fixture observation is missing.");
 		const verifiedObservation = {
-			...suppliedAndMissing.observations["2026-08"],
+			...previousObservation,
 			status: "verified",
 			sourceQueryHash: "query-current",
 			dataThrough: "2026-09-30T23:59:59.000Z",
@@ -116,7 +119,10 @@ describe("QBR review drafts", () => {
 				"2026-Q3": { ...verifiedObservation, verification: undefined },
 			},
 		} as unknown as QbrMetric;
-		expect(observationReviewLabel(unprovenMetric.observations["2026-Q3"])).toBe(
+		const unprovenObservation = unprovenMetric.observations["2026-Q3"];
+		if (!unprovenObservation)
+			throw new Error("The unproven fixture observation is missing.");
+		expect(observationReviewLabel(unprovenObservation)).toBe(
 			"Verified status · review evidence incomplete",
 		);
 		expect(needsObservationReview(unprovenMetric)).toBe(true);
@@ -124,9 +130,9 @@ describe("QBR review drafts", () => {
 			...verifiedObservation,
 			sourceQueryHash: "query-updated",
 		};
-		expect(observationReviewLabel(staleReview)).toBe(
-			"Verified status · review evidence incomplete",
-		);
+		expect(
+			observationReviewLabel(staleReview as QbrMetric["observations"][string]),
+		).toBe("Verified status · review evidence incomplete");
 		expect(
 			hasReviewedObservations({
 				...reviewedMetric,
@@ -139,10 +145,12 @@ describe("QBR review drafts", () => {
 				...verifiedObservation.verification,
 				coverage: undefined,
 			},
-		};
-		expect(observationReviewLabel(incompleteProof)).toBe(
-			"Verified status · review evidence incomplete",
-		);
+		} as unknown as QbrMetric["observations"][string];
+		expect(
+			observationReviewLabel(
+				incompleteProof as QbrMetric["observations"][string],
+			),
+		).toBe("Verified status · review evidence incomplete");
 	});
 
 	test("routes automated non-cohort gaps to Atlas and leaves observed cohorts review-only", () => {

@@ -1459,7 +1459,7 @@
 			"unit": "percent",
 			"definition": "Original: at least 15% more often within 14 days. Relative-lift interpretation needs confirmation; compare assigned eligible groups at equal maturity and show pp, n and uncertainty.",
 			"notApplicable": false,
-			"automated": false,
+			"automated": true,
 			"preparation": {
 				"owner": "Noah (tentative)",
 				"ownerStatus": "Tentative lead in the outline",

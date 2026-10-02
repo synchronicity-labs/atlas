@@ -187,6 +187,41 @@ cross join integrity i
 order by m.period_start, a.arm`;
 }
 
+function returnLiftByMonth(through: string, now: Date) {
+	return `with diagnostic as (
+  ${returnLiftDiagnostic(through, now)}
+), monthly as (
+  select period_start,
+    max(ambiguous_pair_organizations)::bigint as ambiguous_pair_organizations,
+    max(assignments) filter (where arm = 'treated')::bigint as treated_assignments,
+    max(mature_assignments) filter (where arm = 'treated')::bigint as treated_mature_assignments,
+    max(returned) filter (where arm = 'treated')::bigint as treated_returned,
+    max(assignments) filter (where arm = 'holdback')::bigint as holdback_assignments,
+    max(mature_assignments) filter (where arm = 'holdback')::bigint as holdback_mature_assignments,
+    max(returned) filter (where arm = 'holdback')::bigint as holdback_returned
+  from diagnostic
+  group by period_start
+)
+select period_start,
+  round(100.0 * (
+    treated_returned::numeric * holdback_mature_assignments
+      / nullif(treated_mature_assignments::numeric * holdback_returned, 0) - 1
+  ), 2) as value,
+  treated_returned,
+  treated_mature_assignments as treated_assignments,
+  holdback_returned,
+  holdback_mature_assignments as holdback_assignments,
+  ambiguous_pair_organizations
+from monthly
+where treated_assignments > 0
+  and holdback_assignments > 0
+  and holdback_returned > 0
+  and treated_assignments = treated_mature_assignments
+  and holdback_assignments = holdback_mature_assignments
+  and ambiguous_pair_organizations = 0
+order by period_start`;
+}
+
 function productQueries(
 	queries: Record<string, string>,
 ): Record<string, ProductQuery> {
@@ -208,6 +243,7 @@ export function productCollectionQueries(through?: string, now = new Date()) {
 	return productQueries({
 		product_feedback_coverage: feedbackCoverage(end),
 		product_attribution: attributionCoverage(end),
+		product_return_lift: returnLiftByMonth(end, now),
 	});
 }
 

@@ -78,6 +78,7 @@ describe("AtlasQbrService", () => {
 		setSystemTime(new Date("2026-10-02T12:00:00.000Z"));
 		try {
 			let latest: Record<string, unknown> | null = null;
+			const createdSnapshots: { rows: unknown[][] }[] = [];
 			const question = {
 				...registeredQuestion("plg_teams"),
 				sourceExternalId: "qbr:plg_teams",
@@ -95,6 +96,7 @@ describe("AtlasQbrService", () => {
 					findUnique: mock(async () => null),
 					create: mock(async ({ data }: { data: Record<string, unknown> }) => {
 						latest = data;
+						createdSnapshots.push({ rows: data.rows as unknown[][] });
 						return { id: data.id };
 					}),
 				},
@@ -183,6 +185,32 @@ describe("AtlasQbrService", () => {
 				},
 			});
 			expect(result?.verification?.reviewedSnapshotId).toBe(initial.snapshotId);
+			question.versions[0].visualization.qbr.queryHash = "changed-query-hash";
+			await expect(service.verifyObservations(review)).rejects.toThrow(
+				"source query",
+			);
+			await expect(service.exportReport("2026-Q3")).rejects.toThrow(
+				"another source query",
+			);
+			question.versions[0].visualization.qbr.queryHash = "source-query-hash";
+			await service.recordObservations(
+				"plg_teams",
+				[observation("2026-07", 7), observation("2026-09", 9)],
+				{ replaceMissingAutomatedPeriods: true },
+			);
+			const partial = (await service.exportReport("2026-Q3")).metrics.plg_teams
+				?.observations;
+			expect(partial?.["2026-Q3"]).toBeUndefined();
+			expect(partial?.["2026-08"]).toBeUndefined();
+			expect(partial?.["2026-07"]?.value).toBe(7);
+			expect(partial?.["2026-09"]?.value).toBe(9);
+			expect(
+				createdSnapshots.some((snapshot) =>
+					snapshot.rows.some(
+						(row) => row[0] === "2026-Q3" && row[4] === "verified",
+					),
+				),
+			).toBe(true);
 			await expect(service.verifyObservations(review)).rejects.toThrow(
 				"changed",
 			);
@@ -194,6 +222,15 @@ describe("AtlasQbrService", () => {
 			expect(result?.value).toBe(543);
 			expect(result?.status).toBe("provisional");
 			expect(result?.verification).toBeUndefined();
+			await service.recordObservations(
+				"plg_teams",
+				[observation("2026-07", 7), observation("2026-09", 9)],
+				{ replaceMissingAutomatedPeriods: true },
+			);
+			const refreshed = (await service.exportReport("2026-Q3")).metrics
+				.plg_teams?.observations;
+			expect(refreshed?.["2026-Q3"]).toBeUndefined();
+			expect(refreshed?.["2026-08"]).toBeUndefined();
 		} finally {
 			setSystemTime();
 		}
@@ -426,7 +463,7 @@ describe("AtlasQbrService", () => {
 		setSystemTime();
 	});
 
-	test("keeps reported observations from being replaced by provisional refreshes", async () => {
+	test("keeps reportedBy verified observations from being replaced by automated refreshes", async () => {
 		const cols = [
 			"period",
 			"value",
@@ -448,7 +485,7 @@ describe("AtlasQbrService", () => {
 			10,
 			null,
 			null,
-			"reported",
+			"verified",
 			{ label: "Evidence", url: "https://evidence.example/report" },
 			"2026-08-01T00:00:00.000Z",
 			null,

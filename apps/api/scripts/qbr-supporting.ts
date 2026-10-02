@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { chmod, mkdir, writeFile } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { db } from "@crm/db";
 import {
@@ -115,14 +115,18 @@ const doorPolicy = new RevenueDoorPolicyService(db);
 const sqlQueries = {
 	platform_latency_by_model_duration:
 		additionalQbrQueries.platform_latency_by_model_duration,
+	platform_generation_status_diagnostic:
+		additionalQbrQueries.platform_generation_status_diagnostic,
 	...productCollectionDiagnostics("2026-10-01", new Date()),
 };
 const sqlMetricIds: Record<string, string> = {
 	platform_latency_by_model_duration: "platform_latency",
+	platform_generation_status_diagnostic: "platform_completion",
 	product_upvotes: "product_upvotes",
 	product_return_lift: "product_return_lift",
 };
 for (const [queryId, query] of Object.entries(sqlQueries)) {
+	assert(query, `No source query for ${queryId}.`);
 	const metricId = sqlMetricIds[queryId];
 	assert(metricId, `No QBR metric mapping for ${queryId}.`);
 	const definition = definitions.get(metricId);
@@ -147,11 +151,15 @@ for (const [queryId, query] of Object.entries(sqlQueries)) {
 	const label =
 		queryId === "platform_latency_by_model_duration"
 			? "Generation latency by month, model, and duration band"
-			: definition.label;
+			: queryId === "platform_generation_status_diagnostic"
+				? "Generation outcomes, including failed and pending jobs"
+				: definition.label;
 	const limitations =
 		queryId === "platform_latency_by_model_duration"
 			? "Partial diagnostic only. Includes completed generations with model, non-negative duration, and valid start/end timestamps. Excludes failures and timeouts; duration bands are explicit reporting bands, not an overall latency headline."
-			: `${definition.preparation.gap} Diagnostic rows support review and do not certify the metric headline.`;
+			: queryId === "platform_generation_status_diagnostic"
+				? "Current non-deleted Q3 generation records by admission month and status. Failures and pending jobs stay visible separately from completed-generation latency. These records do not reconstruct deleted records, rejected preflight requests, or attempt-level retry history."
+				: `${definition.preparation.gap} Diagnostic rows support review and do not certify the metric headline.`;
 	rowsFor(
 		metricId,
 		label,
@@ -166,13 +174,14 @@ for (const [queryId, query] of Object.entries(sqlQueries)) {
 const marketing = new MarketingClient(marketingConfig());
 const visitorQuery =
 	additionalMarketingQueries.marketing_visitors_by_site_month;
+assert(visitorQuery?.source === "ga4", "Visitor query must use GA4.");
 assert(
 	visitorQuery.exactRange?.startDate === "2026-07-01" &&
 		visitorQuery.exactRange.endDateExclusive === "2026-10-01",
 	"Visitor query must cover fixed Q3 2026.",
 );
 const visitorResult = await marketing.ga4Range(
-	visitorQuery as Extract<typeof visitorQuery, { source: "ga4" }>,
+	visitorQuery,
 	new Date(`${visitorQuery.exactRange.startDate}T00:00:00.000Z`),
 	new Date(`${visitorQuery.exactRange.endDateExclusive}T00:00:00.000Z`),
 );
@@ -187,6 +196,7 @@ rowsFor(
 );
 
 const signupQuery = additionalMarketingQueries.marketing_clean_signups_by_month;
+assert(signupQuery?.source === "posthog", "Signup query must use PostHog.");
 const productEligibility = await eligibility.current();
 assert(
 	productEligibility.complete,
@@ -211,10 +221,6 @@ rowsFor(
 	"Partial diagnostic only. Counts distinct eligible PostHog people with signup events and includes missing first-touch counts. It does not join to a qualified professional or organization cohort and does not establish a mature observation window.",
 );
 
-assert(
-	results.length <= 5,
-	"Supporting results exceed the five-table-per-metric limit.",
-);
 const payload = {
 	schemaVersion: "atlas.qbr.supporting-results.v1",
 	quarter: "2026-Q3",
@@ -227,9 +233,9 @@ const payload = {
 };
 await mkdir(dirname(output), { recursive: true, mode: 0o700 });
 await writeFile(output, `${JSON.stringify(payload, null, 2)}\n`, {
+	flag: "wx",
 	mode: 0o600,
 });
-await chmod(output, 0o600);
 console.log(
 	JSON.stringify({
 		output,

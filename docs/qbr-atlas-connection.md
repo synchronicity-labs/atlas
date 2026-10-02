@@ -8,6 +8,8 @@ The Q3 definition register is `apps/api/src/atlas-query/qbr/registry.json`. It p
 
 Run from the Atlas repository root with the existing Doppler configuration. These commands write the shared Atlas database; they are operator actions, not development fixtures.
 
+Preview, export and supporting-results outputs use exclusive file creation. Choose a new, nonexistent path for each run; existing files are never replaced.
+
 ```sh
 doppler run --project atlas --config local -- bun apps/api/scripts/qbr.ts register
 doppler run --project atlas --config local -- bun apps/api/scripts/qbr.ts refresh

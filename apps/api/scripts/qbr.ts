@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { chmod, readFile, writeFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { db } from "@crm/db";
 import { Logger } from "@nestjs/common";
 import { AtlasQbrService } from "../src/atlas-query/qbr/qbr.service";
@@ -26,7 +26,7 @@ try {
 			"import-preparations",
 			"export",
 		].includes(command ?? ""),
-		"Usage: qbr.ts register|refresh|preview report.json|verify file.json|import-manual file.json|import-preparations file.json|export report.json",
+		"Usage: qbr.ts register|refresh|preview <new-private-report.json>|verify file.json|import-manual file.json|import-preparations file.json|export <new-report.json>",
 	);
 	if (command === "preview") {
 		assert(file, "Supply a private output path for the read-only preview.");
@@ -80,9 +80,8 @@ try {
 		await writeFile(
 			file,
 			`${JSON.stringify({ schemaVersion: "atlas.qbr.preview.v1", capturedAt: new Date().toISOString(), readOnly: true, rows }, null, 2)}\n`,
-			{ mode: 0o600 },
+			{ flag: "wx", mode: 0o600 },
 		);
-		await chmod(file, 0o600);
 		logger.log({
 			message: "QBR read-only preview complete",
 			queryCount: Object.keys(queries).length,
@@ -225,7 +224,9 @@ try {
 			}
 		}
 		for (const [id, values] of pendingObservations) {
-			await service.recordObservations(id, values);
+			await service.recordObservations(id, values, {
+				replaceMissingAutomatedPeriods: true,
+			});
 			observations += values.length;
 			logger.log({
 				message: "QBR question refreshed",
@@ -301,6 +302,7 @@ try {
 		assert(file, "Supply an output JSON file path.");
 		const report = await service.exportReport("2026-Q3");
 		await writeFile(file, `${JSON.stringify(report, null, 2)}\n`, {
+			flag: "wx",
 			mode: 0o600,
 		});
 		logger.log({

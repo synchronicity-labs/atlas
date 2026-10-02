@@ -280,6 +280,8 @@ function description(metric: RegistryMetric): string {
 }
 
 const PREVIOUS_DESCRIPTION_HASHES: Partial<Record<string, string>> = {
+	enterprise_usage_retention:
+		"6078c20e2a3995c65a94aaec60d41e2421e4c6ec173f711beea535b0ebb5d809",
 	plg_teams: "940a1ac2544877f854baf30b183f436d3f1e0b4ec075e80c901fe39a3bd04d3b",
 	product_m3_requalification:
 		"31d6a21a8b9b4cea95c039c883347703cdadfe50b405b75afcfc7a8a3d9899ef",

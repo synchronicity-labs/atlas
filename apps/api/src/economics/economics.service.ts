@@ -536,10 +536,7 @@ export function economicsResult(
 				column("month", "Month", "type/DateTime"),
 				column("usage_revenue_usd", "Usage revenue"),
 				column("prod_inference_cost_usd", "Production inference cost"),
-				column(
-					"matched_model_cost_subtotal_usd",
-					"Matched-model cost subtotal",
-				),
+				column("model_cost_subtotal_usd", "Model-cost subtotal"),
 				column("contribution_margin_usd", "Contribution margin"),
 				column("cost_status", "Cost coverage", "type/Text"),
 			],

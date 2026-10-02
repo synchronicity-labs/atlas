@@ -201,7 +201,7 @@ describe("inference economics", () => {
 			"incomplete",
 		]);
 		expect(
-			costResult.rows[0].filter((cell) => typeof cell === "number"),
+			costResult.rows[0]?.filter((cell) => typeof cell === "number"),
 		).toEqual([]);
 		const completeCost = economicsResult(
 			costQuery,

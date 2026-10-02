@@ -307,7 +307,7 @@ describe("AtlasQbrService", () => {
 		expect(tx.resultSnapshot.create).not.toHaveBeenCalled();
 	});
 
-	test("private preparations roundtrip without changing observations or trust and survive registration", async () => {
+	test("private preparations stay in separate version history and survive registration", async () => {
 		type Stored = {
 			id: string;
 			number: number;
@@ -318,6 +318,11 @@ describe("AtlasQbrService", () => {
 			status: string;
 			purpose: string;
 			databaseExternalId: string | null;
+			qbrPreparations: Array<{
+				quarter: string;
+				version: number;
+				preparation: unknown;
+			}>;
 			versions: Array<{
 				version: number;
 				queryLanguage: QueryLanguage;
@@ -327,6 +332,12 @@ describe("AtlasQbrService", () => {
 			}>;
 		};
 		const questions = new Map<string, Stored>();
+		const privateRows: Array<{
+			questionId: string;
+			quarter: string;
+			version: number;
+			preparation: unknown;
+		}> = [];
 		let snapshot: Record<string, unknown> | undefined;
 		let nextNumber = 0;
 		const tx = {
@@ -344,11 +355,32 @@ describe("AtlasQbrService", () => {
 					}) =>
 						questions.get(where.connector_sourceExternalId.sourceExternalId),
 				),
-				findMany: mock(async () =>
-					[...questions.entries()].map(([sourceExternalId, question]) => ({
-						...question,
-						sourceExternalId,
-					})),
+				findMany: mock(
+					async (args?: {
+						include?: {
+							qbrPreparations?: { where?: { quarter?: string }; take?: number };
+						};
+						select?: {
+							qbrPreparations?: { where?: { quarter?: string }; take?: number };
+						};
+					}) =>
+						[...questions.entries()].map(([sourceExternalId, question]) => ({
+							...question,
+							qbrPreparations: (() => {
+								const selection =
+									args?.include?.qbrPreparations ??
+									args?.select?.qbrPreparations;
+								return privateRows
+									.filter(
+										(row) =>
+											row.questionId === question.id &&
+											row.quarter === selection?.where?.quarter,
+									)
+									.sort((a, b) => b.version - a.version)
+									.slice(0, selection?.take ?? 1);
+							})(),
+							sourceExternalId,
+						})),
 				),
 				aggregate: mock(async () => ({ _max: { number: nextNumber } })),
 				createMany: mock(
@@ -368,6 +400,7 @@ describe("AtlasQbrService", () => {
 									input.databaseExternalId == null
 										? null
 										: String(input.databaseExternalId),
+								qbrPreparations: [],
 								versions: [],
 							});
 						}
@@ -438,6 +471,12 @@ describe("AtlasQbrService", () => {
 					},
 				),
 			},
+			qbrPreparation: {
+				createMany: mock(async ({ data }: { data: typeof privateRows }) => {
+					privateRows.push(...structuredClone(data));
+					return { count: data.length };
+				}),
+			},
 		};
 		const db = {
 			$transaction: (fn: (arg: typeof tx) => unknown) => fn(tx),
@@ -474,6 +513,10 @@ describe("AtlasQbrService", () => {
 		]);
 		const before = await service.exportReport("2026-Q3");
 		const storedSnapshot = structuredClone(snapshot);
+		const questionVersionCreatesBeforePreparations =
+			tx.questionVersion.create.mock.calls.length;
+		const questionVersionCreateManyBeforePreparations =
+			tx.questionVersion.createMany.mock.calls.length;
 		const batch = {
 			quarter: "2026-Q3",
 			preparations: [
@@ -484,16 +527,51 @@ describe("AtlasQbrService", () => {
 				},
 			],
 		};
+		const questionFindMany = tx.question.findMany;
 		expect(await service.importPreparations(batch)).toEqual({
 			quarter: "2026-Q3",
 			imported: 2,
 			unchanged: 0,
 		});
+		expect(questionFindMany.mock.calls.at(-1)?.[0]).toMatchObject({
+			include: {
+				qbrPreparations: {
+					where: { quarter: "2026-Q3" },
+					orderBy: { version: "desc" },
+					take: 1,
+				},
+			},
+		});
+		expect(privateRows).toHaveLength(2);
+		expect(tx.questionVersion.createMany).toHaveBeenCalledTimes(
+			questionVersionCreateManyBeforePreparations,
+		);
+		expect(tx.questionVersion.create).toHaveBeenCalledTimes(
+			questionVersionCreatesBeforePreparations,
+		);
 		expect(await service.importPreparations(batch)).toEqual({
 			quarter: "2026-Q3",
 			imported: 0,
 			unchanged: 2,
 		});
+		const revised = {
+			...privatePreparation(),
+			gap: "Updated sample; full-period evidence is missing.",
+		};
+		expect(
+			await service.importPreparations({
+				quarter: "2026-Q3",
+				preparations: [{ metricId: "plg_teams", preparation: revised }],
+			}),
+		).toEqual({ quarter: "2026-Q3", imported: 1, unchanged: 0 });
+		expect(
+			privateRows.filter((row) => row.questionId === question.id),
+		).toHaveLength(2);
+		expect(
+			privateRows.find(
+				(row) => row.questionId === question.id && row.version === 2,
+			)?.preparation,
+		).toEqual(revised);
 		const after = await service.exportReport("2026-Q3");
 		const beforeMetric = before.metrics.plg_teams;
 		const afterMetric = after.metrics.plg_teams;
@@ -501,7 +579,7 @@ describe("AtlasQbrService", () => {
 			throw new Error("Missing fixture metric in exported report.");
 		expect(afterMetric).toEqual({
 			...beforeMetric,
-			preparation: privatePreparation(),
+			preparation: revised,
 		});
 		expect(after.metrics.finance_net_burn?.observations).toEqual({});
 		expect(after.metrics.finance_net_burn?.preparation).toEqual(
@@ -513,10 +591,13 @@ describe("AtlasQbrService", () => {
 		expect(question.versions[0]?.queryText).toBe(
 			original.versions[0]?.queryText,
 		);
-		expect(question.versions[0]?.visualization).toEqual({
-			customDisplay: { color: "blue" },
-			qbr: { ...metadata, preparation: privatePreparation() },
-		});
+		expect(
+			question.versions.every(
+				(version) =>
+					JSON.stringify(version.visualization).includes("preparation") ===
+					false,
+			),
+		).toBe(true);
 		const versionsBeforeFailure = structuredClone(question.versions);
 		const manual = questions.get("qbr:finance_net_burn");
 		if (!manual) throw new Error("Missing manual fixture.");
@@ -533,22 +614,23 @@ describe("AtlasQbrService", () => {
 		).rejects.toThrow(ConflictException);
 		expect(question.versions).toEqual(versionsBeforeFailure);
 		manual.description = manualDescription;
-		const storedMetadata = question.versions[0]?.visualization.qbr as Record<
-			string,
-			unknown
-		>;
-		storedMetadata.preparation = {
+		const latestPrivateRow = privateRows.find(
+			(row) => row.questionId === question.id && row.version === 2,
+		);
+		if (!latestPrivateRow)
+			throw new Error("Missing latest private preparation fixture.");
+		latestPrivateRow.preparation = {
 			...privatePreparation(),
 			unknownField: "Preserve future data",
 		};
 		await expect(service.importPreparations(batch)).rejects.toThrow(
 			"unsupported fields",
 		);
-		storedMetadata.preparation = privatePreparation();
+		latestPrivateRow.preparation = revised;
 		await service.recordObservations("plg_teams", [observation("2026-08", 14)]);
 		expect(
 			(await service.exportReport("2026-Q3")).metrics.plg_teams?.preparation,
-		).toEqual(privatePreparation());
+		).toEqual(revised);
 
 		await service.register(queries);
 		expect(tx.questionVersion.create).not.toHaveBeenCalled();
@@ -595,12 +677,18 @@ describe("AtlasQbrService", () => {
 				...metadata,
 				queryHash: (latestVersion.visualization.qbr as Record<string, unknown>)
 					.queryHash,
-				preparation: privatePreparation(),
 			},
 		});
 		expect(
+			question.versions.every(
+				(version) =>
+					JSON.stringify(version.visualization).includes("preparation") ===
+					false,
+			),
+		).toBe(true);
+		expect(
 			(await service.exportReport("2026-Q3")).metrics.plg_teams?.preparation,
-		).toEqual(privatePreparation());
+		).toEqual(revised);
 		await service.register(changed);
 
 		expect(questions.get("qbr:plg_teams")?.versions[0]?.queryText).toBe(
@@ -623,6 +711,7 @@ describe("AtlasQbrService", () => {
 					},
 				},
 			],
+			qbrPreparations: [],
 		};
 		const names = [
 			"period",
@@ -656,7 +745,20 @@ describe("AtlasQbrService", () => {
 			"https://atlas.pr.sync.so/questions/246",
 			"snapshot-qbr",
 		];
-		const questionsFindMany = mock(async () => [question]);
+		const questionsFindMany = mock(
+			async (args: {
+				select: {
+					qbrPreparations: {
+						where: { quarter: string };
+						orderBy: { version: "desc" };
+						take: number;
+					};
+				};
+			}) => {
+				void args;
+				return [question];
+			},
+		);
 		const snapshotsFindMany = mock(async () => [
 			{
 				id: "snapshot-qbr",
@@ -683,6 +785,15 @@ describe("AtlasQbrService", () => {
 			>;
 		};
 		expect(questionsFindMany).toHaveBeenCalledTimes(1);
+		expect(questionsFindMany.mock.calls[0]?.[0]).toMatchObject({
+			select: {
+				qbrPreparations: {
+					where: { quarter: "2026-Q3" },
+					orderBy: { version: "desc" },
+					take: 1,
+				},
+			},
+		});
 		expect(snapshotsFindMany).toHaveBeenCalledTimes(1);
 		expect(metric.question.url).toBe("https://atlas.pr.sync.so/questions/246");
 		expect(metric.observations["2026-07"]?.source.url).toBe(

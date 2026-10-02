@@ -2,12 +2,30 @@ import { expect, test } from "bun:test";
 import {
 	additionalMarketingQueries,
 	additionalQbrQueries,
+	qbrLatencyDiagnosticSql,
 } from "./additional-queries";
 
-test("platform diagnostics use source-backed Q3 fields and preserve the required units", () => {
+test("latency period grouping pools raw Q3 durations without averaging monthly percentiles", () => {
 	const latency = additionalQbrQueries.platform_latency_by_model_duration;
+	const quarterLatency =
+		additionalQbrQueries.platform_latency_by_model_duration_q3;
 	expect(latency?.databaseExternalId).toBe("34");
-	expect(latency?.queryText).toContain("percentile_cont(0.95)");
+	expect(quarterLatency?.databaseExternalId).toBe("34");
+	for (const [query, grouping] of [
+		[latency?.queryText, "month"],
+		[quarterLatency?.queryText, "quarter"],
+	] as const) {
+		expect(query).toContain(`date_trunc('${grouping}'`);
+		expect(query).toContain("2026-07-01");
+		expect(query).toContain("2026-10-01");
+		expect(query).toContain("count(*)::int as sample_count");
+		expect(query).toContain("group by 1, 2, 3");
+		expect(query).toContain("percentile_cont(0.95) within group");
+		expect(query).not.toContain("avg(");
+	}
+	expect(qbrLatencyDiagnosticSql("quarter")).toContain(
+		"g.finished_at - g.started_at",
+	);
 	expect(latency?.queryText).toContain(
 		"extract(epoch from (g.finished_at - g.started_at)) * 1000",
 	);
@@ -19,7 +37,6 @@ test("platform diagnostics use source-backed Q3 fields and preserve the required
 	expect(latency?.queryText).toContain("'>60s'");
 	expect(latency?.queryText).toContain("count(*)::int as sample_count");
 	expect(latency?.queryText).toContain("g.duration >= 0");
-	expect(latency?.queryText).toContain("group by 1, 2, 3");
 	expect(latency?.queryText).toContain("g.status::text = 'COMPLETED'");
 	expect(latency?.queryText).toContain("g.deleted_at is null");
 	expect(latency?.queryText).toContain("2026-07-01");

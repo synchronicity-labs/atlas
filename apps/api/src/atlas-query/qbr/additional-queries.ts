@@ -5,14 +5,9 @@ export type QbrQueryDefinition = {
 	databaseExternalId: string;
 };
 
-type QbrMarketingQuery = MarketingQuery & {
-	exactRange?: { startDate: string; endDateExclusive: string };
-};
-
-export const additionalQbrQueries: Record<string, QbrQueryDefinition> = {
-	platform_latency_by_model_duration: {
-		databaseExternalId: "34",
-		queryText: `select date_trunc('month', g.created_at at time zone 'UTC') as period_start,
+export function qbrLatencyDiagnosticSql(period: "month" | "quarter") {
+	const grouping = period === "quarter" ? "quarter" : "month";
+	return `select date_trunc('${grouping}', g.created_at at time zone 'UTC') as period_start,
   g.model_name,
   case
     when g.duration <= 5 then '0-5s'
@@ -40,7 +35,21 @@ order by 1, 2, min(case
   when g.duration <= 30 then 3
   when g.duration <= 60 then 4
   else 5
-end)`,
+end)`;
+}
+
+type QbrMarketingQuery = MarketingQuery & {
+	exactRange?: { startDate: string; endDateExclusive: string };
+};
+
+export const additionalQbrQueries: Record<string, QbrQueryDefinition> = {
+	platform_latency_by_model_duration: {
+		databaseExternalId: "34",
+		queryText: qbrLatencyDiagnosticSql("month"),
+	},
+	platform_latency_by_model_duration_q3: {
+		databaseExternalId: "34",
+		queryText: qbrLatencyDiagnosticSql("quarter"),
 	},
 	platform_generation_status_diagnostic: {
 		databaseExternalId: "34",

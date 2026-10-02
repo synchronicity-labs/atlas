@@ -115,12 +115,15 @@ const doorPolicy = new RevenueDoorPolicyService(db);
 const sqlQueries = {
 	platform_latency_by_model_duration:
 		additionalQbrQueries.platform_latency_by_model_duration,
+	platform_latency_by_model_duration_q3:
+		additionalQbrQueries.platform_latency_by_model_duration_q3,
 	platform_generation_status_diagnostic:
 		additionalQbrQueries.platform_generation_status_diagnostic,
 	...productCollectionDiagnostics("2026-10-01", new Date()),
 };
 const sqlMetricIds: Record<string, string> = {
 	platform_latency_by_model_duration: "platform_latency",
+	platform_latency_by_model_duration_q3: "platform_latency",
 	platform_generation_status_diagnostic: "platform_completion",
 	product_upvotes: "product_upvotes",
 	product_return_lift: "product_return_lift",
@@ -151,15 +154,19 @@ for (const [queryId, query] of Object.entries(sqlQueries)) {
 	const label =
 		queryId === "platform_latency_by_model_duration"
 			? "Generation latency by month, model, and duration band"
-			: queryId === "platform_generation_status_diagnostic"
-				? "Generation outcomes, including failed and pending jobs"
-				: definition.label;
+			: queryId === "platform_latency_by_model_duration_q3"
+				? "Pooled Q3 generation latency by model and duration band"
+				: queryId === "platform_generation_status_diagnostic"
+					? "Generation outcomes, including failed and pending jobs"
+					: definition.label;
 	const limitations =
-		queryId === "platform_latency_by_model_duration"
-			? "Partial diagnostic only. Includes completed generations with model, non-negative duration, and valid start/end timestamps. Excludes failures and timeouts; duration bands are explicit reporting bands, not an overall latency headline."
-			: queryId === "platform_generation_status_diagnostic"
-				? "Current non-deleted Q3 generation records by admission month and status. Failures and pending jobs stay visible separately from completed-generation latency. These records do not reconstruct deleted records, rejected preflight requests, or attempt-level retry history."
-				: `${definition.preparation.gap} Diagnostic rows support review and do not certify the metric headline.`;
+		queryId === "platform_latency_by_model_duration_q3"
+			? "Quarterly P95 is calculated from raw Q3 completed-generation durations within each model and explicit duration band, not averaged monthly P95s. Requires model, non-negative duration and valid start/end timestamps. Failures and pending jobs are reported separately. No single overall latency is implied."
+			: queryId === "platform_latency_by_model_duration"
+				? "Monthly P95 includes completed generations with model, non-negative duration and valid start/end timestamps. Failures and pending jobs are reported separately. Duration bands are explicit reporting bands; no single overall latency is implied."
+				: queryId === "platform_generation_status_diagnostic"
+					? "Current non-deleted Q3 generation records by admission month and status. Failures and pending jobs stay visible separately from completed-generation latency. These records do not reconstruct deleted records, rejected preflight requests, or attempt-level retry history."
+					: `${definition.preparation.gap} Diagnostic rows support review and do not certify the metric headline.`;
 	rowsFor(
 		metricId,
 		label,

@@ -73,13 +73,16 @@ type MonthlyEconomics = {
 	freeInferenceCostUsd: number;
 	paidInferenceCostUsd: number;
 	prodInferenceCostUsd: number;
-	totalModalCostUsd: number;
-	stagingOtherCostUsd: number;
-	contributionMarginUsd: number;
-	contributionMarginPct: number;
+	totalModalCostUsd: number | null;
+	stagingOtherCostUsd: number | null;
+	contributionMarginUsd: number | null;
+	contributionMarginPct: number | null;
 	freeFrames: number;
 	paidFrames: number;
 	estimated: boolean;
+	costStatus: "matched" | "estimated" | "incomplete";
+	unpricedModels: string[];
+	unallocatedModalCostUsd: number;
 };
 
 function json(value: unknown): Prisma.InputJsonValue {
@@ -495,8 +498,13 @@ export function economicsResult(
 			columns: [
 				column("month", "Month", "type/DateTime"),
 				column("prod_inference_cost_usd", "Production inference cost"),
+				column("cost_status", "Cost coverage", "type/Text"),
 			],
-			rows: monthly.map((row) => [row.month, row.prodInferenceCostUsd]),
+			rows: monthly.map((row) => [
+				row.month,
+				row.costStatus === "incomplete" ? null : row.prodInferenceCostUsd,
+				row.costStatus,
+			]),
 		};
 	}
 	if (query.report === "usage-revenue") {
@@ -513,8 +521,13 @@ export function economicsResult(
 			columns: [
 				column("month", "Month", "type/DateTime"),
 				column("contribution_margin_pct", "Inference contribution margin"),
+				column("cost_status", "Cost coverage", "type/Text"),
 			],
-			rows: monthly.map((row) => [row.month, row.contributionMarginPct]),
+			rows: monthly.map((row) => [
+				row.month,
+				row.contributionMarginPct,
+				row.costStatus,
+			]),
 		};
 	}
 	if (query.report === "margin-history") {
@@ -523,13 +536,20 @@ export function economicsResult(
 				column("month", "Month", "type/DateTime"),
 				column("usage_revenue_usd", "Usage revenue"),
 				column("prod_inference_cost_usd", "Production inference cost"),
+				column(
+					"matched_model_cost_subtotal_usd",
+					"Matched-model cost subtotal",
+				),
 				column("contribution_margin_usd", "Contribution margin"),
+				column("cost_status", "Cost coverage", "type/Text"),
 			],
 			rows: monthly.map((row) => [
 				row.month,
 				row.usageRevenueUsd,
+				row.costStatus === "incomplete" ? null : row.prodInferenceCostUsd,
 				row.prodInferenceCostUsd,
 				row.contributionMarginUsd,
+				row.costStatus,
 			]),
 		};
 	}
@@ -629,13 +649,20 @@ export function buildMonthlyEconomics(
 			let usageRevenueUsd = 0;
 			let freeFrames = 0;
 			let paidFrames = 0;
+			let estimated = false;
+			const unpricedModels: string[] = [];
 			for (const [model, values] of models) {
 				freeFrames += values.free;
 				paidFrames += values.paid;
 				usageRevenueUsd += values.usageRevenueUsd;
 				const total = values.free + values.paid;
-				const cost =
-					actual?.get(model) ?? total * (costPerFrame.get(model) ?? 0);
+				const matchedCost = actual?.get(model);
+				const rate = costPerFrame.get(model);
+				if (total > 0 && matchedCost === undefined) {
+					if (rate === undefined) unpricedModels.push(model);
+					else estimated = true;
+				}
+				const cost = matchedCost ?? total * (rate ?? 0);
 				if (total > 0) {
 					freeCost += cost * (values.free / total);
 					paidCost += cost * (values.paid / total);
@@ -644,8 +671,21 @@ export function buildMonthlyEconomics(
 			const prodCost = freeCost + paidCost;
 			const totalModalCost = actual
 				? [...actual.values()].reduce((sum, value) => sum + value, 0)
-				: prodCost;
-			const margin = usageRevenueUsd - prodCost;
+				: null;
+			const unallocatedModalCostUsd = actual
+				? [...actual.entries()].reduce((sum, [model, cost]) => {
+						const frames = models.get(model);
+						return sum + (frames && frames.free + frames.paid > 0 ? 0 : cost);
+					}, 0)
+				: 0;
+			const costStatus =
+				unpricedModels.length > 0 || unallocatedModalCostUsd > 0
+					? "incomplete"
+					: estimated
+						? "estimated"
+						: "matched";
+			const margin =
+				costStatus === "incomplete" ? null : usageRevenueUsd - prodCost;
 			return {
 				month: `${period}-01T00:00:00.000Z`,
 				usageRevenueUsd,
@@ -653,13 +693,21 @@ export function buildMonthlyEconomics(
 				paidInferenceCostUsd: paidCost,
 				prodInferenceCostUsd: prodCost,
 				totalModalCostUsd: totalModalCost,
-				stagingOtherCostUsd: Math.max(0, totalModalCost - prodCost),
+				stagingOtherCostUsd:
+					costStatus !== "matched" || totalModalCost === null
+						? null
+						: Math.max(0, totalModalCost - prodCost),
 				contributionMarginUsd: margin,
 				contributionMarginPct:
-					usageRevenueUsd > 0 ? (margin / usageRevenueUsd) * 100 : 0,
+					margin !== null && usageRevenueUsd > 0
+						? (margin / usageRevenueUsd) * 100
+						: null,
 				freeFrames,
 				paidFrames,
-				estimated: actual == null,
+				estimated,
+				costStatus,
+				unpricedModels,
+				unallocatedModalCostUsd,
 			};
 		});
 }

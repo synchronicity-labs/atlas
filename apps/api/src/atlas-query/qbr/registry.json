@@ -366,7 +366,7 @@
 			"unit": "percent",
 			"definition": "Fixed base-period spending cohort: later realized usage value / base-period usage value, including zeros and excluding new customers. Specify monthly or quarterly cohort; not a mean of monthly retention rates.",
 			"notApplicable": false,
-			"automated": false,
+			"automated": true,
 			"preparation": {
 				"owner": "Sanjit",
 				"ownerStatus": "Accountable lead to chase; manual preparer may be delegated",
@@ -374,11 +374,11 @@
 					"label": "QBR outline lead assignment",
 					"url": "https://sync-qbr.pr.sync.so/#quarter=2026-Q3&slide=q3-sales"
 				},
-				"gap": "Q152/Q153 are product-wide or tier-split usage NDR; Q210 is usage run-rate, not a fixed enterprise starting cohort.",
-				"dataLocation": "Metric-specific invoice, signed agreement/SOW, metered usage, or Finance close records as required by the authored basis, joined to customer-parent and door mapping. Outline workbook links are definition/planning references, not data stores.",
-				"manualAsk": "For Enterprise usage retention, provide Q3 rows with period, customer-parent ID, door, economic event type and event ID/date, amount/currency, credits/refunds/adjustments, duplicate/internal-consumption exclusion flag, and Finance tie-out. Apply this exact basis: Fixed base-period spending cohort: later realized usage value / base-period usage value, including zeros and excluding new customers. Specify monthly or quarterly cohort; not a mean of monthly retention rates. Keep subscription, metered usage, earned services, bookings, and cash in separate event classes. Include UTC extraction time and identify missing source rows; do not mix event classes or count an economic item twice.",
-				"q4Build": "Join the active Enterprise/Channel agreement roster and signed agreement records to monthly usage/netSyncRevenue by canonical account and customer-parent ID. Preserve agreement start/end state, contract value and actual term; compute door-specific eligibility/team qualification and period signatures from the authored definition. Keep zero-use active accounts, unmapped accounts, invoice/usage and signed-contract events distinct; publish unmatched coverage and Finance tie-out.",
-				"workstream": "finance_close",
+				"gap": "Automated QBR result is realized usage-value retention over a fixed Stripe-customer cohort. The current Enterprise RevenueDoor policy is applied retrospectively; the source has no historical effective-dated door assignment or billingVersion. This is not invoiced revenue or contracted-value retention.",
+				"dataLocation": "Governed Metabase database 166 query over sync_prod.sync_usage3, grouped by Stripe customer and UTC usage month; the current Enterprise RevenueDoor policy and subscribed-organization eligibility are applied by the shared query preparation path.",
+				"manualAsk": "Sanjit: review the automated monthly and Q2-to-Q3 Enterprise usage-retention result and confirm whether applying current RevenueDoor assignment retrospectively is acceptable. Request historical door assignment or billingVersion evidence only if needed for the QBR interpretation.",
+				"q4Build": "Maintain the governed monthly and pooled-quarter fixed Stripe-customer usage query in apps/api/src/atlas-query/qbr/queries.ts. Keep the current-policy retrospective caveat explicit, validate source completeness and ratio arithmetic, and retain query provenance on every refresh. Use snapshot-bound verification for verified results. Do not substitute invoiced revenue or contracted value.",
+				"workstream": "sales_crm",
 				"sources": [
 					{
 						"label": "Atlas Q152 — Latest complete-month usage NDR",

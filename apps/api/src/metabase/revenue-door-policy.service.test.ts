@@ -123,6 +123,7 @@ describe("applyRevenueDoorPolicy", () => {
 		expect(usesRevenueDoorPolicy(1122)).toBe(true);
 		expect(usesRevenueDoorPolicy(1123)).toBe(true);
 		expect(usesRevenueDoorPolicy(1125)).toBe(true);
+		expect(usesRevenueDoorPolicy(435)).toBe(false);
 		expect(usesRevenueDoorPolicy(1126)).toBe(false);
 		expect(usesSubscribedRevenueEligibility(1001)).toBe(true);
 		expect(usesSubscribedRevenueEligibility(1003)).toBe(false);
@@ -150,6 +151,7 @@ describe("applyRevenueDoorPolicy", () => {
 		expect(usesEnterpriseRevenueDoorPolicy(1118)).toBe(false);
 		expect(usesEnterpriseRevenueDoorPolicy(1119)).toBe(true);
 		expect(usesEnterpriseRevenueDoorPolicy(1122)).toBe(true);
+		expect(usesEnterpriseRevenueDoorPolicy(435)).toBe(false);
 	});
 
 	it("filters usage and subscription rows before the saved query runs", () => {

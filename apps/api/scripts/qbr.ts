@@ -3,17 +3,38 @@ import { readFile, writeFile } from "node:fs/promises";
 import { db } from "@crm/db";
 import { Logger } from "@nestjs/common";
 import { AtlasQbrService } from "../src/atlas-query/qbr/qbr.service";
-import { qbrQuarterValue, qbrQueries } from "../src/atlas-query/qbr/queries";
+import {
+	isQbrEnterpriseUsageRetentionQuestion,
+	isQbrPlgQuestion,
+	qbrQuarterValue,
+	qbrQueries,
+} from "../src/atlas-query/qbr/queries";
 import registry from "../src/atlas-query/qbr/registry.json";
 import { MetabaseClient } from "../src/metabase/metabase.client";
 import { metabaseConfig } from "../src/metabase/metabase.config";
 import { prepareGovernedMetabaseQuery } from "../src/metabase/prepare-metabase-query";
-import { RevenueDoorPolicyService } from "../src/metabase/revenue-door-policy.service";
+import {
+	RevenueDoorPolicyService,
+	usesSubscribedRevenueEligibility,
+} from "../src/metabase/revenue-door-policy.service";
 import { TinybirdEligibilityService } from "../src/metabase/tinybird-eligibility.service";
 
 const logger = new Logger("QbrCollection");
 const [command, file] = process.argv.slice(2);
 const service = new AtlasQbrService(db);
+
+function expectedPopulationPolicy(
+	metricId: string,
+	questionNumber: number,
+	name: string,
+	queryText: string,
+) {
+	if (isQbrEnterpriseUsageRetentionQuestion(`qbr:${metricId}`)) return "MONEY";
+	return !isQbrPlgQuestion(`qbr:${metricId}`) &&
+		usesSubscribedRevenueEligibility(questionNumber, name, queryText)
+		? "MONEY"
+		: "PRODUCT_ACTIVITY";
+}
 
 try {
 	assert(
@@ -38,11 +59,13 @@ try {
 		const queries = qbrQueries();
 		const rows: Record<string, unknown> = {};
 		for (const [id, query] of Object.entries(queries)) {
+			const number = 0;
+			const name =
+				registry.metrics.find((metric) => metric.id === id)?.label ?? id;
 			const prepared = await prepareGovernedMetabaseQuery(
 				{
-					number: 0,
-					name:
-						registry.metrics.find((metric) => metric.id === id)?.label ?? id,
+					number,
+					name,
 					sourceExternalId: `qbr:${id}`,
 					databaseExternalId: query.databaseExternalId,
 				},
@@ -55,7 +78,10 @@ try {
 				prepared.governed?.applied && prepared.governed.eligibility.complete,
 				`Eligibility governance is incomplete for ${id}.`,
 			);
-			assert.equal(prepared.governed.eligibility.policy, "PRODUCT_ACTIVITY");
+			assert.equal(
+				prepared.governed.eligibility.policy,
+				expectedPopulationPolicy(id, number, name, query.queryText),
+			);
 			assert.equal(
 				prepared.governed.eligibility.scope,
 				query.databaseExternalId === "166"
@@ -73,7 +99,7 @@ try {
 				rows: result.rows,
 				governance: {
 					...prepared.governed.eligibility,
-					revenueDoorComplete: prepared.revenueDoor?.evidence.complete ?? null,
+					revenueDoor: prepared.revenueDoor?.evidence ?? null,
 				},
 			};
 		}
@@ -112,6 +138,7 @@ try {
 		>();
 		let observations = 0;
 		for (const [id, query] of Object.entries(queries)) {
+			assert(bindings[id], `QBR question ${id} is not registered.`);
 			let result = results.get(query.queryText);
 			if (!result) {
 				const prepared = await prepareGovernedMetabaseQuery(
@@ -131,13 +158,27 @@ try {
 					"Population filter must be completely applied.",
 				);
 				const population = prepared.governed.eligibility;
-				assert.equal(population.policy, "PRODUCT_ACTIVITY");
+				assert.equal(
+					population.policy,
+					expectedPopulationPolicy(
+						id,
+						bindings[id],
+						registry.metrics.find((m) => m.id === id)?.label ?? id,
+						query.queryText,
+					),
+				);
 				assert.equal(
 					population.scope,
 					query.databaseExternalId === "166"
 						? "SUBSCRIBED_ORGANIZATIONS"
 						: "ALL_IDENTITIES",
 				);
+				if (query.databaseExternalId === "166")
+					assert(
+						prepared.revenueDoor?.evidence.applied &&
+							prepared.revenueDoor.evidence.complete,
+						"A complete revenue-door policy must be applied.",
+					);
 				result = await client.preview(prepared.input);
 				results.set(query.queryText, result);
 			}
@@ -172,6 +213,12 @@ try {
 					row.denominator == null ? null : numeric(row.denominator);
 				const quarterValue =
 					row.quarter_value == null ? null : numeric(row.quarter_value);
+				const quarterNumerator =
+					row.quarter_numerator == null ? null : numeric(row.quarter_numerator);
+				const quarterDenominator =
+					row.quarter_denominator == null
+						? null
+						: numeric(row.quarter_denominator);
 				if (denominator !== null) {
 					assert(
 						denominator > 0 && numerator !== null && numerator >= 0,
@@ -184,12 +231,31 @@ try {
 						"Source ratio does not reconcile",
 					);
 				}
+				if (quarterDenominator !== null) {
+					assert(
+						quarterDenominator > 0 &&
+							quarterNumerator !== null &&
+							quarterNumerator >= 0 &&
+							quarterValue !== null,
+						"Invalid quarter ratio base",
+					);
+					assert(
+						Math.abs(
+							quarterValue -
+								Math.round((10000 * quarterNumerator) / quarterDenominator) /
+									100,
+						) < 0.011,
+						"Source quarter ratio does not reconcile",
+					);
+				}
 				return {
 					period,
 					value,
 					numerator,
 					denominator,
 					quarterValue,
+					quarterNumerator,
+					quarterDenominator,
 					status: "provisional" as const,
 					asOf,
 					dataThrough: null,
@@ -205,7 +271,12 @@ try {
 			if (refreshStartedAt.getTime() >= Date.UTC(2026, 9, 1)) {
 				const quarter = qbrQuarterValue(id, values, refreshStartedAt);
 				const observations = values.map(
-					({ quarterValue: _, ...value }) => value,
+					({
+						quarterValue: _,
+						quarterNumerator: __,
+						quarterDenominator: ___,
+						...value
+					}) => value,
 				);
 				if (quarter)
 					observations.push({

@@ -16,11 +16,16 @@ test("QBR queries cover exactly the automated metrics with closed UTC month boun
 			expect(query.queryText).toContain(
 				"sentAt')::timestamptz < timestamptz '2026-09-01",
 			);
+		} else if (id === "enterprise_usage_retention") {
+			expect(query.queryText).toContain(
+				"periods.period_start < toDate('2026-09-01')",
+			);
+			expect(query.queryText).not.toContain("toDate('2026-10-01')");
 		} else {
 			expect(query.queryText).not.toContain("2026-10-01");
 		}
 		expect(isQbrPlgQuestion(`qbr:${id}`)).toBe(
-			query.databaseExternalId === "166",
+			query.databaseExternalId === "166" && id !== "enterprise_usage_retention",
 		);
 	}
 	expect(
@@ -181,4 +186,66 @@ test("PLG active rate stays unavailable without subscription history", () => {
 	expect(qbrQueries(new Date("2026-10-02T00:00:00Z"))).not.toHaveProperty(
 		"plg_active_rate",
 	);
+});
+
+test("Enterprise usage retention uses a fixed Stripe cohort for monthly and Q3 NDR", () => {
+	const query = qbrQueries(
+		new Date("2026-10-02T00:00:00Z"),
+	).enterprise_usage_retention;
+	expect(query?.databaseExternalId).toBe("166");
+	expect(query?.queryText).toContain("stripeCustomerId as stripe_customer_id");
+	expect(query?.queryText).toContain("generationCostMillicents / 100000.0");
+	expect(query?.queryText).toContain("base.month_start = periods.cohort_month");
+	expect(query?.queryText).toContain(
+		"current.month_start = periods.period_start",
+	);
+	expect(query?.queryText).toContain("left join customer_usage current");
+	expect(query?.queryText).toContain("q2_base as");
+	expect(query?.queryText).toContain("q3_usage as");
+	expect(query?.queryText).toContain("quarter_numerator");
+	expect(query?.queryText).not.toContain("sync_stripe_invoice");
+	expect(query?.queryText).not.toContain("netSyncRevenue");
+	expect(
+		registry.metrics.find(
+			(metric) => metric.id === "enterprise_usage_retention",
+		)?.automated,
+	).toBe(true);
+	expect(isQbrPlgQuestion("qbr:enterprise_usage_retention")).toBe(false);
+});
+
+test("Enterprise Q3 NDR pools usage over the Q2 Stripe cohort", () => {
+	const result = qbrQuarterValue(
+		"enterprise_usage_retention",
+		[
+			{
+				period: "2026-07",
+				value: 94.93,
+				numerator: 12680.7,
+				denominator: 13358.31,
+			},
+			{
+				period: "2026-08",
+				value: 85.82,
+				numerator: 11026.21,
+				denominator: 12847.98,
+			},
+			{
+				period: "2026-09",
+				value: 153.12,
+				numerator: 17135.65,
+				denominator: 11190.73,
+				quarterValue: 91.63,
+				quarterNumerator: 36884.11129,
+				quarterDenominator: 40254.06514,
+			},
+		],
+		new Date("2026-10-02T00:00:00Z"),
+	);
+	expect(result).toEqual({
+		period: "2026-Q3",
+		value: 91.63,
+		numerator: 36884.11129,
+		denominator: 40254.06514,
+	});
+	expect(result?.value).not.toBeCloseTo((94.93 + 85.82 + 153.12) / 3, 0);
 });

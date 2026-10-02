@@ -1,7 +1,10 @@
 import { describe, expect, it, mock } from "bun:test";
 import type { MetabasePreviewInput } from "./metabase.client";
 import { prepareGovernedMetabaseQuery } from "./prepare-metabase-query";
-import type { RevenueDoorPolicyService } from "./revenue-door-policy.service";
+import type {
+	RevenueDoorPolicyEvidence,
+	RevenueDoorPolicyService,
+} from "./revenue-door-policy.service";
 import {
 	buildTinybirdEligibility,
 	governTinybirdQuery,
@@ -33,6 +36,9 @@ function dependencies() {
 			govern: mock(governTinybirdQuery),
 		},
 		policy: {
+			compileEnterprise: mock(async () => {
+				throw new Error("Unexpected Enterprise revenue-door compilation");
+			}),
 			compileForQuestion: mock(async () => {
 				throw new Error("Unexpected revenue-door compilation");
 			}),
@@ -48,6 +54,82 @@ const question = {
 };
 
 describe("shared Metabase preview and refresh preparation", () => {
+	it("governs Enterprise usage retention with current Enterprise and revenue policies", async () => {
+		const { client, eligibility, policy } = dependencies();
+		const compileEnterprise = mock(async (queryText: string) => ({
+			queryText,
+			evidence: {
+				applied: true,
+				complete: true,
+				policyId: "company-revenue-doors",
+				status: "COMPLETE",
+				matchMode: "INCLUDE_ENTERPRISE",
+				door: "ENTERPRISE",
+				ruleCount: 1,
+				excludedPlans: [],
+				excludedDomains: [],
+				excludedOrganizationIds: [],
+				includedPlans: [],
+				includedDomains: [],
+				includedOrganizationIds: [],
+				includedOrganizationLabels: [],
+				unresolvedDomains: [],
+				contentHash: "policy-content-hash",
+			} satisfies RevenueDoorPolicyEvidence,
+		}));
+		const prepared = await prepareGovernedMetabaseQuery(
+			{
+				number: 9876,
+				name: "Enterprise usage retention",
+				sourceExternalId: "qbr:enterprise_usage_retention",
+				databaseExternalId: "166",
+			},
+			{
+				language: "SQL",
+				queryText:
+					"select generationCostMillicents from sync_prod.sync_usage3 where usage_ndr_pct > 0",
+			},
+			client,
+			eligibility,
+			{ ...policy, compileEnterprise },
+		);
+		expect(compileEnterprise).toHaveBeenCalledTimes(1);
+		expect(policy.compileForQuestion).not.toHaveBeenCalled();
+		expect(eligibility.currentForRevenue).toHaveBeenCalledTimes(1);
+		expect(eligibility.currentForPaidActivity).not.toHaveBeenCalled();
+		expect(prepared.governed?.eligibility).toMatchObject({
+			policy: "MONEY",
+			scope: "SUBSCRIBED_ORGANIZATIONS",
+			complete: true,
+		});
+		expect(prepared.revenueDoor?.evidence).toMatchObject({
+			applied: true,
+			complete: true,
+			matchMode: "INCLUDE_ENTERPRISE",
+		});
+	});
+
+	it("does not intercept an unrelated question with public number 435", async () => {
+		const { client, eligibility, policy } = dependencies();
+		const prepared = await prepareGovernedMetabaseQuery(
+			{
+				number: 435,
+				name: "Unrelated source",
+				sourceExternalId: "other:unrelated",
+				databaseExternalId: "166",
+			},
+			{ language: "SQL", queryText: "select 1" },
+			client,
+			eligibility,
+			policy,
+		);
+		expect(policy.compileEnterprise).not.toHaveBeenCalled();
+		expect(policy.compileForQuestion).not.toHaveBeenCalled();
+		expect(eligibility.currentForRevenue).not.toHaveBeenCalled();
+		expect(prepared.revenueDoor).toBeNull();
+		expect(prepared.governed?.eligibility.policy).toBe("PRODUCT_ACTIVITY");
+	});
+
 	it("requires complete door policy and paid activity eligibility for QBR PLG", async () => {
 		const { client, eligibility, policy } = dependencies();
 		const qbr = {

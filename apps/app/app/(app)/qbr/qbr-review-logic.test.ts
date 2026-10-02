@@ -64,6 +64,39 @@ describe("QBR review drafts", () => {
 		expect(draft).not.toContain("Hi Tanmay");
 	});
 
+	test("labels each selected period from its own source type", () => {
+		expect(
+			observationReviewLabel({
+				...suppliedAndMissing.observations["2026-08"],
+				sourceType: "automated_query",
+				evidenceSource: {
+					label: "Governed report snapshot",
+					url: "https://atlas.pr.sync.so/questions/422",
+				},
+			} as QbrMetric["observations"][string]),
+		).toBe("Atlas query result · provisional");
+		expect(
+			observationReviewLabel({
+				...suppliedAndMissing.observations["2026-08"],
+				status: "reported",
+				reportedBy: "Platform owner",
+				sourceType: "reported",
+			} as QbrMetric["observations"][string]),
+		).toBe("External input · reported by Platform owner");
+		expect(
+			observationReviewLabel({
+				...suppliedAndMissing.observations["2026-08"],
+				status: "provisional",
+				reportedBy: "Platform owner",
+				sourceType: "reported",
+				evidenceSource: {
+					label: "Source query export",
+					url: "https://atlas.pr.sync.so/questions/422",
+				},
+			} as QbrMetric["observations"][string]),
+		).toBe("External input · provisional · reported by Platform owner");
+	});
+
 	test("labels reviewed evidence distinctly and never requests it again", () => {
 		const previousObservation = suppliedAndMissing.observations["2026-08"];
 		if (!previousObservation)

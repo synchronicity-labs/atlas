@@ -182,11 +182,14 @@ type QbrVerification = z.infer<typeof verificationSchema> & {
 	reviewedQueryHash: string;
 };
 
+type QbrObservationSourceType = "automated_query" | "reported" | "unspecified";
+
 type QbrReportObservation = {
 	value: number;
 	numerator: number | null;
 	denominator: number | null;
 	status: "provisional" | "reported" | "verified";
+	sourceType: QbrObservationSourceType;
 	source: { label: string; url: string };
 	asOf: string;
 	dataThrough: string | null;
@@ -239,6 +242,13 @@ type StoredObservation = Omit<Observation, "cohortMonth" | "reportedBy"> & {
 	sourceQueryHash?: string;
 };
 type QueryDefinition = { queryText: string; databaseExternalId: string };
+
+function observationSourceType(observation: StoredObservation) {
+	if (observation.status === "reported" || observation.reportedBy?.trim())
+		return "reported";
+	if (observation.sourceQueryHash) return "automated_query";
+	return "unspecified";
+}
 
 function hash(value: unknown): string {
 	const canonical = (item: unknown): unknown => {
@@ -1293,6 +1303,7 @@ export class AtlasQbrService {
 						numerator: row.numerator,
 						denominator: row.denominator,
 						status: row.status,
+						sourceType: observationSourceType(row),
 						source: row.source,
 						asOf: row.asOf,
 						dataThrough: row.dataThrough,

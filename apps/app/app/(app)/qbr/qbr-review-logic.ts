@@ -62,15 +62,21 @@ export function observationReviewLabel(
 		return hasReviewProof(observation)
 			? "Reviewed source · verified"
 			: "Verified status · review evidence incomplete";
-	if (
-		observation.status === "provisional" &&
-		/source query/i.test(observation.evidenceSource.label)
-	)
-		return "Atlas query result · provisional";
+	if (observation.sourceType === "reported")
+		return observation.reportedBy
+			? `External input · ${observation.status === "provisional" ? "provisional · " : ""}reported by ${observation.reportedBy.trim()}`
+			: `Reported input${observation.status === "provisional" ? " · provisional" : ""} · review required`;
 	if (observation.status === "reported")
 		return observation.reportedBy
 			? `External input · reported by ${observation.reportedBy}`
 			: "Reported input · review required";
+	if (
+		observation.status === "provisional" &&
+		(observation.sourceType === "automated_query" ||
+			(observation.sourceType === undefined &&
+				/source query/i.test(observation.evidenceSource.label)))
+	)
+		return "Atlas query result · provisional";
 	return "Provisional · review required";
 }
 

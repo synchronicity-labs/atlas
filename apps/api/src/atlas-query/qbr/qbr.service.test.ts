@@ -912,17 +912,18 @@ describe("AtlasQbrService", () => {
 		);
 	});
 
-	test("exports observations in one batch with canonical question URLs and separate evidence URLs", async () => {
+	test("exports observation provenance per period with canonical question and evidence URLs", async () => {
 		const question = {
 			publicNumber: 246,
 			sourceId: "atlas-qbr-source",
-			sourceExternalId: "qbr:finance_net_burn",
+			sourceExternalId: "qbr:platform_latency",
 			versions: [
 				{
 					visualization: {
 						qbr: {
-							metricId: "finance_net_burn",
-							definitionHash: definitionHash("finance_net_burn"),
+							metricId: "platform_latency",
+							definitionHash: definitionHash("platform_latency"),
+							queryHash: "governed-query-hash",
 						},
 					},
 				},
@@ -944,22 +945,46 @@ describe("AtlasQbrService", () => {
 			"source_label",
 			"source_url",
 			"snapshotId",
+			"sourceQueryHash",
 		];
 		const values = [
-			"2026-07",
-			9200,
-			null,
-			null,
-			"reported",
-			{ label: "Finance close", url: "https://finance.example/close" },
-			"2026-08-01T00:00:00.000Z",
-			null,
-			null,
-			"Finance owner",
-			definitionHash("finance_net_burn"),
-			"Atlas question 246",
-			"https://atlas.pr.sync.so/questions/246",
-			"snapshot-qbr",
+			[
+				"2026-07",
+				9200,
+				null,
+				null,
+				"reported",
+				{ label: "Platform owner", url: "https://platform.example/review" },
+				"2026-08-01T00:00:00.000Z",
+				null,
+				null,
+				"Platform owner",
+				definitionHash("platform_latency"),
+				"Atlas question 246",
+				"https://atlas.pr.sync.so/questions/246",
+				"snapshot-qbr",
+				"governed-query-hash",
+			],
+			[
+				"2026-08",
+				8800,
+				null,
+				null,
+				"provisional",
+				{
+					label: "Atlas source query result",
+					url: "https://atlas.pr.sync.so/questions/246",
+				},
+				"2026-09-01T00:00:00.000Z",
+				null,
+				null,
+				null,
+				definitionHash("platform_latency"),
+				"Atlas question 246",
+				"https://atlas.pr.sync.so/questions/246",
+				"snapshot-qbr",
+				"governed-query-hash",
+			],
 		];
 		const questionsFindMany = mock(
 			async (args: {
@@ -979,8 +1004,8 @@ describe("AtlasQbrService", () => {
 			{
 				id: "snapshot-qbr",
 				sourceId: "atlas-qbr-source",
-				questionExternalId: "qbr:finance_net_burn",
-				rows: [values],
+				questionExternalId: "qbr:platform_latency",
+				rows: values,
 				columns: names.map((name) => ({ name })),
 			},
 		]);
@@ -989,14 +1014,17 @@ describe("AtlasQbrService", () => {
 			resultSnapshot: { findMany: snapshotsFindMany },
 		} as unknown as Db;
 		const report = await new AtlasQbrService(db).exportReport("2026-Q3");
-		const metric = report.metrics.finance_net_burn as {
+		const metric = report.metrics.platform_latency as {
 			question: { url: string };
 			observations: Record<
 				string,
 				{
 					source: { url: string };
 					evidenceSource: { url: string };
-					reportedBy: string;
+					reportedBy?: string;
+					sourceType: string;
+					status: string;
+					dataThrough: string | null;
 				}
 			>;
 		};
@@ -1016,8 +1044,18 @@ describe("AtlasQbrService", () => {
 			metric.question.url,
 		);
 		expect(metric.observations["2026-07"]?.evidenceSource.url).toBe(
-			"https://finance.example/close",
+			"https://platform.example/review",
 		);
-		expect(metric.observations["2026-07"]?.reportedBy).toBe("Finance owner");
+		expect(metric.observations["2026-07"]).toMatchObject({
+			reportedBy: "Platform owner",
+			sourceType: "reported",
+			status: "reported",
+			dataThrough: null,
+		});
+		expect(metric.observations["2026-08"]).toMatchObject({
+			sourceType: "automated_query",
+			status: "provisional",
+			dataThrough: null,
+		});
 	});
 });

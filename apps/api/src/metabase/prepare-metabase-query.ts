@@ -28,6 +28,57 @@ export type MetabaseQuestionContext = {
 	databaseExternalId: string | null;
 };
 
+function dedupeWeeklyRevenueStripePayments(
+	question: MetabaseQuestionContext,
+	language: "SQL" | "MBQL" | "API",
+	queryText: string,
+): string {
+	if (
+		language !== "SQL" ||
+		question.databaseExternalId !== "166" ||
+		!question.sourceExternalId?.startsWith("weekly-revenue:")
+	) {
+		return queryText;
+	}
+	return queryText.replace(
+		/\bsync_prod\.sync_stripe_payments\b/gi,
+		`(
+  select
+    stripe_payment_source.id as id,
+    any(stripe_payment_source.payload) as payload,
+    any(stripe_payment_source.eventType) as eventType,
+    any(stripe_payment_source."organizationId") as "organizationId",
+    any(stripe_payment_source.customerId) as customerId,
+    any(stripe_payment_source.source) as source,
+    any(stripe_payment_source.amount) as amount,
+    any(stripe_payment_source.currency) as currency,
+    any(stripe_payment_source.credits) as credits,
+    any(stripe_payment_source.status) as status,
+    any(stripe_payment_source."billingVersion") as "billingVersion",
+    any(stripe_payment_source.orgPlan) as orgPlan,
+    any(stripe_payment_source."createdAt") as "createdAt"
+  from sync_prod.sync_stripe_payments as stripe_payment_source
+  group by stripe_payment_source.id
+  having throwIf(
+    isNull(stripe_payment_source.id) or trimBoth(stripe_payment_source.id) = '' or uniqExact(tuple(
+      stripe_payment_source.eventType,
+      stripe_payment_source."organizationId",
+      stripe_payment_source.customerId,
+      stripe_payment_source.source,
+      stripe_payment_source.amount,
+      stripe_payment_source.currency,
+      stripe_payment_source.credits,
+      stripe_payment_source.status,
+      stripe_payment_source."billingVersion",
+      stripe_payment_source.orgPlan,
+      stripe_payment_source."createdAt"
+    )) != 1,
+    'Weekly revenue has a missing or conflicting Stripe payment ID'
+  ) = 0
+)`,
+	);
+}
+
 export async function prepareGovernedMetabaseQuery(
 	question: MetabaseQuestionContext,
 	input: Pick<MetabasePreviewInput, "language" | "queryText">,
@@ -50,6 +101,11 @@ export async function prepareGovernedMetabaseQuery(
 		),
 		databaseExternalId: question.databaseExternalId,
 	});
+	prepared.queryText = dedupeWeeklyRevenueStripePayments(
+		question,
+		prepared.language,
+		prepared.queryText,
+	);
 	assertReadOnlyQuery(prepared.language, prepared.queryText);
 	const qbrEnterpriseUsageRetention = isQbrEnterpriseUsageRetentionQuestion(
 		question.sourceExternalId,

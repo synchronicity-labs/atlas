@@ -83,7 +83,9 @@ async function withRollbackFixture(
 					if (!latest || !metadata?.queryHash)
 						throw new Error(`Missing registered QBR query for ${metricId}.`);
 					if (!question.sourceId)
-						throw new Error(`Missing source for registered QBR query ${metricId}.`);
+						throw new Error(
+							`Missing source for registered QBR query ${metricId}.`,
+						);
 					questions.set(metricId, {
 						id: question.id,
 						queryHash: metadata.queryHash,

@@ -27,6 +27,25 @@ export function qbrQuarterValue(
 	now = new Date(),
 ) {
 	if (now.getTime() < Date.UTC(2026, 9, 1)) return null;
+	if (metricId === "product_return_lift") {
+		if (now.getTime() < Date.UTC(2026, 9, 15)) return null;
+		const quarterValues = monthlyValues
+			.map((item) => item.quarterValue)
+			.filter((value): value is number => value != null);
+		const quarterValue = quarterValues[0];
+		if (
+			quarterValue === undefined ||
+			quarterValues.some((value) => !Number.isFinite(value)) ||
+			new Set(quarterValues).size !== 1
+		)
+			return null;
+		return {
+			period: "2026-Q3" as const,
+			value: quarterValue,
+			numerator: null,
+			denominator: null,
+		};
+	}
 	const endpointMovements = [
 		"plg_teams_adds",
 		"plg_teams_losses",

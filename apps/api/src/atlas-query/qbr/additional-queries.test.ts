@@ -8,7 +8,9 @@ test("platform diagnostics use source-backed Q3 fields and preserve the required
 	const latency = additionalQbrQueries.platform_latency_by_model_duration;
 	expect(latency?.databaseExternalId).toBe("34");
 	expect(latency?.queryText).toContain("percentile_cont(0.95)");
-	expect(latency?.queryText).toContain("extract(epoch from (g.finished_at - g.started_at)) * 1000");
+	expect(latency?.queryText).toContain(
+		"extract(epoch from (g.finished_at - g.started_at)) * 1000",
+	);
 	expect(latency?.queryText).toContain("g.model_name");
 	expect(latency?.queryText).toContain("when g.duration <= 5 then '0-5s'");
 	expect(latency?.queryText).toContain("'>5-10s'");
@@ -31,8 +33,12 @@ test("platform diagnostics use source-backed Q3 fields and preserve the required
 	expect(output?.queryText).toContain("g.status::text = 'COMPLETED'");
 	expect(output?.queryText).toContain("g.output_media_length > 0");
 	expect(output?.queryText).toContain("g.deleted_at is null");
-	expect(additionalQbrQueries.platform_generation_status_diagnostic?.queryText).toContain("generation_status");
-	expect(additionalQbrQueries.platform_generation_status_diagnostic?.queryText).toContain("last_updated_at");
+	expect(
+		additionalQbrQueries.platform_generation_status_diagnostic?.queryText,
+	).toContain("generation_status");
+	expect(
+		additionalQbrQueries.platform_generation_status_diagnostic?.queryText,
+	).toContain("last_updated_at");
 });
 
 test("marketing source probes expose site overlap and missing signup attribution", () => {
@@ -60,7 +66,9 @@ test("marketing source probes expose site overlap and missing signup attribution
 	if (signups?.source !== "posthog") throw new Error("Expected PostHog query.");
 	expect(signups.personPolicy).toBe("exclude_banned_product_users");
 	expect(signups.query).toContain("group by person_id");
-	expect(signups.query).toContain("toStartOfMonth(toTimeZone(signup_at, 'UTC'))");
+	expect(signups.query).toContain(
+		"toStartOfMonth(toTimeZone(signup_at, 'UTC'))",
+	);
 	expect(signups.query).toContain("{{atlas_product_user_eligible}}");
 	expect(signups.query).toContain("missing_first_touch_people");
 	expect(signups.query).toContain("2026-07-01");

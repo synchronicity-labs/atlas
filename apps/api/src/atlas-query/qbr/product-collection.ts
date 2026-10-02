@@ -201,6 +201,34 @@ function returnLiftByMonth(through: string, now: Date) {
     max(returned) filter (where arm = 'holdback')::bigint as holdback_returned
   from diagnostic
   group by period_start
+), quarter_counts as (
+  select count(distinct period_start)::int as supported_months,
+    count(*)::int as supported_arm_months,
+    max(ambiguous_pair_organizations)::bigint as ambiguous_pair_organizations,
+    sum(assignments) filter (where arm = 'treated')::bigint as treated_assignments,
+    sum(mature_assignments) filter (where arm = 'treated')::bigint as treated_mature_assignments,
+    sum(returned) filter (where arm = 'treated')::bigint as treated_returned,
+    sum(assignments) filter (where arm = 'holdback')::bigint as holdback_assignments,
+    sum(mature_assignments) filter (where arm = 'holdback')::bigint as holdback_mature_assignments,
+    sum(returned) filter (where arm = 'holdback')::bigint as holdback_returned
+  from diagnostic
+), quarter_value as (
+  select case when date '${through}' = date '2026-10-01'
+      and timestamptz '${now.toISOString()}' >= timestamptz '2026-10-15 00:00:00+00'
+      and supported_months = 3
+      and supported_arm_months = 6
+      and treated_assignments = treated_mature_assignments
+      and holdback_assignments = holdback_mature_assignments
+      and treated_assignments > 0
+      and holdback_assignments > 0
+      and holdback_returned > 0
+      and ambiguous_pair_organizations = 0
+    then round(100.0 * (
+      treated_returned::numeric * holdback_assignments
+        / nullif(treated_assignments::numeric * holdback_returned, 0) - 1
+    ), 2)
+    else null end as value
+  from quarter_counts
 )
 select period_start,
   round(100.0 * (
@@ -211,8 +239,9 @@ select period_start,
   treated_mature_assignments as treated_assignments,
   holdback_returned,
   holdback_mature_assignments as holdback_assignments,
-  ambiguous_pair_organizations
-from monthly
+  ambiguous_pair_organizations,
+  quarter_value.value as quarter_value
+from monthly cross join quarter_value
 where treated_assignments > 0
   and holdback_assignments > 0
   and holdback_returned > 0

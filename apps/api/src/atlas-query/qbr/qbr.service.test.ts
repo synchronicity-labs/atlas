@@ -185,14 +185,16 @@ describe("AtlasQbrService", () => {
 				},
 			});
 			expect(result?.verification?.reviewedSnapshotId).toBe(initial.snapshotId);
-			question.versions[0].visualization.qbr.queryHash = "changed-query-hash";
+			const sourceMetadata = question.versions[0]?.visualization.qbr;
+			if (!sourceMetadata) throw new Error("Missing QBR source metadata.");
+			sourceMetadata.queryHash = "changed-query-hash";
 			await expect(service.verifyObservations(review)).rejects.toThrow(
 				"source query",
 			);
 			await expect(service.exportReport("2026-Q3")).rejects.toThrow(
 				"another source query",
 			);
-			question.versions[0].visualization.qbr.queryHash = "source-query-hash";
+			sourceMetadata.queryHash = "source-query-hash";
 			await service.recordObservations(
 				"plg_teams",
 				[observation("2026-07", 7), observation("2026-09", 9)],

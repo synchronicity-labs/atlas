@@ -12,7 +12,13 @@ test("QBR queries cover exactly the automated metrics with closed UTC month boun
 	);
 	for (const [id, query] of Object.entries(queries)) {
 		expect(query.queryText).toContain("2026-09-01");
-		expect(query.queryText).not.toContain("2026-10-01");
+		if (id === "product_return_lift") {
+			expect(query.queryText).toContain(
+				"sentAt')::timestamptz < timestamptz '2026-09-01",
+			);
+		} else {
+			expect(query.queryText).not.toContain("2026-10-01");
+		}
 		expect(isQbrPlgQuestion(`qbr:${id}`)).toBe(
 			query.databaseExternalId === "166",
 		);
@@ -101,6 +107,74 @@ test("Q3 movement SQL compares September and June membership sets", () => {
 		expect(query).not.toContain("sum(gross_adds)");
 		expect(query).not.toContain("sum(gross_losses)");
 	}
+});
+
+test("Q3 return lift pools counts only after all quarter assignments mature", () => {
+	const monthly = [
+		{
+			period: "2026-08",
+			value: 100,
+			numerator: null,
+			denominator: null,
+			quarterValue: -70,
+		},
+		{
+			period: "2026-09",
+			value: -88.89,
+			numerator: null,
+			denominator: null,
+			quarterValue: -70,
+		},
+	];
+	const query = qbrQueries(new Date("2026-10-15T00:00:00Z")).product_return_lift
+		?.queryText;
+	expect(query).toContain("date '2026-10-01'");
+	expect(query).toContain("timestamptz '2026-10-15 00:00:00+00'");
+	expect(query).toContain("supported_months = 3");
+	expect(query).toContain("supported_arm_months = 6");
+	expect(query).toContain("treated_assignments = treated_mature_assignments");
+	expect(query).toContain("holdback_assignments = holdback_mature_assignments");
+	expect(query).toContain("treated_assignments > 0");
+	expect(query).toContain("holdback_assignments > 0");
+	expect(query).toContain("holdback_returned > 0");
+	expect(query).toContain("ambiguous_pair_organizations = 0");
+	expect(query).toContain("sum(returned) filter (where arm = 'treated')");
+	expect(query).toContain("sum(assignments) filter (where arm = 'holdback')");
+	expect(query).not.toContain("avg(value)");
+	expect(
+		qbrQuarterValue(
+			"product_return_lift",
+			monthly,
+			new Date("2026-10-14T23:59:59Z"),
+		),
+	).toBeNull();
+	expect(
+		qbrQuarterValue(
+			"product_return_lift",
+			monthly,
+			new Date("2026-10-15T00:00:00Z"),
+		),
+	).toEqual({
+		period: "2026-Q3",
+		value: -70,
+		numerator: null,
+		denominator: null,
+	});
+	expect(
+		qbrQuarterValue(
+			"product_return_lift",
+			monthly.slice(0, 1),
+			new Date("2026-10-15T00:00:00Z"),
+		)?.value,
+	).toBe(-70);
+	expect((100 + -88.89) / 2).not.toBeCloseTo(-70, 0);
+	expect(
+		qbrQuarterValue(
+			"product_return_lift",
+			monthly.map((item) => ({ ...item, quarterValue: null })),
+			new Date("2026-10-15T00:00:00Z"),
+		),
+	).toBeNull();
 });
 
 test("PLG active rate stays unavailable without subscription history", () => {

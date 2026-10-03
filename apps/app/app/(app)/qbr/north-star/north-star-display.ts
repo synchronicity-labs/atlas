@@ -28,6 +28,11 @@ export function formatNorthStarValue(
 	compact: boolean,
 	exact = false,
 ) {
+	if (exact) {
+		const suffix =
+			unit === "percent" ? "%" : unit === "months" ? " months" : "";
+		return `${unit === "usd" ? "$" : ""}${value}${suffix}`;
+	}
 	const suffix = unit === "months" ? " months" : "";
 	const options: Intl.NumberFormatOptions =
 		unit === "usd"
@@ -37,7 +42,7 @@ export function formatNorthStarValue(
 					maximumFractionDigits: compact ? 1 : 2,
 				}
 			: unit === "percent"
-				? { style: "percent", maximumFractionDigits: exact ? 12 : 1 }
+				? { style: "percent", maximumFractionDigits: 1 }
 				: unit === "months"
 					? { maximumFractionDigits: 1 }
 					: { maximumFractionDigits: 0 };

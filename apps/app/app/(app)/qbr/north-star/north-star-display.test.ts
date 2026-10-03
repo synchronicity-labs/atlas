@@ -26,8 +26,17 @@ describe("North Star metric display", () => {
 		);
 	});
 
-	test("preserves exact percent precision in evidence values", () => {
+	test("preserves source precision in evidence values", () => {
 		expect(formatNorthStarValue(91.63, "percent", false, true)).toBe("91.63%");
+		expect(formatNorthStarValue(542.6666666666666, "count", false, true)).toBe(
+			"542.6666666666666",
+		);
+		expect(formatNorthStarValue(12.345, "months", false, true)).toBe(
+			"12.345 months",
+		);
+		expect(formatNorthStarValue(650614.99, "usd", false, true)).toBe(
+			"$650614.99",
+		);
 		expect(formatNorthStarValue(91.63, "percent", true)).toBe("91.6%");
 	});
 });

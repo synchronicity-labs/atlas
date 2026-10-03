@@ -153,10 +153,6 @@ const SECTIONS = [
 	},
 ] as const satisfies { title: string; rows: string[] }[];
 
-function exactUsd(value: number) {
-	return `USD ${value.toLocaleString("en-US", { maximumFractionDigits: 12 })}`;
-}
-
 function MetricQuestion({ metric }: { metric: Metric }) {
 	if (!metric.question)
 		return (
@@ -273,14 +269,12 @@ function EvidenceCell({ metric, period }: { metric: Metric; period: string }) {
 					<>
 						<span>
 							Exact value:{" "}
-							{metric.unit === "usd"
-								? exactUsd(observation.value)
-								: formatNorthStarValue(
-										observation.value,
-										metric.unit,
-										false,
-										true,
-									)}
+							{formatNorthStarValue(
+								observation.value,
+								metric.unit,
+								false,
+								true,
+							)}
 						</span>
 						<span>
 							Status: {observation.status} · as of {observation.asOf}

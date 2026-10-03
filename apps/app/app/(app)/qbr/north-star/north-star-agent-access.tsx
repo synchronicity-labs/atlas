@@ -45,7 +45,7 @@ export function NorthStarAgentAccess() {
 			className="grid gap-3 rounded-lg border p-4"
 			aria-labelledby="north-star-agent-access"
 		>
-			<div className="flex flex-wrap items-center justify-between gap-3">
+			<div className="grid min-w-0 gap-3">
 				<div>
 					<h2 id="north-star-agent-access" className="font-medium">
 						For agents
@@ -55,6 +55,14 @@ export function NorthStarAgentAccess() {
 						must reach the company Tailscale network; credentials stay on the
 						server.
 					</p>
+				</div>
+				<div className="grid min-w-0 gap-2">
+					<h3 id="qbr-agent-prompt" className="text-sm font-medium">
+						Agent prompt
+					</h3>
+					<div className="whitespace-pre-wrap break-words rounded-md border p-3 font-sans text-sm leading-relaxed">
+						{NORTH_STAR_AGENT_INSTRUCTIONS}
+					</div>
 				</div>
 				<div className="flex flex-wrap gap-2">
 					<Button

@@ -13,6 +13,11 @@ The client supports catalog search and immutable question reads. The optional `a
 
 ## Direct Atlas MCP tools
 
+For agents and QBR readers, start with the [QBR agent guide](../../docs/qbr-agent-access.md).
+It explains how to discover the tools on an existing Rudy connection and request
+specific data. The dashboard's **Copy prompt** action includes the reader's
+request and the discovery instructions. The setup below is for server operators.
+
 `mcp/atlas_tools.py` adds deterministic Atlas reads to Rudy's existing FastMCP
 server. It uses the same read-only API as the Hermes skill and does not invoke
 Hermes, refresh sources, or change metrics.

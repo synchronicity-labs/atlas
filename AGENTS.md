@@ -23,6 +23,18 @@ rather than working from memory of the API.
 
 ABSOLUTELY, no coauthoring commits.
 
+## QBR data through Rudy MCP
+
+For quarterly business review (QBR) data, discover the `atlas_*` tools on the
+connected Rudy MCP server. Search available tools for `atlas` or `qbr`, or list
+the server's tools. Start with `atlas_qbr_report(quarter="2026-Q3")` to discover
+metrics and their source links, then request only the evidence the user needs.
+The four Atlas tools are read-only and use server-held credentials.
+
+Read [the QBR agent guide](docs/qbr-agent-access.md) for tool selection, period
+semantics, and example requests. Reuse an existing Rudy connection; setup is
+only needed when the agent cannot discover or reach the tools.
+
 ## Environment / configuration:
 Read @docs/environment.md
 

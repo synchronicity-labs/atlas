@@ -1,4 +1,10 @@
-import { IsISO8601, IsOptional, Matches } from "class-validator";
+import {
+	IsIn,
+	IsISO8601,
+	IsOptional,
+	IsString,
+	Matches,
+} from "class-validator";
 
 export class AtlasQuestionQuery {
 	@IsOptional()
@@ -8,4 +14,14 @@ export class AtlasQuestionQuery {
 	@IsOptional()
 	@IsISO8601({ strict: true })
 	asOf?: string;
+}
+
+export class AtlasQbrReportQuery {
+	@IsOptional()
+	@IsIn(["summary"])
+	view?: "summary";
+
+	@IsOptional()
+	@IsString()
+	metricIds?: string;
 }

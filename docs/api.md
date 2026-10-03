@@ -85,6 +85,14 @@ and affected dashboard numbers. Error text is reduced to a safe error class; raw
 vendor bodies, SQL, and customer data are not returned. The independent Rudy
 monitor uses this route without invoking ingestion or changing certification.
 
+`GET /internal/atlas/reports/qbr/:quarter` returns the governed quarter export.
+Its default response remains complete. `view=summary` omits supporting tables
+while retaining exact observations, definitions, question links, and supporting
+result counts. `metricIds=id1,id2` returns complete evidence for one to ten
+selected metrics. Invalid selections return an explicit error. Rudy's four
+[Atlas MCP tools](../ops/rudy/README.md#direct-atlas-mcp-tools) use these routes
+with server-held credentials over HTTPS.
+
 These routes are intentionally read-only and separate from `CRON_SECRET` sync
 routes. They do not execute arbitrary queries, refresh a connector, edit a question,
 or mutate CRM records. Rudy should use this surface first and reach through to a

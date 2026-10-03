@@ -4,32 +4,39 @@ import { Button } from "@crm/ui/components/button";
 import Link from "next/link";
 import { useState } from "react";
 
-export const NORTH_STAR_AGENT_INSTRUCTIONS = `1. Read the saved Q3 report from the read-only endpoint below. The production Atlas API origin is https://atlas-api.pr.sync.so.
-2. Check metrics[id].observations for these exact period keys: 2026-07, 2026-08, 2026-09, and 2026-Q3. Each value includes its status, asOf, and dataThrough. A missing key means not reported, not zero.
-3. Treat preparation.supportingResults as separate supporting tables, not headline observations. Follow metrics[id].question.url for the canonical Atlas question; do not guess question numbers or URLs.
-4. This endpoint reads saved report data. It does not refresh sources or run provider queries.
-5. ATLAS_QUERY_SECRET is read-only across Atlas catalog, question, source-status, and QBR-report endpoints; it cannot refresh, edit, or write CRM data. Rudy's documented gateway receives it through scoped Doppler prd_core. For another agent runtime, an authorized runtime owner must provision this read credential through that runtime's approved secret manager. Do not send it in chat or prompts.
-6. Human browser fallback: sign in to Atlas at https://atlas.pr.sync.so/qbr/north-star and read the report there. This is for a person using the browser, not an agent API credential. Never copy browser cookies into an agent.
+const MCP_CONFIGURATION = JSON.stringify(
+	{
+		mcpServers: {
+			rudy: {
+				url: "https://ip-10-0-3-200-1.tail8782ce.ts.net/mcp",
+			},
+		},
+	},
+	null,
+	2,
+);
 
-: "\${ATLAS_QUERY_SECRET:?set it in approved runtime secrets}"
-curl --fail --silent --show-error \\
-  -H "Accept: application/json" \\
-  -H "Authorization: Bearer $ATLAS_QUERY_SECRET" \\
-  "https://atlas-api.pr.sync.so/internal/atlas/reports/qbr/2026-Q3"
+export const NORTH_STAR_AGENT_INSTRUCTIONS = `Connect to the Rudy MCP server at https://ip-10-0-3-200-1.tail8782ce.ts.net/mcp. The agent runtime must be able to reach the company Tailscale network. This is an existing MCP server with other tools; these instructions describe the QBR tools only, not the permissions of the whole server. No agent-side credential is needed; credentials stay on the server.
 
-Provide ATLAS_QUERY_SECRET only through this runtime's approved secret provisioning. Never paste it into a prompt, browser, command history, logs, or shared output.`;
+Call atlas_qbr_report with quarter "2026-Q3". By default it returns a compact summary with metric definitions, values, statuses, and source question links. Inspect period keys "2026-07", "2026-08", "2026-09", and "2026-Q3". A missing period means not reported, not zero.
+
+Request full evidence only for metrics you need, with at most 10 metric IDs per call. For example: atlas_qbr_report({quarter:'2026-Q3',metric_ids:['enterprise_usage_retention']}). The selected metrics include detailed sources and preparation.supportingResults. Preserve observation status, asOf, dataThrough, source URLs, and supporting-result provenance. Avoid requesting all full evidence by default; the upstream report is large.
+
+Use the source question links as canonical Atlas question URLs. Call atlas_question with the question number and, when useful, reporting_period and as_of to inspect its evidence. Treat supportingResults as separate supporting results, not headline observations. Use atlas_search_questions for targeted discovery and atlas_source_health to understand source freshness or availability; neither replaces the report's period-specific evidence.
+
+MCP client configuration formats may differ. The copied JSON is a generic Claude-compatible example; use the equivalent server URL configuration for your client.
+
+Human browser fallback: https://atlas.pr.sync.so/qbr/north-star`;
 
 export function NorthStarAgentAccess() {
 	const [copyStatus, setCopyStatus] = useState("");
 
-	const copyInstructions = async () => {
+	const copyText = async (text: string, label: string) => {
 		try {
-			await navigator.clipboard.writeText(NORTH_STAR_AGENT_INSTRUCTIONS);
-			setCopyStatus("Agent instructions copied.");
+			await navigator.clipboard.writeText(text);
+			setCopyStatus(`${label} copied.`);
 		} catch {
-			setCopyStatus(
-				"Could not copy instructions. Check browser clipboard permissions.",
-			);
+			setCopyStatus("Could not copy. Check browser clipboard permissions.");
 		}
 	};
 
@@ -44,37 +51,53 @@ export function NorthStarAgentAccess() {
 						For agents
 					</h2>
 					<p className="text-sm text-muted-foreground">
-						The agent endpoint uses a read-only runtime credential. If it is not
-						provisioned for your agent, open the signed-in dashboard:{" "}
-						<Link
-							href="https://atlas.pr.sync.so/qbr/north-star"
-							target="_blank"
-							rel="noreferrer"
-							className="underline underline-offset-4"
-						>
-							Atlas Q3 North Star ↗
-						</Link>
+						Connect the Rudy MCP tools to read QBR evidence. Your agent runtime
+						must reach the company Tailscale network; credentials stay on the
+						server.
 					</p>
 				</div>
-				<Button
-					type="button"
-					variant="outline"
-					onClick={() => void copyInstructions()}
-				>
-					Copy instructions
-				</Button>
+				<div className="flex flex-wrap gap-2">
+					<Button
+						type="button"
+						variant="outline"
+						onClick={() =>
+							void copyText(MCP_CONFIGURATION, "MCP configuration")
+						}
+					>
+						Copy MCP configuration
+					</Button>
+					<Button
+						type="button"
+						variant="outline"
+						onClick={() =>
+							void copyText(NORTH_STAR_AGENT_INSTRUCTIONS, "QBR instructions")
+						}
+					>
+						Copy QBR instructions
+					</Button>
+				</div>
 			</div>
-			<details>
-				<summary className="cursor-pointer text-sm font-medium">
-					Access and data notes
-				</summary>
-				<pre className="mt-2 max-w-full overflow-x-auto whitespace-pre-wrap break-words text-sm text-muted-foreground">
-					{NORTH_STAR_AGENT_INSTRUCTIONS}
-				</pre>
-			</details>
 			<p className="text-sm" role="status" aria-live="polite">
 				{copyStatus}
 			</p>
+			<details>
+				<summary className="cursor-pointer text-sm font-medium">
+					Client format and browser fallback
+				</summary>
+				<p className="mt-2 text-sm text-muted-foreground">
+					The copied server entry is generic Claude-compatible JSON. MCP client
+					configuration formats may differ. For a person using a browser, open{" "}
+					<Link
+						href="https://atlas.pr.sync.so/qbr/north-star"
+						target="_blank"
+						rel="noreferrer"
+						className="underline underline-offset-4"
+					>
+						Atlas Q3 North Star ↗
+					</Link>
+					.
+				</p>
+			</details>
 		</section>
 	);
 }

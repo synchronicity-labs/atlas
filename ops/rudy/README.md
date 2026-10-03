@@ -11,6 +11,55 @@ The values are managed in Doppler. They are not stored in this repository. Insta
 
 The client supports catalog search and immutable question reads. The optional `atlas-cron-governance` plugin makes an Atlas preflight mandatory before Rudy creates any recurring cron. It also exposes guarded question authoring.
 
+## Direct Atlas MCP tools
+
+`mcp/atlas_tools.py` adds deterministic Atlas reads to Rudy's existing FastMCP
+server. It uses the same read-only API as the Hermes skill and does not invoke
+Hermes, refresh sources, or change metrics.
+
+Agents connect to `https://ip-10-0-3-200-1.tail8782ce.ts.net/mcp` from a runtime
+that can reach the company Tailnet. The Atlas credential stays in the server's
+protected environment. The existing Rudy server also exposes other tools; the
+read-only guarantee here applies to the four `atlas_*` tools.
+
+- `atlas_qbr_report(quarter, metric_ids?)` returns a compact report with exact
+  observations and definitions. Pass one to ten metric IDs to retrieve their
+  complete preparation and supporting evidence. Missing periods stay missing.
+- `atlas_search_questions(query, limit=20)` searches the governed catalog.
+- `atlas_question(number, reporting_period?, as_of?)` reads a saved question
+  result with its definition, freshness, and provenance.
+- `atlas_source_health()` reads connector health without refreshing anything.
+
+For Q3, start with `atlas_qbr_report(quarter="2026-Q3")`. Inspect July, August,
+September, and the authored quarter observations separately. For detailed
+Enterprise NDR evidence, add `metric_ids=["enterprise_usage_retention"]`.
+
+Install `mcp/atlas_tools.py` next to the deployed Rudy MCP `server.py`, using the
+existing Python runtime and MCP SDK. In `build_app()`, before creating the
+Streamable HTTP app, add:
+
+```python
+from atlas_tools import register_atlas_tools
+register_atlas_tools(mcp)
+```
+
+Provision `ATLAS_API_URL` and `ATLAS_QUERY_SECRET` in the MCP service's scoped
+Doppler configuration, `rudy/prd_rudy_mcp`, by referencing their existing
+`rudy/prd_core` values. Add both names to the service's `DOPPLER_ONLY_SECRETS`
+allowlist, preserving its existing entries. Do not add the authoring credential.
+Missing configuration
+leaves these tools unregistered and does not prevent the existing MCP service
+from starting. Back up the deployed files, verify registration with the installed
+SDK, and restart `rudy-mcp` only when its health endpoint reports no active Hermes
+runs. Keep the existing Tailscale Serve routes and Funnel configuration unchanged.
+
+Verify initialization, tool discovery, and all four tool calls over the Tailnet
+URL. Check that the QBR call returns the requested quarter and source links, an
+invalid question/quarter returns an explicit error, and no response contains the
+server credential. To roll back, restore the server and adapter backups and
+restore the previous credential allowlist, then restart during an idle window.
+Remove only Doppler keys added by this rollout.
+
 The authoring credential is isolated in the `rudy/prd_atlas_authoring` Doppler config. It is not loaded into the Hermes gateway. `/usr/local/sbin/rudy-atlas-question-draft` injects it only into the fixed root-owned broker. The broker can create drafts and publish a reviewed recipe ID. It cannot submit query text or set question status, purpose, certification, or trust state. Atlas owns those actions and activates a question only after the recipe result passes every required check.
 
 Install the plugin under `/root/.hermes/plugins/atlas-cron-governance`, install the broker files under `/usr/local`, and add this exact sudo rule:

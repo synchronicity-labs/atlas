@@ -34,6 +34,11 @@ For Q3, start with `atlas_qbr_report(quarter="2026-Q3")`. Inspect July, August,
 September, and the authored quarter observations separately. For detailed
 Enterprise NDR evidence, add `metric_ids=["enterprise_usage_retention"]`.
 
+The optional `reporting_period` filter accepts `YYYY-Q1` through `YYYY-Q4`,
+`YYYY-MM`, or `YYYY-MM-DD`. A quarter matches the saved snapshot's reporting
+period; it does not trim or recompute its rows. `as_of` continues to limit
+snapshots by their captured time.
+
 Install `mcp/atlas_tools.py` next to the deployed Rudy MCP `server.py`, using the
 existing Python runtime and MCP SDK. In `build_app()`, before creating the
 Streamable HTTP app, add:

@@ -3,6 +3,7 @@
 import ChartCustom from "@carbon/icons-react/es/ChartCustom";
 import Download from "@carbon/icons-react/es/Download";
 import Edit from "@carbon/icons-react/es/Edit";
+import OverflowMenuHorizontal from "@carbon/icons-react/es/OverflowMenuHorizontal";
 import Renew from "@carbon/icons-react/es/Renew";
 import Save from "@carbon/icons-react/es/Save";
 import View from "@carbon/icons-react/es/View";
@@ -21,6 +22,7 @@ import { YAxis } from "@crm/ui/components/dither-kit/y-axis";
 import {
 	DropdownMenu,
 	DropdownMenuContent,
+	DropdownMenuGroup,
 	DropdownMenuItem,
 	DropdownMenuTrigger,
 } from "@crm/ui/components/dropdown-menu";
@@ -28,6 +30,12 @@ import { Icon } from "@crm/ui/components/icon";
 import { MetricTrustIndicator } from "@crm/ui/components/metric-trust-indicator";
 import { RelativeTimestamp } from "@crm/ui/components/relative-timestamp";
 import { StatusIndicator } from "@crm/ui/components/status-indicator";
+import {
+	Tabs,
+	TabsContent,
+	TabsList,
+	TabsTrigger,
+} from "@crm/ui/components/tabs";
 import {
 	formatDay,
 	formatMonthPeriod,
@@ -63,6 +71,11 @@ import {
 	hasCompatibleChartUnits,
 	metricDisplayFamily,
 } from "@/lib/chart-visualization";
+import {
+	layoutToPersist,
+	packDashboardLayout,
+	stackDashboardLayout,
+} from "@/lib/dashboard-layout";
 import {
 	isCurrentPeriodOnlySnapshot,
 	summarizeQbrReadiness,
@@ -364,13 +377,13 @@ function CardHeading({ card }: { card: DashboardCard }) {
 	const timeframe = timeframeLabel(card);
 	const checkedAt = card.question.lastCheckedAt ?? card.snapshot?.capturedAt;
 	return (
-		<div className="absolute top-3 right-16 left-4 z-10 min-w-0">
+		<div className="atlas-card-heading">
 			<p className="truncate font-medium text-sm">{card.question.name}</p>
-			<div className="mt-0.5 flex min-w-0 max-w-full items-center gap-1 overflow-hidden text-[11px] text-muted-foreground">
-				<span className="min-w-0 flex-1 truncate">{timeframe}</span>
+			<div className="atlas-card-meta">
+				<span className="min-w-0 truncate">{timeframe}</span>
 				{checkedAt ? (
-					<span className="shrink-0">
-						· <RelativeTimestamp value={checkedAt} prefix="Checked" />
+					<span className="min-w-0">
+						<RelativeTimestamp value={checkedAt} prefix="Checked" />
 					</span>
 				) : null}
 				<span className="flex shrink-0">
@@ -546,18 +559,15 @@ function ScalarCard({ card }: { card: DashboardCard }) {
 			: "Previous period";
 
 	return (
-		<div className="atlas-scalar-card grid h-full grid-rows-[auto_minmax(0,1fr)] gap-2 p-4">
-			<div className="min-w-0 shrink-0 pr-16">
-				<p className="line-clamp-2 font-medium text-sm leading-5">
+		<div className="atlas-scalar-card">
+			<div className="min-w-0 shrink-0">
+				<p className="line-clamp-2 pr-16 font-medium text-sm leading-5">
 					{card.question.name}
 				</p>
-				<div className="mt-0.5 flex min-w-0 max-w-full items-center gap-1 overflow-hidden text-[11px] text-muted-foreground">
-					<span className="min-w-0 flex-1 truncate">
-						{timeframeLabel(card)}
-					</span>
+				<div className="atlas-card-meta">
+					<span className="min-w-0 truncate">{timeframeLabel(card)}</span>
 					{card.question.lastCheckedAt || card.snapshot?.capturedAt ? (
 						<span className="shrink-0">
-							·{" "}
 							<RelativeTimestamp
 								value={
 									card.question.lastCheckedAt ?? card.snapshot?.capturedAt ?? ""
@@ -572,10 +582,8 @@ function ScalarCard({ card }: { card: DashboardCard }) {
 				</div>
 			</div>
 			{typeof currentValue === "number" ? (
-				<div className="flex min-h-0 flex-col items-center justify-center text-center">
-					<p className="atlas-scalar-value max-w-full font-medium tracking-tight tabular-nums">
-						{formattedCurrent}
-					</p>
+				<div className="atlas-scalar-content">
+					<p className="atlas-scalar-value">{formattedCurrent}</p>
 					{currentPeriodLabel ? (
 						<p className="mt-1 text-muted-foreground text-sm">
 							{currentPeriodLabel}
@@ -704,55 +712,56 @@ function BarSeriesChart({ card }: { card: DashboardCard }) {
 	const visualization = displaySettings(card);
 
 	return (
-		<div
-			className={cn(
-				"relative h-full min-h-[180px] px-3 pb-3",
-				timeframeLabel(card) ? "pt-16" : "pt-12",
-			)}
-		>
+		<div className="atlas-card-chart-content">
 			<CardHeading card={card} />
-			<div className="flex h-full min-h-0 flex-col gap-2">
-				<BlockLegend config={config} className="shrink-0" />
-				<div className="min-h-0 flex-1">
-					<BarChart
-						data={source.data}
-						config={config}
-						stackType={cardStackType(card)}
-						bloom="low"
-						bloomOnHover
-						margins={{ left: 54, right: 18, top: 4, bottom: 24 }}
-					>
-						<Grid strokeDasharray="2 4" />
-						<XAxis
-							dataKey={source.xKey}
-							tickFormatter={(value) => chartPeriod(value, true)}
-							maxTicks={7}
-						/>
-						<YAxis
-							tickFormatter={(value) =>
-								formatAxisMetric(value, series[0]?.metric ?? "", visualization)
-							}
-						/>
-						<Tooltip
-							labelKey={source.xKey}
-							labelFormatter={(value) => chartPeriod(value)}
-							valueFormatter={(value, name) =>
-								formatMetric(
-									value,
-									seriesByKey.get(name)?.metric ?? name,
-									visualization,
-								)
-							}
-						/>
-						{series.map((item, index) => (
-							<Bar
-								key={item.key}
-								dataKey={item.key}
-								variant={index % 2 === 0 ? "gradient" : "hatched"}
-								isClickable
+			<div className="atlas-card-chart-plot">
+				<div className="flex h-full min-h-0 flex-col gap-2">
+					<BlockLegend config={config} className="shrink-0" />
+					<div className="min-h-0 flex-1">
+						<BarChart
+							data={source.data}
+							config={config}
+							stackType={cardStackType(card)}
+							bloom="low"
+							bloomOnHover
+							margins={{ left: 54, right: 18, top: 4, bottom: 24 }}
+						>
+							<Grid strokeDasharray="2 4" />
+							<XAxis
+								dataKey={source.xKey}
+								tickFormatter={(value) => chartPeriod(value, true)}
+								maxTicks={7}
 							/>
-						))}
-					</BarChart>
+							<YAxis
+								tickFormatter={(value) =>
+									formatAxisMetric(
+										value,
+										series[0]?.metric ?? "",
+										visualization,
+									)
+								}
+							/>
+							<Tooltip
+								labelKey={source.xKey}
+								labelFormatter={(value) => chartPeriod(value)}
+								valueFormatter={(value, name) =>
+									formatMetric(
+										value,
+										seriesByKey.get(name)?.metric ?? name,
+										visualization,
+									)
+								}
+							/>
+							{series.map((item, index) => (
+								<Bar
+									key={item.key}
+									dataKey={item.key}
+									variant={index % 2 === 0 ? "gradient" : "hatched"}
+									isClickable
+								/>
+							))}
+						</BarChart>
+					</div>
 				</div>
 			</div>
 		</div>
@@ -838,64 +847,65 @@ function SeriesChart({ card }: { card: DashboardCard }) {
 	};
 
 	return (
-		<div
-			className={cn(
-				"relative h-full min-h-[180px] px-3 pb-3",
-				timeframeLabel(card) ? "pt-16" : "pt-12",
-			)}
-		>
+		<div className="atlas-card-chart-content">
 			<CardHeading card={card} />
-			<div className="flex h-full min-h-0 flex-col gap-2">
-				<BlockLegend config={config} className="shrink-0" />
-				<div className="min-h-0 flex-1">
-					<LineChart
-						data={data}
-						config={config}
-						bloom="off"
-						margins={{ left: 44, right: dual ? 54 : 18, top: 4, bottom: 24 }}
-					>
-						<Grid strokeDasharray="2 4" />
-						<XAxis
-							dataKey={source.xKey}
-							tickFormatter={(value) => chartPeriod(value, true)}
-							maxTicks={5}
-						/>
-						<YAxis
-							tickFormatter={(value) =>
-								formatAxisMetric(value, leftSeries?.metric ?? "", visualization)
-							}
-						/>
-						{dual ? (
-							<RightYAxis
+			<div className="atlas-card-chart-plot">
+				<div className="flex h-full min-h-0 flex-col gap-2">
+					<BlockLegend config={config} className="shrink-0" />
+					<div className="min-h-0 flex-1">
+						<LineChart
+							data={data}
+							config={config}
+							bloom="off"
+							margins={{ left: 44, right: dual ? 54 : 18, top: 4, bottom: 24 }}
+						>
+							<Grid strokeDasharray="2 4" />
+							<XAxis
+								dataKey={source.xKey}
+								tickFormatter={(value) => chartPeriod(value, true)}
+								maxTicks={5}
+							/>
+							<YAxis
 								tickFormatter={(value) =>
 									formatAxisMetric(
-										inverseRight(value),
-										rightSeries?.metric ?? "",
+										value,
+										leftSeries?.metric ?? "",
 										visualization,
 									)
 								}
 							/>
-						) : null}
-						<Tooltip
-							labelKey={source.xKey}
-							labelFormatter={(value) => chartPeriod(value)}
-							valueFormatter={(value, name) =>
-								formatMetric(
-									rightKeySet.has(name) ? inverseRight(value) : value,
-									seriesByKey.get(name)?.metric ?? name,
-									visualization,
-								)
-							}
-						/>
-						{source.series.map((item, index) => (
-							<Line
-								key={item.key}
-								dataKey={item.key}
-								variant={index % 2 === 0 ? "gradient" : "hatched"}
-								isClickable
+							{dual ? (
+								<RightYAxis
+									tickFormatter={(value) =>
+										formatAxisMetric(
+											inverseRight(value),
+											rightSeries?.metric ?? "",
+											visualization,
+										)
+									}
+								/>
+							) : null}
+							<Tooltip
+								labelKey={source.xKey}
+								labelFormatter={(value) => chartPeriod(value)}
+								valueFormatter={(value, name) =>
+									formatMetric(
+										rightKeySet.has(name) ? inverseRight(value) : value,
+										seriesByKey.get(name)?.metric ?? name,
+										visualization,
+									)
+								}
 							/>
-						))}
-					</LineChart>
+							{source.series.map((item, index) => (
+								<Line
+									key={item.key}
+									dataKey={item.key}
+									variant={index % 2 === 0 ? "gradient" : "hatched"}
+									isClickable
+								/>
+							))}
+						</LineChart>
+					</div>
 				</div>
 			</div>
 		</div>
@@ -910,39 +920,39 @@ function TableCard({ card }: { card: DashboardCard }) {
 	const visualization = displaySettings(card);
 	if (columnEntries.length === 0) return <CardUnavailable />;
 	return (
-		<div
-			className={cn(
-				"relative h-full overflow-auto",
-				timeframeLabel(card) ? "pt-16" : "pt-12",
-			)}
-		>
+		<div className="atlas-card-table-content">
 			<CardHeading card={card} />
-			<table className="w-full text-left text-xs">
-				<thead className="sticky top-0 bg-card text-muted-foreground">
-					<tr>
-						{columnEntries.map(({ column }) => (
-							<th key={column.name} className="border-b px-3 py-2 font-normal">
-								{columnVisualization(visualization, column.name).title ??
-									humanize(column.displayName ?? column.name)}
-							</th>
-						))}
-					</tr>
-				</thead>
-				<tbody>
-					{sourceRows.map((row) => (
-						<tr
-							key={`${card.id}:${JSON.stringify(row)}`}
-							className="border-b last:border-0"
-						>
-							{columnEntries.map(({ column, index }) => (
-								<td key={column.name} className="max-w-48 truncate px-3 py-2">
-									{formatCell(row[index], column, visualization)}
-								</td>
+			<div className="atlas-card-table-scroll">
+				<table className="w-full text-left text-xs">
+					<thead className="sticky top-0 bg-card text-muted-foreground">
+						<tr>
+							{columnEntries.map(({ column }) => (
+								<th
+									key={column.name}
+									className="border-b px-3 py-2 font-normal"
+								>
+									{columnVisualization(visualization, column.name).title ??
+										humanize(column.displayName ?? column.name)}
+								</th>
 							))}
 						</tr>
-					))}
-				</tbody>
-			</table>
+					</thead>
+					<tbody>
+						{sourceRows.map((row) => (
+							<tr
+								key={`${card.id}:${JSON.stringify(row)}`}
+								className="border-b last:border-0"
+							>
+								{columnEntries.map(({ column, index }) => (
+									<td key={column.name} className="max-w-48 truncate px-3 py-2">
+										{formatCell(row[index], column, visualization)}
+									</td>
+								))}
+							</tr>
+						))}
+					</tbody>
+				</table>
+			</div>
 		</div>
 	);
 }
@@ -1139,7 +1149,7 @@ function MetricStripCard({ card }: { card: DashboardCard }) {
 						const change = typeof row[3] === "number" ? row[3] : null;
 						const error = typeof row[5] === "string" ? row[5] : null;
 						return (
-							<div key={label} className="min-w-0 text-center">
+							<div key={label} className="min-w-0">
 								<p className="truncate text-[10px] text-muted-foreground uppercase tracking-[0.08em]">
 									{label}
 								</p>
@@ -1255,13 +1265,13 @@ const QuestionCard = memo(
 		return (
 			<div
 				className={cn(
-					"group relative h-full overflow-visible rounded-lg border bg-card shadow-xs",
+					"atlas-question-card group",
 					editing && "ring-1 ring-primary/15",
 				)}
 			>
 				<div
 					className={cn(
-						"absolute top-2 right-2 z-20 flex items-center gap-1 rounded-md border bg-background/95 p-1 shadow-sm backdrop-blur-sm transition-opacity",
+						"atlas-card-actions",
 						editing || visualization === "TABLE"
 							? "opacity-100"
 							: "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100",
@@ -1354,22 +1364,20 @@ const QuestionCard = memo(
 					) : null}
 				</div>
 				{card.snapshot && rows(card.snapshot).length === 0 ? (
-					<>
+					<div className="atlas-card-empty-content">
 						<CardHeading card={card} />
-						<div className="h-full pt-14">
-							<CardUnavailable
-								title="No data for this period"
-								message={
-									card.verification?.checks.find(
-										(check) =>
-											check.name === "result_non_empty" &&
-											check.status === "PENDING",
-									)?.detail ??
-									"The saved result has no rows for the selected period. This does not mean the value is zero."
-								}
-							/>
-						</div>
-					</>
+						<CardUnavailable
+							title="No data for this period"
+							message={
+								card.verification?.checks.find(
+									(check) =>
+										check.name === "result_non_empty" &&
+										check.status === "PENDING",
+								)?.detail ??
+								"The saved result has no rows for the selected period. This does not mean the value is zero."
+							}
+						/>
+					</div>
 				) : presentation === "metric-strip" ? (
 					<MetricStripCard card={card} />
 				) : presentation === "forecast-stage" ? (
@@ -1404,55 +1412,12 @@ function toLayout(cards: DashboardCard[]): Layout {
 	}));
 }
 
-function toQbrLayout(cards: DashboardCard[]): Layout {
-	const source = [...toLayout(cards)].sort(
-		(left, right) => left.y - right.y || left.x - right.x,
-	);
-	const result: LayoutItem[] = [];
-	let row: LayoutItem[] = [];
-	let rowY = -1;
-	let nextY = 0;
-
-	function flushRow() {
-		if (row.length === 0) return;
-		let nextX = 0;
-		const rowHeight = Math.max(...row.map((item) => item.h));
-		row.forEach((item, index) => {
-			const remaining = 24 - nextX;
-			const width =
-				index === row.length - 1 ? remaining : Math.min(item.w, remaining);
-			result.push({ ...item, x: nextX, y: nextY, w: Math.max(4, width) });
-			nextX += width;
-		});
-		nextY += rowHeight;
-		row = [];
-	}
-
-	for (const item of source) {
-		if (rowY !== -1 && item.y !== rowY) flushRow();
-		rowY = item.y;
-		row.push(item);
-	}
-	flushRow();
-	return result;
-}
-
-function stackLayout(layout: Layout): Layout {
-	let nextY = 0;
-	return [...layout]
-		.sort((left, right) => left.y - right.y || left.x - right.x)
-		.map((item) => {
-			const stacked = { ...item, x: 0, y: nextY, w: 24 };
-			nextY += item.h;
-			return stacked;
-		});
-}
-
 function AtlasGrid({
 	cards,
 	editing,
 	layout,
 	visualizations,
+	onLayoutInteraction,
 	onLayout,
 	onVisualization,
 }: {
@@ -1460,6 +1425,7 @@ function AtlasGrid({
 	editing: boolean;
 	layout: Layout;
 	visualizations: Record<string, Visualization>;
+	onLayoutInteraction: () => void;
 	onLayout: (layout: Layout) => void;
 	onVisualization: (id: string, visualization: Visualization) => void;
 }) {
@@ -1468,8 +1434,13 @@ function AtlasGrid({
 	});
 	const isStacked = width < 768;
 	const renderedLayout = useMemo(
-		() => (isStacked ? stackLayout(layout) : layout),
-		[isStacked, layout],
+		() =>
+			isStacked
+				? stackDashboardLayout(layout, toLayout(cards))
+				: editing
+					? layout
+					: packDashboardLayout(layout),
+		[cards, editing, isStacked, layout],
 	);
 	const dragStart = useRef<Layout>(layout);
 	const latest = useRef<Layout>(layout);
@@ -1513,7 +1484,7 @@ function AtlasGrid({
 					gridConfig={{
 						cols: 24,
 						rowHeight: 38,
-						margin: [8, 8],
+						margin: [12, 12],
 						containerPadding: [0, 0],
 					}}
 					dragConfig={{
@@ -1534,7 +1505,23 @@ function AtlasGrid({
 					onDragStart={() => {
 						dragStart.current = latest.current;
 					}}
-					onDragStop={stopDrag}
+					onDragStop={(result, oldItem, newItem) => {
+						if (
+							oldItem &&
+							newItem &&
+							(oldItem.x !== newItem.x || oldItem.y !== newItem.y)
+						)
+							onLayoutInteraction();
+						stopDrag(result, oldItem, newItem);
+					}}
+					onResizeStop={(_, oldItem, newItem) => {
+						if (
+							oldItem &&
+							newItem &&
+							(oldItem.w !== newItem.w || oldItem.h !== newItem.h)
+						)
+							onLayoutInteraction();
+					}}
 				>
 					{cards.map((card) => (
 						<div key={card.id}>
@@ -1575,6 +1562,7 @@ export function AtlasDashboard({ number }: { number: number }) {
 		: historyFilters;
 	const [editing, setEditing] = useState(false);
 	const [draft, setDraft] = useState<Layout>([]);
+	const layoutWasEdited = useRef(false);
 	const [visualizations, setVisualizations] = useState<
 		Record<string, Visualization>
 	>({});
@@ -1675,14 +1663,19 @@ export function AtlasDashboard({ number }: { number: number }) {
 	}, [data, selectedTab, setTabNumber, tabNumber]);
 
 	function beginEditing() {
-		setDraft(toLayout(baseCards));
+		layoutWasEdited.current = false;
+		setDraft(packDashboardLayout(toLayout(baseCards)));
 		setVisualizations({});
 		setEditing(true);
 	}
 
 	function saveLayout() {
 		if (!selectedTab) return;
-		const layout = new Map(draft.map((item) => [item.i, item]));
+		const layout = new Map(
+			layoutToPersist(draft, toLayout(baseCards), layoutWasEdited.current).map(
+				(item) => [item.i, item],
+			),
+		);
 		save.mutate({
 			number,
 			tabNumber: selectedTab.number,
@@ -1720,22 +1713,22 @@ export function AtlasDashboard({ number }: { number: number }) {
 
 	return (
 		<div className="flex flex-col gap-5">
-			<header className="flex flex-col gap-4">
-				<div>
-					<p className="text-muted-foreground text-xs">
-						Atlas dashboard {data.number}
-					</p>
-					<h1 className="mt-1 font-medium text-3xl tracking-tight">
-						{data.name}
-					</h1>
-					<p className="mt-2 max-w-3xl text-muted-foreground text-sm">
+			<header className="atlas-dashboard-header">
+				<div className="flex flex-col gap-2">
+					<div className="flex items-start justify-between gap-4">
+						<h1 className="atlas-dashboard-title min-w-0">{data.name}</h1>
+						<RudyChatTrigger
+							record={{ kind: "dashboard", id: String(data.number) }}
+						/>
+					</div>
+					<p className="atlas-dashboard-description">
 						{data.description ??
 							"Questions arranged into a shared operating view."}
 					</p>
 				</div>
-				<div className="flex flex-col gap-3 2xl:flex-row 2xl:items-center 2xl:justify-between">
+				<div className="flex flex-col gap-4">
 					<div className="flex min-w-0 flex-wrap items-center gap-2">
-						<span className="rounded-full border border-border/70 bg-muted/35 px-2.5 py-1 font-medium text-[11px] text-muted-foreground uppercase tracking-[0.12em]">
+						<span className="atlas-dashboard-timezone">
 							Calendar periods · UTC
 						</span>
 						<StatusIndicator
@@ -1774,7 +1767,7 @@ export function AtlasDashboard({ number }: { number: number }) {
 						/>
 						<MetricTrustIndicator summary={data.verification} />
 					</div>
-					<div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
+					<div className="atlas-dashboard-controls">
 						{qbrMode ? (
 							<Button
 								variant="secondary"
@@ -1794,60 +1787,81 @@ export function AtlasDashboard({ number }: { number: number }) {
 							/>
 						)}
 						<Button
-							variant={qbrMode ? "outline" : "secondary"}
+							variant={qbrMode ? "secondary" : "ghost"}
+							aria-pressed={qbrMode}
 							size="sm"
 							onClick={() => void setQbrMode(!qbrMode)}
 						>
 							{qbrMode ? "Exit QBR mode" : "Open QBR mode"}
 						</Button>
-						<RudyChatTrigger
-							record={{ kind: "dashboard", id: String(data.number) }}
-						/>
-						<Button asChild variant="outline" size="sm">
-							<Link href="/questions">Browse questions</Link>
-						</Button>
-						{data.sourceUrl ? (
-							<Button asChild variant="outline" size="sm">
-								<Link href={data.sourceUrl} target="_blank" rel="noreferrer">
-									Open in HubSpot
-								</Link>
-							</Button>
-						) : null}
-						{data.source ? (
-							<Button
-								variant="outline"
-								size="sm"
-								disabled={refresh.isPending}
-								onClick={() => refresh.mutate({ number })}
-							>
-								<Icon icon={Renew} />
-								{refresh.isPending ? "Running questions" : "Run questions"}
-							</Button>
-						) : null}
-						{editing ? (
-							<>
-								<Button
-									variant="outline"
-									size="sm"
-									onClick={() => setEditing(false)}
-								>
-									Cancel
-								</Button>
-								<Button
-									size="sm"
-									disabled={save.isPending}
-									onClick={saveLayout}
-								>
-									<Icon icon={Save} />
-									{save.isPending ? "Saving" : "Save layout"}
-								</Button>
-							</>
-						) : (
-							<Button variant="outline" size="sm" onClick={beginEditing}>
-								<Icon icon={Edit} />
-								Edit layout
-							</Button>
-						)}
+						<div className="ml-auto flex items-center gap-2">
+							<DropdownMenu>
+								<DropdownMenuTrigger asChild>
+									<Button
+										variant="ghost"
+										size="sm"
+										aria-label="Dashboard actions"
+									>
+										<Icon icon={OverflowMenuHorizontal} />
+										Actions
+									</Button>
+								</DropdownMenuTrigger>
+								<DropdownMenuContent align="end">
+									<DropdownMenuGroup>
+										<DropdownMenuItem asChild>
+											<Link href="/questions">Browse questions</Link>
+										</DropdownMenuItem>
+										{data.sourceUrl ? (
+											<DropdownMenuItem asChild>
+												<Link
+													href={data.sourceUrl}
+													target="_blank"
+													rel="noreferrer"
+												>
+													Open in HubSpot
+												</Link>
+											</DropdownMenuItem>
+										) : null}
+										{data.source ? (
+											<DropdownMenuItem
+												disabled={refresh.isPending}
+												onSelect={() => refresh.mutate({ number })}
+											>
+												<Icon icon={Renew} />
+												{refresh.isPending
+													? "Running questions"
+													: "Run questions"}
+											</DropdownMenuItem>
+										) : null}
+										{!editing ? (
+											<DropdownMenuItem onSelect={beginEditing}>
+												<Icon icon={Edit} />
+												Edit layout
+											</DropdownMenuItem>
+										) : null}
+									</DropdownMenuGroup>
+								</DropdownMenuContent>
+							</DropdownMenu>
+							{editing ? (
+								<>
+									<Button
+										variant="outline"
+										size="sm"
+										onClick={() => setEditing(false)}
+									>
+										Cancel
+									</Button>
+									<Button
+										size="sm"
+										disabled={save.isPending}
+										onClick={saveLayout}
+									>
+										<Icon icon={Save} />
+										{save.isPending ? "Saving" : "Save layout"}
+									</Button>
+								</>
+							) : null}
+						</div>
 					</div>
 				</div>
 			</header>
@@ -1888,140 +1902,137 @@ export function AtlasDashboard({ number }: { number: number }) {
 				</section>
 			) : null}
 
-			<nav
-				className="flex min-h-10 gap-5 overflow-x-auto border-b"
-				aria-label="Dashboard tabs"
+			<Tabs
+				value={String(selectedTab?.number ?? "")}
+				onValueChange={(value) => void setTabNumber(Number(value))}
 			>
-				{data.tabs.map((tab) => (
-					<button
-						key={tab.id}
-						type="button"
-						onClick={() => void setTabNumber(tab.number)}
-						className={cn(
-							"relative shrink-0 pb-3 text-sm text-muted-foreground",
-							tab.number === selectedTab?.number &&
-								"text-foreground after:absolute after:inset-x-0 after:bottom-0 after:h-0.5 after:bg-primary",
-						)}
-					>
-						{tab.name}
-					</button>
-				))}
-			</nav>
-
-			{sourceErrors.length > 0 ? (
-				<div className="rounded-lg border bg-card p-4 text-sm">
-					<p className="font-medium">
-						{everySourceFailed
-							? "Source refresh failed"
-							: "Some KPIs could not refresh"}
-					</p>
-					<p className="mt-1 text-muted-foreground">
-						{sourceErrors
-							.map((source) =>
-								source.lastError
-									? `${source.label}: ${sourceErrorSummary(source.lastError)}`
-									: `${source.label} needs attention`,
-							)
-							.join(" ")}
-						{readyCards.length > 0
-							? " Existing results remain visible below."
-							: ""}
-					</p>
+				<div className="overflow-x-auto pb-1">
+					<TabsList aria-label="Dashboard tabs">
+						{data.tabs.map((tab) => (
+							<TabsTrigger key={tab.id} value={String(tab.number)}>
+								{tab.name}
+							</TabsTrigger>
+						))}
+					</TabsList>
 				</div>
-			) : null}
-
-			{qbrGapCards.length > 0 ? (
-				<section
-					className="rounded-lg border border-warning/40 bg-warning/5 p-4"
-					aria-label="QBR data gaps"
+				<TabsContent
+					value={String(selectedTab?.number ?? "")}
+					className="flex flex-col gap-5"
 				>
-					<p className="font-medium text-sm">QBR data gaps on this tab</p>
-					<p className="mt-1 text-muted-foreground text-xs">
-						No saved rows were found for the previous complete UTC month.
-					</p>
-					<div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-						{qbrGapCards.map((card) => (
-							<div
-								key={card.id}
-								className="rounded-md border border-warning/30 bg-background/40 px-3 py-2 transition-colors hover:bg-background/70"
-							>
-								<Link
-									href={`/questions/${card.question.publicNumber}`}
-									className="block rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-								>
-									<p className="truncate font-medium text-xs">
-										{card.question.name}
-									</p>
-									<p className="mt-1 text-muted-foreground text-xs">
-										Open the question to refresh or define this period.
-									</p>
-								</Link>
+					{sourceErrors.length > 0 ? (
+						<div className="rounded-lg border bg-card p-4 text-sm">
+							<p className="font-medium">
+								{everySourceFailed
+									? "Source refresh failed"
+									: "Some KPIs could not refresh"}
+							</p>
+							<p className="mt-1 text-muted-foreground">
+								{sourceErrors
+									.map((source) =>
+										source.lastError
+											? `${source.label}: ${sourceErrorSummary(source.lastError)}`
+											: `${source.label} needs attention`,
+									)
+									.join(" ")}
+								{readyCards.length > 0
+									? " Existing results remain visible below."
+									: ""}
+							</p>
+						</div>
+					) : null}
+
+					{qbrGapCards.length > 0 ? (
+						<section
+							className="rounded-lg border border-warning/40 bg-warning/5 p-4"
+							aria-label="QBR data gaps"
+						>
+							<p className="font-medium text-sm">QBR data gaps on this tab</p>
+							<p className="mt-1 text-muted-foreground text-xs">
+								No saved rows were found for {reportingPeriodLabel(qbrFilters)}.
+							</p>
+							<div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+								{qbrGapCards.map((card) => (
+									<div
+										key={card.id}
+										className="rounded-md border border-warning/30 bg-background/40 px-3 py-2 transition-colors hover:bg-background/70"
+									>
+										<Link
+											href={`/questions/${card.question.publicNumber}`}
+											className="block rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+										>
+											<p className="truncate font-medium text-xs">
+												{card.question.name}
+											</p>
+											<p className="mt-1 text-muted-foreground text-xs">
+												Open the question to refresh or define this period.
+											</p>
+										</Link>
+									</div>
+								))}
 							</div>
-						))}
-					</div>
-				</section>
-			) : null}
+						</section>
+					) : null}
 
-			{qbrExcludedCards.length > 0 ? (
-				<section
-					className="rounded-lg border border-border/70 bg-card/50 p-4"
-					aria-label="Current-period QBR exclusions"
-				>
-					<p className="font-medium text-sm">Current-period cards excluded</p>
-					<p className="mt-1 text-muted-foreground text-xs">
-						These questions report on the current month and are outside this QBR
-						period.
-					</p>
-					<div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-						{qbrExcludedCards.map((card) => (
-							<Link
-								key={card.id}
-								href={`/questions/${card.question.publicNumber}`}
-								className="rounded-md border border-border/70 bg-background/40 px-3 py-2 transition-colors hover:bg-background/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-							>
-								<p className="truncate font-medium text-xs">
-									{card.question.name}
-								</p>
-								<p className="mt-1 text-muted-foreground text-xs">
-									Current-period only
-								</p>
-							</Link>
-						))}
-					</div>
-				</section>
-			) : null}
+					{qbrExcludedCards.length > 0 ? (
+						<section
+							className="rounded-lg border border-border/70 bg-card/50 p-4"
+							aria-label="Current-period QBR exclusions"
+						>
+							<p className="font-medium text-sm">
+								Current-period cards excluded
+							</p>
+							<p className="mt-1 text-muted-foreground text-xs">
+								These questions report on the current month and are outside this
+								QBR period.
+							</p>
+							<div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+								{qbrExcludedCards.map((card) => (
+									<Link
+										key={card.id}
+										href={`/questions/${card.question.publicNumber}`}
+										className="rounded-md border border-border/70 bg-background/40 px-3 py-2 transition-colors hover:bg-background/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+									>
+										<p className="truncate font-medium text-xs">
+											{card.question.name}
+										</p>
+										<p className="mt-1 text-muted-foreground text-xs">
+											Current-period only
+										</p>
+									</Link>
+								))}
+							</div>
+						</section>
+					) : null}
 
-			{!editing ? <PendingKpiRail cards={pendingCards} /> : null}
-
-			{visibleCards.length > 0 ? (
-				<AtlasGrid
-					cards={visibleCards}
-					editing={editing}
-					layout={
-						editing
-							? draft
-							: qbrMode
-								? toQbrLayout(visibleCards)
-								: toLayout(visibleCards)
-					}
-					visualizations={visualizations}
-					onLayout={setDraft}
-					onVisualization={(id, visualization) =>
-						setVisualizations((current) => ({
-							...current,
-							[id]: visualization,
-						}))
-					}
-				/>
-			) : pendingCards.length === 0 ? (
-				<div className="flex min-h-72 flex-col items-center justify-center rounded-lg border border-dashed p-8 text-center">
-					<p className="font-medium">No questions on this tab yet</p>
-					<p className="mt-1 max-w-sm text-muted-foreground text-sm">
-						Refresh the Metabase source or add an Atlas question to this
-						dashboard.
-					</p>
-				</div>
-			) : null}
+					{visibleCards.length > 0 ? (
+						<AtlasGrid
+							cards={visibleCards}
+							editing={editing}
+							layout={editing ? draft : toLayout(visibleCards)}
+							visualizations={visualizations}
+							onLayoutInteraction={() => {
+								layoutWasEdited.current = true;
+							}}
+							onLayout={setDraft}
+							onVisualization={(id, visualization) =>
+								setVisualizations((current) => ({
+									...current,
+									[id]: visualization,
+								}))
+							}
+						/>
+					) : pendingCards.length === 0 ? (
+						<div className="flex min-h-72 flex-col items-center justify-center rounded-lg border border-dashed p-8 text-center">
+							<p className="font-medium">No questions on this tab yet</p>
+							<p className="mt-1 max-w-sm text-muted-foreground text-sm">
+								Refresh the Metabase source or add an Atlas question to this
+								dashboard.
+							</p>
+						</div>
+					) : null}
+					{!editing ? <PendingKpiRail cards={pendingCards} /> : null}
+				</TabsContent>
+			</Tabs>
 		</div>
 	);
 }

@@ -16,14 +16,14 @@ export function DashboardsList() {
 	}
 
 	return (
-		<div className="overflow-hidden rounded-lg border bg-card">
+		<div className="atlas-dashboard-list">
 			{dashboards.data.map((dashboard) => (
 				<Link
 					key={dashboard.id}
 					href={`/dashboards/${dashboard.number}`}
-					className="group grid gap-4 border-b p-5 transition-colors last:border-0 hover:bg-muted/45 sm:grid-cols-[4rem_minmax(0,1fr)_auto] sm:items-center"
+					className="atlas-dashboard-list-item group"
 				>
-					<span className="font-mono text-muted-foreground text-xs tabular-nums">
+					<span className="atlas-dashboard-list-number">
 						D{String(dashboard.number).padStart(2, "0")}
 					</span>
 					<span className="min-w-0">

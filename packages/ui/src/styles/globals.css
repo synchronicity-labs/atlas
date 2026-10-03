@@ -266,7 +266,7 @@
 				color-mix(in srgb, var(--border) 45%, transparent) 1px,
 				transparent 1px
 			);
-		background-size: calc((100% - 23 * 8px) / 24 + 8px) 46px;
+		background-size: calc((100% - 23 * 12px) / 24 + 12px) 50px;
 	}
 
 	.atlas-grid:not([data-editing="true"]) {
@@ -285,12 +285,86 @@
 		z-index: 20;
 	}
 
+	.atlas-dashboard-list {
+		@apply grid gap-3;
+	}
+
+	.atlas-dashboard-list-item {
+		@apply grid gap-4 rounded-lg border bg-card p-5 transition-colors hover:bg-muted/45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:grid-cols-[3rem_minmax(0,1fr)_auto] sm:items-center;
+	}
+
+	.atlas-dashboard-list-number {
+		@apply flex size-10 items-center justify-center rounded-md border font-mono text-xs text-muted-foreground tabular-nums;
+	}
+
+	.atlas-dashboard-header {
+		@apply flex flex-col gap-4;
+	}
+
+	.atlas-dashboard-title {
+		@apply font-medium text-2xl tracking-tight;
+	}
+
+	.atlas-dashboard-description {
+		@apply max-w-3xl text-sm leading-relaxed text-muted-foreground;
+	}
+
+	.atlas-dashboard-timezone {
+		@apply text-xs text-muted-foreground;
+	}
+
+	.atlas-dashboard-controls {
+		@apply flex flex-wrap items-center gap-2 rounded-lg border bg-card p-2;
+	}
+
+	.atlas-question-card {
+		@apply relative h-full overflow-visible rounded-lg border bg-card;
+	}
+
+	.atlas-card-heading {
+		@apply min-w-0 px-3 pt-3 pr-16;
+	}
+
+	.atlas-card-meta {
+		@apply mt-1 flex min-w-0 max-w-full flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground;
+	}
+
+	.atlas-card-chart-content {
+		@apply grid h-full min-h-[180px] grid-rows-[auto_minmax(0,1fr)];
+	}
+
+	.atlas-card-chart-plot {
+		@apply min-h-0 px-3 pb-3;
+	}
+
+	.atlas-card-table-content {
+		@apply grid h-full min-h-[180px] grid-rows-[auto_minmax(0,1fr)];
+	}
+
+	.atlas-card-table-scroll {
+		@apply min-h-0 overflow-auto;
+	}
+
+	.atlas-card-empty-content {
+		@apply grid h-full min-h-[180px] grid-rows-[auto_minmax(0,1fr)];
+	}
+
+	.atlas-card-actions {
+		@apply absolute top-2 right-2 z-20 flex items-center gap-1 rounded-md bg-card p-1 transition-opacity;
+	}
+
 	.atlas-scalar-card {
+		@apply grid h-full grid-rows-[auto_minmax(0,1fr)] gap-3 p-4;
 		container-type: inline-size;
 	}
 
+	.atlas-scalar-content {
+		@apply flex min-h-0 flex-col items-start justify-center text-left;
+	}
+
 	.atlas-scalar-value {
-		font-size: clamp(2rem, 11.5cqw, 3.75rem);
+		@apply max-w-full font-medium tracking-tight tabular-nums;
+		font-size: clamp(1.5rem, 9cqw, 3rem);
 		line-height: 1;
 	}
 

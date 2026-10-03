@@ -127,7 +127,7 @@ export function isCurrencyMetric(name: string): boolean {
 	if (COUNT_COLUMN.test(name)) return false;
 	if (/cash|collect|usage.*incurred|invoice.*raised/i.test(name)) return true;
 	return (
-		/revenue|spend|cost|value|amount|pipeline|booking|forecast|accrual|run.?rate|subscription|invoice|collection|billing/i.test(
+		/revenue|spend|cost|amount|pipeline|booking|forecast|accrual|run.?rate|subscription|invoice|collection|billing/i.test(
 			name,
 		) || /(^|[_\s])(arr|mrr|ltv)($|[_\s])/i.test(name)
 	);

@@ -10,7 +10,7 @@ function StatGroup({
 	return (
 		<div
 			data-slot="stat-group"
-			className={cn("@container/stats overflow-hidden border", className)}
+			className={cn("@container/stats overflow-hidden rounded-lg border bg-card", className)}
 			{...props}
 		>
 			<div
@@ -87,7 +87,7 @@ function ChartCard({
 	return (
 		<div
 			data-slot="chart-card"
-			className={cn("flex flex-col border", className)}
+			className={cn("flex flex-col rounded-lg border bg-card", className)}
 			{...props}
 		>
 			{title || description || action ? (
@@ -128,7 +128,7 @@ function KpiCard({
 	return (
 		<div
 			data-slot="kpi-card"
-			className={cn("flex flex-col gap-4 border p-5 md:p-6", className)}
+			className={cn("flex flex-col gap-4 rounded-lg border bg-card p-5 md:p-6", className)}
 			{...props}
 		>
 			<h3 className="truncate font-medium text-muted-foreground text-sm">
@@ -199,7 +199,7 @@ function DashboardSkeleton({
 				))}
 			</StatGroup>
 			<DashboardRow>
-				<div className="flex flex-col gap-4 border p-5 md:p-6">
+				<div className="flex flex-col gap-4 rounded-lg border bg-card p-5 md:p-6">
 					<Skeleton className="h-4 w-40" />
 					<Skeleton className="h-[200px] w-full" />
 				</div>

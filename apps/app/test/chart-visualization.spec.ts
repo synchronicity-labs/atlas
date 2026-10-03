@@ -129,6 +129,78 @@ describe("saved chart visualization settings", () => {
 		expect(isCurrencyMetric("revenue_per_all_users_usd")).toBe(true);
 	});
 
+	it("treats generic value columns as numbers, including organization counts", () => {
+		const visualization = {
+			"graph.dimensions": ["period"],
+			"graph.metrics": ["value"],
+			"scalar.field": "value",
+			column_settings: {},
+		};
+		const chart = buildChartData(
+			[{ name: "period" }, { name: "value" }],
+			[["2026-09-01", 532]],
+			visualization,
+		);
+		expect(chart.data[0]?.value).toBe(532);
+		expect(
+			chart.series.map(({ metric }) =>
+				metricDisplayFamily(metric, visualization),
+			),
+		).toEqual(["number"]);
+		for (const name of ["value", "values", "Value", "total_value"]) {
+			expect(isCurrencyMetric(name)).toBe(false);
+			expect(metricDisplayFamily(name)).toBe("number");
+		}
+		expect(
+			hasCompatibleChartUnits([
+				{ key: "value", metric: "value", label: "Organizations" },
+				{ key: "count", metric: "organizations", label: "Organizations" },
+			]),
+		).toBe(true);
+	});
+
+	it("keeps explicit currency and percentage formats for generic values", () => {
+		for (const [settings, family] of [
+			[{ number_style: "currency" }, "currency"],
+			[{ suffix: " USD" }, "currency"],
+			[{ suffix: "$" }, "currency"],
+			[{ number_style: "percent" }, "percent"],
+			[{ suffix: "%" }, "percent"],
+			[{ number_style: "decimal" }, "number"],
+		] as const) {
+			expect(
+				metricDisplayFamily("value", {
+					column_settings: { '["name","value"]': settings },
+				}),
+			).toBe(family);
+		}
+	});
+
+	it("retains monetary field inference without treating related counts as money", () => {
+		for (const name of [
+			"revenue",
+			"cost",
+			"revenue_value",
+			"value_usd",
+			"value_eur",
+			"value_gbp",
+			"mrr",
+			"pipeline_amount",
+		]) {
+			expect(metricDisplayFamily(name)).toBe("currency");
+		}
+		for (const name of [
+			"revenue_count",
+			"cost_count",
+			"invoice_count",
+			"subscription_count",
+			"cash_eligible_organizations",
+			"billing_users",
+		]) {
+			expect(metricDisplayFamily(name)).toBe("number");
+		}
+	});
+
 	it("uses explicit display metadata before fallback field-name rules", () => {
 		expect(
 			metricDisplayFamily("value", {

@@ -449,7 +449,10 @@ systems. The server exposes read-only, bearer-protected endpoints:
 - `GET /internal/atlas/sources` reads source freshness and sync status.
 
 Agents on the company Tailnet can use the existing Rudy MCP server instead of
-handling this credential. See the [Atlas MCP setup](../ops/rudy/README.md#direct-atlas-mcp-tools).
+handling this credential. For QBR requests, discover the `atlas_*` tools and
+follow the [QBR agent guide](./qbr-agent-access.md). The dashboard provides an
+editable data request and a complete prompt to copy. Server deployment details
+remain in the [Atlas MCP setup](../ops/rudy/README.md#direct-atlas-mcp-tools).
 
 The credential is `ATLAS_QUERY_SECRET`. It cannot refresh a connector, edit a
 question, or write CRM data. A consumer must treat `stale`, `error`, and

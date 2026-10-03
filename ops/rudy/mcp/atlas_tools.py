@@ -6,7 +6,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from datetime import date, datetime
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 
 _QUARTER = re.compile(r"^\d{4}-Q[1-4]$")
@@ -122,7 +122,9 @@ def register_atlas_tools(mcp):
         )
 
     @tool("atlas_qbr_report", "Read a compact Atlas QBR summary or selected metric details.")
-    async def atlas_qbr_report(quarter: str, metric_ids: Optional[List[str]] = None) -> dict:
+    async def atlas_qbr_report(
+        quarter: str, metric_ids: Optional[List[str]] = None
+    ) -> Dict[str, Any]:
         _validate_quarter(quarter)
         if metric_ids is not None:
             if not isinstance(metric_ids, list) or not metric_ids or len(metric_ids) > 10:
@@ -163,7 +165,7 @@ def register_atlas_tools(mcp):
         }
 
     @tool("atlas_search_questions", "Search Atlas catalog questions by text.")
-    async def atlas_search_questions(query: str, limit: int = 20) -> dict:
+    async def atlas_search_questions(query: str, limit: int = 20) -> Dict[str, Any]:
         if not isinstance(query, str) or not query.strip() or len(query) > _MAX_SEARCH_LENGTH:
             raise ValueError(f"query must contain 1 to {_MAX_SEARCH_LENGTH} characters")
         if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= _MAX_LIMIT:
@@ -185,7 +187,7 @@ def register_atlas_tools(mcp):
     @tool("atlas_question", "Read a saved Atlas question and its immutable result snapshot.")
     async def atlas_question(
         number: int, reporting_period: Optional[str] = None, as_of: Optional[str] = None
-    ) -> dict:
+    ) -> Dict[str, Any]:
         _validate_question(number, reporting_period, as_of)
         params = {}
         if reporting_period is not None:
@@ -196,7 +198,7 @@ def register_atlas_tools(mcp):
         return await asyncio.to_thread(_request, base_url, secret, path, params or None)
 
     @tool("atlas_source_health", "Read Atlas source freshness and latest sync status.")
-    async def atlas_source_health() -> dict:
+    async def atlas_source_health() -> Dict[str, Any]:
         return await asyncio.to_thread(_request, base_url, secret, "/internal/atlas/sources")
 
     return 4

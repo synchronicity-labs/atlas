@@ -6,6 +6,11 @@ from unittest.mock import patch
 
 from atlas_tools import _base_url, _validate_question, _validate_quarter, register_atlas_tools
 
+try:
+    from mcp.server.fastmcp import FastMCP
+except ImportError:
+    FastMCP = None
+
 
 class FakeMCP:
     def __init__(self):
@@ -33,6 +38,21 @@ class AtlasToolsTests(unittest.TestCase):
             self.assertTrue(get("openWorldHint"))
             self.assertTrue(structured_output)
         return server
+
+    @unittest.skipIf(FastMCP is None, "FastMCP SDK is not installed")
+    def test_fastmcp_registers_structured_atlas_tools(self):
+        server = FastMCP("atlas-tools-test")
+        with patch.dict(os.environ, {
+            "ATLAS_API_URL": "https://atlas.example",
+            "ATLAS_QUERY_SECRET": "test-secret",
+        }, clear=True):
+            self.assertEqual(register_atlas_tools(server), 4)
+        tools = asyncio.run(server.list_tools())
+        self.assertEqual(
+            {tool.name for tool in tools},
+            {"atlas_qbr_report", "atlas_search_questions", "atlas_question", "atlas_source_health"},
+        )
+        self.assertTrue(all(tool.outputSchema is not None for tool in tools))
 
     def test_missing_or_unsafe_configuration_registers_nothing(self):
         for env in ({}, {"ATLAS_API_URL": "https://atlas.example"},

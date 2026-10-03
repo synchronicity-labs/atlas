@@ -45,7 +45,9 @@ register_atlas_tools(mcp)
 
 Provision `ATLAS_API_URL` and `ATLAS_QUERY_SECRET` in the MCP service's scoped
 Doppler configuration, `rudy/prd_rudy_mcp`, by referencing their existing
-`rudy/prd_core` values. Do not add the authoring credential. Missing configuration
+`rudy/prd_core` values. Add both names to the service's `DOPPLER_ONLY_SECRETS`
+allowlist, preserving its existing entries. Do not add the authoring credential.
+Missing configuration
 leaves these tools unregistered and does not prevent the existing MCP service
 from starting. Back up the deployed files, verify registration with the installed
 SDK, and restart `rudy-mcp` only when its health endpoint reports no active Hermes
@@ -55,7 +57,8 @@ Verify initialization, tool discovery, and all four tool calls over the Tailnet
 URL. Check that the QBR call returns the requested quarter and source links, an
 invalid question/quarter returns an explicit error, and no response contains the
 server credential. To roll back, restore the server and adapter backups and
-restart during an idle window; remove only Doppler keys added by this rollout.
+restore the previous credential allowlist, then restart during an idle window.
+Remove only Doppler keys added by this rollout.
 
 The authoring credential is isolated in the `rudy/prd_atlas_authoring` Doppler config. It is not loaded into the Hermes gateway. `/usr/local/sbin/rudy-atlas-question-draft` injects it only into the fixed root-owned broker. The broker can create drafts and publish a reviewed recipe ID. It cannot submit query text or set question status, purpose, certification, or trust state. Atlas owns those actions and activates a question only after the recipe result passes every required check.
 

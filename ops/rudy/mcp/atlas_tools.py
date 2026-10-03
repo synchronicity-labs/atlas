@@ -1,4 +1,5 @@
 import asyncio
+import http.client
 import json
 import os
 import re
@@ -30,7 +31,7 @@ def _base_url(value):
         if (
             "?" in value
             or "#" in value
-            or parsed.scheme not in {"http", "https"}
+            or parsed.scheme != "https"
             or not parsed.hostname
             or parsed.username is not None
             or parsed.password is not None
@@ -86,7 +87,7 @@ def _request(base_url, secret, path, params=None):
             return json.loads(payload.decode("utf-8"))
     except urllib.error.HTTPError as error:
         raise RuntimeError(f"Atlas request failed with HTTP {error.code}") from None
-    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, UnicodeDecodeError):
+    except (OSError, http.client.HTTPException, json.JSONDecodeError, UnicodeDecodeError):
         raise RuntimeError("Atlas request failed") from None
 
 
@@ -129,10 +130,16 @@ def register_atlas_tools(mcp):
         if metric_ids is not None:
             if not isinstance(metric_ids, list) or not metric_ids or len(metric_ids) > 10:
                 raise ValueError("metric_ids must contain between 1 and 10 metric IDs")
-            if any(not isinstance(metric_id, str) or not metric_id for metric_id in metric_ids):
+            if any(
+                not isinstance(metric_id, str) or not metric_id or "," in metric_id
+                for metric_id in metric_ids
+            ):
                 raise ValueError("metric_ids must contain non-empty strings")
+        params = {"view": "summary"} if metric_ids is None else {
+            "metricIds": ",".join(metric_ids)
+        }
         report = await asyncio.to_thread(
-            _request, base_url, secret, f"/internal/atlas/reports/qbr/{quarter}"
+            _request, base_url, secret, f"/internal/atlas/reports/qbr/{quarter}", params
         )
         if metric_ids is None:
             metrics = {}
@@ -145,8 +152,9 @@ def register_atlas_tools(mcp):
                         "automated", "observations",
                     )
                 }
-                metrics[metric_id]["supportingResultCount"] = len(
-                    preparation.get("supportingResults", [])
+                metrics[metric_id]["supportingResultCount"] = metric.get(
+                    "supportingResultCount",
+                    len(preparation.get("supportingResults", [])),
                 )
             return {
                 **{key: value for key, value in report.items() if key != "metrics"},

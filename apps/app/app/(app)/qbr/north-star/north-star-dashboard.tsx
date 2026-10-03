@@ -493,7 +493,7 @@ export function NorthStarDashboard() {
 
 	return (
 		<TooltipProvider>
-			<div className="grid gap-6">
+			<div className="grid grid-cols-1 gap-6">
 				<NorthStarAgentAccess />
 				<section className="grid gap-1" aria-labelledby="q3-summary">
 					<h2 id="q3-summary" className="font-medium">

@@ -1,4 +1,5 @@
 import asyncio
+import http.client
 import json
 import os
 import unittest
@@ -58,7 +59,8 @@ class AtlasToolsTests(unittest.TestCase):
         for env in ({}, {"ATLAS_API_URL": "https://atlas.example"},
                     {"ATLAS_API_URL": "https://user:pass@atlas.example", "ATLAS_QUERY_SECRET": "x"},
                     {"ATLAS_API_URL": "https://atlas.example?secret=x", "ATLAS_QUERY_SECRET": "x"},
-                    {"ATLAS_API_URL": "https://atlas.example?", "ATLAS_QUERY_SECRET": "x"}):
+                    {"ATLAS_API_URL": "https://atlas.example?", "ATLAS_QUERY_SECRET": "x"},
+                    {"ATLAS_API_URL": "http://atlas.example", "ATLAS_QUERY_SECRET": "x"}):
             server = FakeMCP()
             with patch.dict(os.environ, env, clear=True):
                 self.assertEqual(register_atlas_tools(server), 0)
@@ -75,6 +77,7 @@ class AtlasToolsTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 _validate_question(1, None, timestamp)
         self.assertIsNone(_base_url("file:///etc/passwd"))
+        self.assertIsNone(_base_url("http://atlas.example"))
 
     def test_question_uses_fixed_route_encoded_query_and_server_secret(self):
         server = self.configured()
@@ -128,6 +131,34 @@ class AtlasToolsTests(unittest.TestCase):
                 _request("https://atlas.example", "server-secret", "/internal/atlas/catalog")
         self.assertEqual(response.requested_size, _MAX_RESPONSE_BYTES + 1)
 
+    def test_connection_reset_and_truncated_response_are_sanitized(self):
+        from atlas_tools import _request
+
+        for failure in (
+            ConnectionResetError("reset with secret-token"),
+            http.client.IncompleteRead(b"partial secret-token", 32),
+        ):
+            class Response:
+                def __enter__(self):
+                    return self
+
+                def __exit__(self, *args):
+                    return None
+
+                def read(self, size):
+                    raise failure
+
+            class Opener:
+                def open(self, request, timeout):
+                    return Response()
+
+            with self.subTest(error=type(failure).__name__):
+                with patch("atlas_tools.urllib.request.build_opener", return_value=Opener()):
+                    with self.assertRaisesRegex(RuntimeError, "^Atlas request failed$") as error:
+                        _request("https://atlas.example", "server-secret", "/internal/atlas/catalog")
+                self.assertNotIn("secret-token", str(error.exception))
+                self.assertNotIn("server-secret", str(error.exception))
+
     def test_catalog_search_uses_actual_catalog_question_shape_and_limit(self):
         server = self.configured()
         catalog = {"schemaVersion": 1, "questions": [
@@ -147,6 +178,7 @@ class AtlasToolsTests(unittest.TestCase):
         self.assertEqual([call.args[2] for call in request.call_args_list], [
             "/internal/atlas/reports/qbr/2026-Q3", "/internal/atlas/sources"
         ])
+        self.assertEqual(request.call_args_list[0].args[3], {"view": "summary"})
 
         class Opener:
             def open(self, request, timeout):
@@ -179,16 +211,24 @@ class AtlasToolsTests(unittest.TestCase):
                     "question": None, "notApplicable": True, "automated": True,
                     "preparation": {"supportingResults": []}, "observations": {},
                 },
+                "activation": {
+                    "label": "Activation", "unit": "%", "definition": "Definition",
+                    "question": None, "notApplicable": False, "automated": True,
+                    "supportingResultCount": 3, "observations": {},
+                },
             },
         }
-        with patch("atlas_tools._request", return_value=report):
+        with patch("atlas_tools._request", return_value=report) as request:
             summary = asyncio.run(server.tools["atlas_qbr_report"][0]("2026-Q3"))
             detail = asyncio.run(server.tools["atlas_qbr_report"][0]("2026-Q3", ["retention"]))
+        self.assertEqual(request.call_args_list[0].args[3], {"view": "summary"})
+        self.assertEqual(request.call_args_list[1].args[3], {"metricIds": "retention"})
         self.assertEqual(summary["view"], "summary")
         self.assertEqual(summary["schemaVersion"], report["schemaVersion"])
         self.assertEqual(summary["generatedAt"], report["generatedAt"])
         self.assertEqual(summary["metrics"]["retention"]["observations"]["2026-Q3"], observation)
         self.assertEqual(summary["metrics"]["retention"]["supportingResultCount"], 1)
+        self.assertEqual(summary["metrics"]["activation"]["supportingResultCount"], 3)
         self.assertNotIn("preparation", summary["metrics"]["retention"])
         self.assertEqual(detail["metrics"], {"retention": report["metrics"]["retention"]})
         self.assertEqual(detail["view"], "detail")

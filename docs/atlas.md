@@ -435,13 +435,21 @@ The generated deployment refreshes dashboard 6 every eight hours.
 ## Rudy query and session contract
 
 Rudy and other trusted internal agents should read Atlas before querying vendor
-systems. The server exposes two read-only, bearer-protected endpoints:
+systems. The server exposes read-only, bearer-protected endpoints:
 
 - `GET /internal/atlas/catalog` lists dashboards, tabs, questions, versions, source
   state, and the latest result metadata.
 - `GET /internal/atlas/questions/:number` returns the immutable result, exact saved
   definition, freshness, and provenance. `reportingPeriod=YYYY-MM` and an ISO
   `asOf` timestamp select a historical snapshot.
+
+- `GET /internal/atlas/reports/qbr/:quarter` reads quarter observations and their
+  supporting evidence. `view=summary` returns a compact report; `metricIds`
+  selects complete evidence for up to ten metrics.
+- `GET /internal/atlas/sources` reads source freshness and sync status.
+
+Agents on the company Tailnet can use the existing Rudy MCP server instead of
+handling this credential. See the [Atlas MCP setup](../ops/rudy/README.md#direct-atlas-mcp-tools).
 
 The credential is `ATLAS_QUERY_SECRET`. It cannot refresh a connector, edit a
 question, or write CRM data. A consumer must treat `stale`, `error`, and

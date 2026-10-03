@@ -16,7 +16,7 @@ const MCP_CONFIGURATION = JSON.stringify(
 	2,
 );
 
-export const NORTH_STAR_AGENT_INSTRUCTIONS = `Connect to the Rudy MCP server at https://ip-10-0-3-200-1.tail8782ce.ts.net/mcp. The agent runtime must be able to reach the company Tailscale network. This is an existing MCP server with other tools; these instructions describe the QBR tools only, not the permissions of the whole server. No ATLAS_QUERY_SECRET or agent-side credential is needed. Credentials stay on the server.
+export const NORTH_STAR_AGENT_INSTRUCTIONS = `Connect to the Rudy MCP server at https://ip-10-0-3-200-1.tail8782ce.ts.net/mcp. The agent runtime must be able to reach the company Tailscale network. This is an existing MCP server with other tools; these instructions describe the QBR tools only, not the permissions of the whole server. No agent-side credential is needed; credentials stay on the server.
 
 Call atlas_qbr_report with quarter "2026-Q3". By default it returns a compact summary with metric definitions, values, statuses, and source question links. Inspect period keys "2026-07", "2026-08", "2026-09", and "2026-Q3". A missing period means not reported, not zero.
 

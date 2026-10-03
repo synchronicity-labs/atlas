@@ -18,11 +18,12 @@ import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { useTRPC } from "@/lib/trpc/client";
 import type { QbrMetric } from "../qbr-review-logic";
+import { NorthStarAgentAccess } from "./north-star-agent-access";
 import {
 	AVERAGE_TEAM_METRIC_IDS,
 	formatNorthStarValue,
+	groupMissingNorthStarMetrics,
 	metricRowLabel,
-	metricSectionId,
 } from "./north-star-display";
 
 type Metric = QbrMetric;
@@ -185,8 +186,11 @@ function MetricQuestion({ metric }: { metric: Metric }) {
 
 function PlanningScope({ metrics }: { metrics: Record<string, Metric> }) {
 	return (
-		<div className="grid gap-5">
-			<section className="grid gap-2 rounded-lg border p-4">
+		<details className="rounded-lg border p-4">
+			<summary className="cursor-pointer font-medium">
+				North Star definition and planning references
+			</summary>
+			<section className="mt-4 grid gap-2">
 				<div className="flex flex-wrap items-center justify-between gap-2">
 					<h2 className="font-medium">North Star definition</h2>
 					<a
@@ -202,6 +206,19 @@ function PlanningScope({ metrics }: { metrics: Record<string, Metric> }) {
 					Monthly active professional teams. The unit is a team, not a title or
 					studio logo. A team that appears through two doors counts once in the
 					company total.
+				</p>
+				<p className="text-sm text-muted-foreground">
+					Monthly values retain their authored definitions. Booked revenue
+					follows each door’s authored basis. Actualized revenue, booked
+					revenue, and estimated annual revenue remain separate; no YTD totals
+					are derived here.
+				</p>
+				<p className="text-sm text-muted-foreground">
+					YTD revenue by subscription, usage, and services is not available in
+					the saved Q3 report and is not estimated from monthly values or the
+					separate authored annual estimate. Productions usage NDR is not
+					defined; repeat-revenue share and signed-value retention remain
+					separate measures.
 				</p>
 				<dl className="grid gap-3 md:grid-cols-2">
 					{DOORS.map((door) => {
@@ -238,7 +255,7 @@ function PlanningScope({ metrics }: { metrics: Record<string, Metric> }) {
 					KPI definitions A3:K15 ↗
 				</a>
 			</section>
-		</div>
+		</details>
 	);
 }
 
@@ -342,80 +359,79 @@ function SupportingResults({ metrics }: { metrics: [string, Metric][] }) {
 		});
 	if (!results.length) return null;
 	return (
-		<section
-			className="grid gap-3"
-			aria-labelledby="north-star-supporting-data"
-		>
-			<h2 id="north-star-supporting-data" className="text-lg font-semibold">
-				Supporting measured data
-			</h2>
-			{results.map(({ id, result }) => (
-				<article key={`${id}-${result.label}`} className="min-w-0 text-sm">
-					<details
-						open={id === "enterprise_usage" || id === "channel_usage"}
-						className="rounded-lg border px-3 py-2"
-					>
-						<summary className="cursor-pointer font-medium">
-							{result.label} · {id.replaceAll("_", " ")}
-						</summary>
-						<div className="mt-3 grid gap-3">
-							<p>
-								As of {result.asOf} ·{" "}
-								<a
-									className="underline underline-offset-4"
-									href={result.source.url}
-									target="_blank"
-									rel="noreferrer"
-								>
-									{result.source.label}
-								</a>
-							</p>
-							<div className="max-w-full overflow-x-auto">
-								<Table className="w-max min-w-full text-left">
-									<TableHeader>
-										<TableRow>
-											{result.columns.map((column) => (
-												<TableHead key={column} scope="col">
-													{column}
-												</TableHead>
-											))}
-										</TableRow>
-									</TableHeader>
-									<TableBody>
-										{result.rows.map((row) => (
-											<TableRow key={JSON.stringify(row)}>
-												{result.columns.map((column, cellIndex) => (
-													<TableCell key={column}>
-														{row[cellIndex] === null ||
-														row[cellIndex] === undefined
-															? "Not reported"
-															: String(row[cellIndex])}
-													</TableCell>
+		<details className="grid gap-3">
+			<summary
+				id="north-star-supporting-data"
+				className="cursor-pointer font-semibold"
+			>
+				Supporting measured data · {results.length} tables
+			</summary>
+			<div className="mt-3 grid gap-3">
+				{results.map(({ id, result }) => (
+					<article key={`${id}-${result.label}`} className="min-w-0 text-sm">
+						<details className="rounded-lg border px-3 py-2">
+							<summary className="cursor-pointer font-medium">
+								{result.label} · {id.replaceAll("_", " ")}
+							</summary>
+							<div className="mt-3 grid gap-3">
+								<p>
+									As of {result.asOf} ·{" "}
+									<a
+										className="underline underline-offset-4"
+										href={result.source.url}
+										target="_blank"
+										rel="noreferrer"
+									>
+										{result.source.label}
+									</a>
+								</p>
+								<div className="max-w-full overflow-x-auto">
+									<Table className="w-max min-w-full text-left">
+										<TableHeader>
+											<TableRow>
+												{result.columns.map((column) => (
+													<TableHead key={column} scope="col">
+														{column}
+													</TableHead>
 												))}
 											</TableRow>
-										))}
-									</TableBody>
-								</Table>
+										</TableHeader>
+										<TableBody>
+											{result.rows.map((row) => (
+												<TableRow key={JSON.stringify(row)}>
+													{result.columns.map((column, cellIndex) => (
+														<TableCell key={column}>
+															{row[cellIndex] === null ||
+															row[cellIndex] === undefined
+																? "Not reported"
+																: String(row[cellIndex])}
+														</TableCell>
+													))}
+												</TableRow>
+											))}
+										</TableBody>
+									</Table>
+								</div>
+								<details>
+									<summary className="cursor-pointer font-medium">
+										Coverage and limitations
+									</summary>
+									<p className="mt-2">{result.limitations}</p>
+								</details>
+								<details>
+									<summary className="cursor-pointer font-medium">
+										Source query
+									</summary>
+									<pre className="mt-2 max-w-full overflow-x-auto whitespace-pre-wrap break-words">
+										{result.queryText}
+									</pre>
+								</details>
 							</div>
-							<details>
-								<summary className="cursor-pointer font-medium">
-									Coverage and limitations
-								</summary>
-								<p className="mt-2">{result.limitations}</p>
-							</details>
-							<details>
-								<summary className="cursor-pointer font-medium">
-									Source query
-								</summary>
-								<pre className="mt-2 max-w-full overflow-x-auto whitespace-pre-wrap break-words">
-									{result.queryText}
-								</pre>
-							</details>
-						</div>
-					</details>
-				</article>
-			))}
-		</section>
+						</details>
+					</article>
+				))}
+			</div>
+		</details>
 	);
 }
 
@@ -451,148 +467,135 @@ export function NorthStarDashboard() {
 	const provisional = observations.filter(
 		(observation) => observation.status === "provisional",
 	).length;
-	const cellCount = tracked.length * PERIODS.length;
 	const missingBySection = SECTIONS.map((section) => ({
 		...section,
-		metrics: section.rows
-			.map((id) => data.metrics[id])
-			.filter(
-				(metric): metric is Metric =>
-					metric !== undefined &&
-					!metric.notApplicable &&
-					!PERIODS.some(({ period }) => metric.observations[period]),
-			),
-	})).filter((section) => section.metrics.length);
-	const sectionsWithObservations = SECTIONS.filter((section) =>
-		section.rows.some((id) => {
+		metrics: section.rows.flatMap((id) => {
 			const metric = data.metrics[id];
-			return (
-				metric &&
+			return metric &&
+				!metric.notApplicable &&
+				!PERIODS.some(({ period }) => metric.observations[period])
+				? [{ ...metric, id }]
+				: [];
+		}),
+	})).filter((section) => section.metrics.length);
+	const observedMetrics = SECTIONS.flatMap((section) =>
+		section.rows.flatMap((id) => {
+			const metric = data.metrics[id];
+			return metric &&
 				!metric.notApplicable &&
 				PERIODS.some(({ period }) => metric.observations[period])
-			);
+				? [{ id, section: section.title, metric }]
+				: [];
 		}),
 	);
+	const missing = missingBySection.flatMap((section) => section.metrics);
+	const missingByDependency = groupMissingNorthStarMetrics(missing);
 
 	return (
 		<TooltipProvider>
 			<div className="grid gap-6">
-				<section
-					className="grid gap-2 rounded-lg border p-4"
-					aria-labelledby="q3-summary"
-				>
+				<NorthStarAgentAccess />
+				<section className="grid gap-1" aria-labelledby="q3-summary">
 					<h2 id="q3-summary" className="font-medium">
-						Q3 summary
+						July–September 2026 · Q3
 					</h2>
 					<p className="text-sm text-muted-foreground">
-						The North Star view tracks professional teams and their economic
-						contribution across PLG, Enterprise, Channel, and Productions.
-						Monthly values stay on their authored definitions. Actualized
-						revenue, booked revenue, and estimated annual revenue are shown
-						separately; this page does not combine them or derive YTD totals.
-					</p>
-					<p className="text-sm text-muted-foreground">
-						Booked revenue keeps each door’s authored basis. PLG booked revenue
-						includes invoice revenue, including unclassified revenue.
-					</p>
-					<p className="text-sm text-muted-foreground">
-						{observations.length} of {cellCount} Atlas report cells have saved
-						observations: {verified} verified, {reported} reported, and{" "}
-						{provisional} provisional. A missing cell is unreported, not zero.
-					</p>
-					<p className="text-xs text-muted-foreground">
-						Only the fixed July, August, and September 2026 reporting periods
-						are shown.
+						{observations.length} saved period values · {verified} verified ·{" "}
+						{reported} reported · {provisional} provisional. Missing values are
+						not zero.
 					</p>
 				</section>
-				<PlanningScope metrics={data.metrics} />
-				{sectionsWithObservations.map((section) => {
-					const sectionId = metricSectionId(section.title);
-					return (
-						<section
-							key={section.title}
-							className="grid gap-2"
-							aria-labelledby={sectionId}
-						>
-							<h2 id={sectionId} className="text-lg font-semibold">
-								{section.title}
-							</h2>
-							<Table>
-								<TableHeader>
-									<TableRow>
-										<TableHead scope="col" className="min-w-64">
-											Measure
+				<details open className="rounded-lg border p-4">
+					<summary className="cursor-pointer font-semibold">
+						Available results · {observedMetrics.length} measures
+					</summary>
+					<p className="mt-2 text-sm text-muted-foreground">
+						PLG counts use 3+ billable generations; the sheet says 4+ and that
+						definition is awaiting confirmation. Channel uses Prady’s approved
+						$1,000 net-revenue threshold rather than the sheet’s older
+						threshold.
+					</p>
+					<div className="mt-4 max-w-full overflow-x-auto">
+						<Table className="w-full min-w-[48rem]">
+							<TableHeader>
+								<TableRow>
+									<TableHead scope="col" className="min-w-64">
+										Measure
+									</TableHead>
+									{PERIODS.map((period) => (
+										<TableHead
+											scope="col"
+											key={period.period}
+											className="min-w-24"
+										>
+											{period.label}
 										</TableHead>
-										{PERIODS.map((month) => (
-											<TableHead
-												scope="col"
-												key={month.period}
-												className="min-w-28"
-											>
-												{month.label}
-											</TableHead>
+									))}
+								</TableRow>
+							</TableHeader>
+							<TableBody>
+								{observedMetrics.map(({ id, section, metric }) => (
+									<TableRow key={id}>
+										<TableHead
+											scope="row"
+											className="whitespace-normal text-foreground"
+										>
+											<span className="block text-xs font-normal text-muted-foreground">
+												{section}
+											</span>
+											<span>
+												{metricRowLabel(id, metric.label)}
+												{id === "plg_booked_revenue"
+													? " (invoice revenue; includes unclassified)"
+													: ""}
+											</span>
+											<MetricQuestion metric={metric} />
+										</TableHead>
+										{PERIODS.map((period) => (
+											<TableCell key={period.period}>
+												<EvidenceCell metric={metric} period={period.period} />
+											</TableCell>
 										))}
 									</TableRow>
-								</TableHeader>
-								<TableBody>
-									{section.rows.map((id) => {
-										const metric = data.metrics[id];
-										if (!metric) return null;
-										if (metric.notApplicable) return null;
-										if (
-											!PERIODS.some(({ period }) => metric.observations[period])
-										)
-											return null;
-										return (
-											<TableRow key={id}>
-												<TableHead
-													scope="row"
-													className="whitespace-normal text-foreground"
-												>
-													<div className="flex min-w-0 items-center justify-between gap-2">
-														<span className="min-w-0">
-															{metricRowLabel(id, metric.label)}
-															{id === "plg_booked_revenue"
-																? " (includes unclassified invoice revenue)"
-																: ""}
-														</span>
-														<MetricQuestion metric={metric} />
-													</div>
-												</TableHead>
-												{PERIODS.map((month) => (
-													<TableCell key={month.period}>
-														<EvidenceCell
-															metric={metric}
-															period={month.period}
-														/>
-													</TableCell>
-												))}
-											</TableRow>
-										);
-									})}
-								</TableBody>
-							</Table>
-						</section>
-					);
-				})}
-				<SupportingResults metrics={Object.entries(data.metrics)} />
-				{missingBySection.length ? (
+								))}
+							</TableBody>
+						</Table>
+					</div>
+				</details>
+				{missingByDependency.length ? (
 					<details className="rounded-lg border p-4">
 						<summary className="cursor-pointer font-medium">
-							Measures with no saved Q3 values (
-							{missingBySection.reduce(
-								(count, section) => count + section.metrics.length,
-								0,
-							)}
-							)
+							What we still need · {missingByDependency.length} shared inputs
 						</summary>
-						<div className="mt-4 grid gap-4">
-							{missingBySection.map((section) => (
-								<section key={section.title} className="grid gap-2">
-									<h3 className="font-medium">{section.title}</h3>
-									<ul className="grid gap-3 text-sm">
-										{section.metrics.map((metric) => (
-											<li key={metric.label} className="grid gap-1">
+						<p className="mt-2 text-sm text-muted-foreground">
+							Affects {missing.length} measures with no saved values in the
+							displayed periods.
+						</p>
+						<div className="mt-4 grid gap-3">
+							{missingByDependency.map((group) => (
+								<details
+									key={group.title}
+									className="rounded-lg border px-3 py-2"
+								>
+									<summary className="cursor-pointer font-medium">
+										<span>
+											{group.title} · {group.metrics.length}
+										</span>
+										<span className="mt-1 block text-sm font-normal text-muted-foreground">
+											{group.description} Owners:{" "}
+											{[
+												...new Set(
+													group.metrics
+														.map((metric) => metric.preparation.owner)
+														.filter(Boolean),
+												),
+											].join(", ") || "Not identified"}
+											.
+										</span>
+									</summary>
+									<ul className="mt-3 grid gap-3 text-sm">
+										{group.metrics.map((metric) => (
+											<li key={metric.id} className="grid gap-1">
 												<div className="flex items-center justify-between gap-2">
 													<span>{metric.label}</span>
 													<MetricQuestion metric={metric} />
@@ -601,21 +604,19 @@ export function NorthStarDashboard() {
 													Owner: {metric.preparation.owner}.{" "}
 													{metric.preparation.manualAsk}
 												</span>
+												<span className="text-muted-foreground">
+													Source: {metric.preparation.dataLocation}
+												</span>
 											</li>
 										))}
 									</ul>
-								</section>
+								</details>
 							))}
 						</div>
 					</details>
 				) : null}
-				<p className="text-xs text-muted-foreground">
-					YTD revenue by subscription, usage, and services is not available in
-					the saved Q3 report. It is not estimated from monthly values or the
-					separate authored annual estimate. Productions usage NDR is not
-					defined in the current QBR registry. Productions repeat-revenue share
-					and signed-value retention remain separate measures.
-				</p>
+				<PlanningScope metrics={data.metrics} />
+				<SupportingResults metrics={Object.entries(data.metrics)} />
 				<details className="text-xs text-muted-foreground">
 					<summary className="cursor-pointer">
 						YTD revenue collection owners and source requests

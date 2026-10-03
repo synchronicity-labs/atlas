@@ -1,9 +1,6 @@
-import { Button } from "@crm/ui/components/button";
 import type { Metadata } from "next";
-import Link from "next/link";
 import {
 	PageShell,
-	PageShellActions,
 	PageShellContent,
 	PageShellDescription,
 	PageShellHeader,
@@ -13,11 +10,11 @@ import {
 import { requireSession } from "@/lib/session";
 import { HydrateClient } from "@/lib/trpc/hydrate";
 import { getServerQueryClient, getServerTrpc } from "@/lib/trpc/server";
-import { QbrReview } from "./qbr-review";
+import { NorthStarDashboard } from "./north-star-dashboard";
 
-export const metadata: Metadata = { title: "QBR team review" };
+export const metadata: Metadata = { title: "Q3 North Star" };
 
-export default async function QbrPage() {
+export default async function NorthStarPage() {
 	await requireSession();
 	const trpc = getServerTrpc();
 	await getServerQueryClient().prefetchQuery(trpc.qbr.report.queryOptions());
@@ -26,21 +23,15 @@ export default async function QbrPage() {
 		<PageShell>
 			<PageShellHeader>
 				<PageShellHeading>
-					<PageShellTitle>QBR team review</PageShellTitle>
+					<PageShellTitle>Q3 North Star</PageShellTitle>
 					<PageShellDescription>
-						Review supplied Q3 results and collect the exact inputs still
-						missing.
+						July–September 2026 · quarter ended September 30
 					</PageShellDescription>
 				</PageShellHeading>
-				<PageShellActions>
-					<Button asChild variant="outline">
-						<Link href="/qbr/north-star">Open Q3 North Star</Link>
-					</Button>
-				</PageShellActions>
 			</PageShellHeader>
 			<PageShellContent>
 				<HydrateClient>
-					<QbrReview />
+					<NorthStarDashboard />
 				</HydrateClient>
 			</PageShellContent>
 		</PageShell>

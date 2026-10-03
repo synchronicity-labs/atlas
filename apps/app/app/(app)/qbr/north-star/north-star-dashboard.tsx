@@ -18,6 +18,12 @@ import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { useTRPC } from "@/lib/trpc/client";
 import type { QbrMetric } from "../qbr-review-logic";
+import {
+	AVERAGE_TEAM_METRIC_IDS,
+	formatNorthStarValue,
+	metricRowLabel,
+	metricSectionId,
+} from "./north-star-display";
 
 type Metric = QbrMetric;
 
@@ -40,6 +46,7 @@ const SECTIONS = [
 	{
 		title: "Professional teams",
 		rows: [
+			...AVERAGE_TEAM_METRIC_IDS,
 			"company_teams_period_end",
 			"company_teams_adds",
 			"company_teams_losses",
@@ -146,28 +153,6 @@ const SECTIONS = [
 	},
 ] as const satisfies { title: string; rows: string[] }[];
 
-function formatValue(value: number, unit: string, compact: boolean) {
-	const suffix = unit === "months" ? " months" : "";
-	const options: Intl.NumberFormatOptions =
-		unit === "usd"
-			? {
-					style: "currency",
-					currency: "USD",
-					maximumFractionDigits: compact ? 1 : 2,
-				}
-			: unit === "percent"
-				? { style: "percent", maximumFractionDigits: 1 }
-				: unit === "months"
-					? { maximumFractionDigits: 1 }
-					: { maximumFractionDigits: 0 };
-	const formatter = new Intl.NumberFormat("en-US", {
-		...options,
-		...(compact ? { notation: "compact" as const } : {}),
-	});
-	const rendered = formatter.format(unit === "percent" ? value / 100 : value);
-	return `${rendered}${suffix}`;
-}
-
 function exactUsd(value: number) {
 	return `USD ${value.toLocaleString("en-US", { maximumFractionDigits: 12 })}`;
 }
@@ -257,48 +242,6 @@ function PlanningScope({ metrics }: { metrics: Record<string, Metric> }) {
 					KPI definitions A3:K15 ↗
 				</a>
 			</section>
-			<section
-				className="grid gap-2"
-				aria-labelledby="north-star-production-goals"
-			>
-				<div className="flex flex-wrap items-center justify-between gap-2">
-					<h2 id="north-star-production-goals" className="font-medium">
-						Production workstreams in the plan
-					</h2>
-					<a
-						className="text-sm underline underline-offset-4"
-						href={`${PLANNING_SHEET}#gid=448635654`}
-						target="_blank"
-						rel="noreferrer"
-					>
-						Productions tab ↗
-					</a>
-				</div>
-				<ul className="grid gap-2 text-sm md:grid-cols-2">
-					<li>
-						Calendar · one source for titles, deadlines, reviews, delivery, and
-						staffing
-					</li>
-					<li>
-						Toolkit · local coordinator actions and weekly operator-led
-						improvements
-					</li>
-					<li>
-						Automation · prepare kickoff inputs and final delivery outputs
-					</li>
-					<li>Quality · define QC ownership and the client submission bar</li>
-					<li>Ownership · publish Productions charter and reporting line</li>
-					<li>
-						Product pod · ship production tooling with operator validation
-					</li>
-					<li>Day-to-day owners · assign execution outside Hadi and Tanmay</li>
-				</ul>
-				<p className="text-xs text-muted-foreground">
-					These are planning goals, not reported completion results. Calendar,
-					Toolkit, Automation, QC, and Ownership map to the five existing cards;
-					Toolkit combines rows 45–46, and Ownership groups rows 49–51.
-				</p>
-			</section>
 		</div>
 	);
 }
@@ -306,7 +249,7 @@ function PlanningScope({ metrics }: { metrics: Record<string, Metric> }) {
 function EvidenceCell({ metric, period }: { metric: Metric; period: string }) {
 	const observation = metric.observations[period];
 	const value = observation
-		? formatValue(observation.value, metric.unit, true)
+		? formatNorthStarValue(observation.value, metric.unit, true)
 		: "Not reported";
 	return (
 		<Tooltip>
@@ -314,7 +257,7 @@ function EvidenceCell({ metric, period }: { metric: Metric; period: string }) {
 				<button
 					type="button"
 					className="w-full text-left tabular-nums focus-visible:outline-2 focus-visible:outline-ring"
-					aria-label={`${metric.label}, ${period}: ${observation ? formatValue(observation.value, metric.unit, false) : "not reported"}`}
+					aria-label={`${metric.label}, ${period}: ${observation ? formatNorthStarValue(observation.value, metric.unit, false, true) : "not reported"}`}
 				>
 					{value}
 				</button>
@@ -332,7 +275,12 @@ function EvidenceCell({ metric, period }: { metric: Metric; period: string }) {
 							Exact value:{" "}
 							{metric.unit === "usd"
 								? exactUsd(observation.value)
-								: formatValue(observation.value, metric.unit, false)}
+								: formatNorthStarValue(
+										observation.value,
+										metric.unit,
+										false,
+										true,
+									)}
 						</span>
 						<span>
 							Status: {observation.status} · as of {observation.asOf}
@@ -371,7 +319,13 @@ function EvidenceCell({ metric, period }: { metric: Metric; period: string }) {
 
 function SupportingResults({ metrics }: { metrics: [string, Metric][] }) {
 	const results = metrics
-		.filter(([id]) => /(^|_)(usage|top1|top3|top10|active_rate)(_|$)/.test(id))
+		.filter(
+			([id]) =>
+				id === "plg_teams" ||
+				/(^|_)(usage|top1|top3|top10|active_rate|annual_revenue_estimate)(_|$)/.test(
+					id,
+				),
+		)
 		.filter(([id]) => !id.startsWith("productions_"))
 		.flatMap(([id, metric]) =>
 			(metric.preparation.supportingResults ?? []).map((result) => ({
@@ -402,65 +356,69 @@ function SupportingResults({ metrics }: { metrics: [string, Metric][] }) {
 				Supporting measured data
 			</h2>
 			{results.map(({ id, result }) => (
-				<article
-					key={`${id}-${result.label}`}
-					className="grid min-w-0 gap-2 text-sm"
-				>
-					<h3 className="font-medium">
-						{result.label} · {id.replaceAll("_", " ")}
-					</h3>
-					<div className="mt-3 grid gap-3">
-						<p>
-							As of {result.asOf} ·{" "}
-							<a
-								className="underline underline-offset-4"
-								href={result.source.url}
-								target="_blank"
-								rel="noreferrer"
-							>
-								{result.source.label}
-							</a>
-						</p>
-						<div className="max-w-full overflow-x-auto">
-							<Table className="w-max min-w-full text-left">
-								<TableHeader>
-									<TableRow>
-										{result.columns.map((column) => (
-											<TableHead key={column} scope="col">
-												{column}
-											</TableHead>
-										))}
-									</TableRow>
-								</TableHeader>
-								<TableBody>
-									{result.rows.map((row) => (
-										<TableRow key={JSON.stringify(row)}>
-											{result.columns.map((column, cellIndex) => (
-												<TableCell key={column}>
-													{row[cellIndex] === null ||
-													row[cellIndex] === undefined
-														? "Not reported"
-														: String(row[cellIndex])}
-												</TableCell>
+				<article key={`${id}-${result.label}`} className="min-w-0 text-sm">
+					<details
+						open={id === "enterprise_usage" || id === "channel_usage"}
+						className="rounded-lg border px-3 py-2"
+					>
+						<summary className="cursor-pointer font-medium">
+							{result.label} · {id.replaceAll("_", " ")}
+						</summary>
+						<div className="mt-3 grid gap-3">
+							<p>
+								As of {result.asOf} ·{" "}
+								<a
+									className="underline underline-offset-4"
+									href={result.source.url}
+									target="_blank"
+									rel="noreferrer"
+								>
+									{result.source.label}
+								</a>
+							</p>
+							<div className="max-w-full overflow-x-auto">
+								<Table className="w-max min-w-full text-left">
+									<TableHeader>
+										<TableRow>
+											{result.columns.map((column) => (
+												<TableHead key={column} scope="col">
+													{column}
+												</TableHead>
 											))}
 										</TableRow>
-									))}
-								</TableBody>
-							</Table>
+									</TableHeader>
+									<TableBody>
+										{result.rows.map((row) => (
+											<TableRow key={JSON.stringify(row)}>
+												{result.columns.map((column, cellIndex) => (
+													<TableCell key={column}>
+														{row[cellIndex] === null ||
+														row[cellIndex] === undefined
+															? "Not reported"
+															: String(row[cellIndex])}
+													</TableCell>
+												))}
+											</TableRow>
+										))}
+									</TableBody>
+								</Table>
+							</div>
+							<details>
+								<summary className="cursor-pointer font-medium">
+									Coverage and limitations
+								</summary>
+								<p className="mt-2">{result.limitations}</p>
+							</details>
+							<details>
+								<summary className="cursor-pointer font-medium">
+									Source query
+								</summary>
+								<pre className="mt-2 max-w-full overflow-x-auto whitespace-pre-wrap break-words">
+									{result.queryText}
+								</pre>
+							</details>
 						</div>
-						<p>
-							<span className="font-medium">Limitations: </span>
-							{result.limitations}
-						</p>
-						<details>
-							<summary className="cursor-pointer font-medium">
-								Source query
-							</summary>
-							<pre className="mt-2 max-w-full overflow-x-auto whitespace-pre-wrap break-words">
-								{result.queryText}
-							</pre>
-						</details>
-					</div>
+					</details>
 				</article>
 			))}
 		</section>
@@ -511,6 +469,16 @@ export function NorthStarDashboard() {
 					!PERIODS.some(({ period }) => metric.observations[period]),
 			),
 	})).filter((section) => section.metrics.length);
+	const sectionsWithObservations = SECTIONS.filter((section) =>
+		section.rows.some((id) => {
+			const metric = data.metrics[id];
+			return (
+				metric &&
+				!metric.notApplicable &&
+				PERIODS.some(({ period }) => metric.observations[period])
+			);
+		}),
+	);
 
 	return (
 		<TooltipProvider>
@@ -526,8 +494,12 @@ export function NorthStarDashboard() {
 						The North Star view tracks professional teams and their economic
 						contribution across PLG, Enterprise, Channel, and Productions.
 						Monthly values stay on their authored definitions. Actualized
-						revenue, signed bookings, and estimated annual revenue are shown
+						revenue, booked revenue, and estimated annual revenue are shown
 						separately; this page does not combine them or derive YTD totals.
+					</p>
+					<p className="text-sm text-muted-foreground">
+						Booked revenue keeps each door’s authored basis. PLG booked revenue
+						includes invoice revenue, including unclassified revenue.
 					</p>
 					<p className="text-sm text-muted-foreground">
 						{observations.length} of {cellCount} Atlas report cells have saved
@@ -540,73 +512,76 @@ export function NorthStarDashboard() {
 					</p>
 				</section>
 				<PlanningScope metrics={data.metrics} />
-				<SupportingResults metrics={Object.entries(data.metrics)} />
-				{SECTIONS.map((section) => (
-					<section
-						key={section.title}
-						className="grid gap-2"
-						aria-labelledby={`north-star-${section.title}`}
-					>
-						<h2
-							id={`north-star-${section.title}`}
-							className="text-lg font-semibold"
+				{sectionsWithObservations.map((section) => {
+					const sectionId = metricSectionId(section.title);
+					return (
+						<section
+							key={section.title}
+							className="grid gap-2"
+							aria-labelledby={sectionId}
 						>
-							{section.title}
-						</h2>
-						<Table>
-							<TableHeader>
-								<TableRow>
-									<TableHead scope="col" className="min-w-64">
-										Measure
-									</TableHead>
-									{PERIODS.map((month) => (
-										<TableHead
-											scope="col"
-											key={month.period}
-											className="min-w-28"
-										>
-											{month.label}
+							<h2 id={sectionId} className="text-lg font-semibold">
+								{section.title}
+							</h2>
+							<Table>
+								<TableHeader>
+									<TableRow>
+										<TableHead scope="col" className="min-w-64">
+											Measure
 										</TableHead>
-									))}
-								</TableRow>
-							</TableHeader>
-							<TableBody>
-								{section.rows.map((id) => {
-									const metric = data.metrics[id];
-									if (!metric) return null;
-									if (metric.notApplicable) return null;
-									if (
-										!PERIODS.some(({ period }) => metric.observations[period])
-									)
-										return null;
-									return (
-										<TableRow key={id}>
+										{PERIODS.map((month) => (
 											<TableHead
-												scope="row"
-												className="whitespace-normal text-foreground"
+												scope="col"
+												key={month.period}
+												className="min-w-28"
 											>
-												<div className="flex min-w-0 items-center justify-between gap-2">
-													<span className="min-w-0">
-														{metric.label}
-														{id === "plg_booked_revenue"
-															? " (includes unclassified invoice revenue)"
-															: ""}
-													</span>
-													<MetricQuestion metric={metric} />
-												</div>
+												{month.label}
 											</TableHead>
-											{PERIODS.map((month) => (
-												<TableCell key={month.period}>
-													<EvidenceCell metric={metric} period={month.period} />
-												</TableCell>
-											))}
-										</TableRow>
-									);
-								})}
-							</TableBody>
-						</Table>
-					</section>
-				))}
+										))}
+									</TableRow>
+								</TableHeader>
+								<TableBody>
+									{section.rows.map((id) => {
+										const metric = data.metrics[id];
+										if (!metric) return null;
+										if (metric.notApplicable) return null;
+										if (
+											!PERIODS.some(({ period }) => metric.observations[period])
+										)
+											return null;
+										return (
+											<TableRow key={id}>
+												<TableHead
+													scope="row"
+													className="whitespace-normal text-foreground"
+												>
+													<div className="flex min-w-0 items-center justify-between gap-2">
+														<span className="min-w-0">
+															{metricRowLabel(id, metric.label)}
+															{id === "plg_booked_revenue"
+																? " (includes unclassified invoice revenue)"
+																: ""}
+														</span>
+														<MetricQuestion metric={metric} />
+													</div>
+												</TableHead>
+												{PERIODS.map((month) => (
+													<TableCell key={month.period}>
+														<EvidenceCell
+															metric={metric}
+															period={month.period}
+														/>
+													</TableCell>
+												))}
+											</TableRow>
+										);
+									})}
+								</TableBody>
+							</Table>
+						</section>
+					);
+				})}
+				<SupportingResults metrics={Object.entries(data.metrics)} />
 				{missingBySection.length ? (
 					<details className="rounded-lg border p-4">
 						<summary className="cursor-pointer font-medium">

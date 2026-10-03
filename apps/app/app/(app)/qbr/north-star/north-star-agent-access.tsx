@@ -35,6 +35,8 @@ First discover the Atlas tools on my connected Rudy MCP server. Search the avail
 
 Start with atlas_qbr_report(quarter="2026-Q3") to discover metric IDs, definitions, values, statuses, and source links. Fetch details only for the metrics my request needs, using metric_ids with up to 10 IDs per call. Use atlas_search_questions and atlas_question for additional saved evidence. Use atlas_source_health if freshness or availability is unclear.
 
+Use question numbers and canonical URLs from the report or search results; do not guess them. For every period-specific atlas_question read, pass reporting_period for the requested period: "2026-07" for July, "2026-08" for August, "2026-09" for September, or "2026-Q3" for Q3. Omitting it returns the latest saved snapshot across periods, which may not match my request. Use as_of when I ask for evidence available by a specific timestamp.
+
 Keep July (2026-07), August (2026-08), September (2026-09), and Q3 (2026-Q3) observations separate. Preserve units, definitions, observation status, asOf, dataThrough, and canonical Atlas source links. Missing is not zero. Flag stale, pending, or unavailable data. Supporting results are separate evidence, not headline values. A reporting_period filter selects a saved snapshot; it does not trim or recompute its rows.
 
 Return the data and format I ask for. Ask a focused question if the metrics, breakdown, or period are unclear. Explain any unavailable data or tools rather than inventing an answer.

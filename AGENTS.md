@@ -31,6 +31,11 @@ the server's tools. Start with `atlas_qbr_report(quarter="2026-Q3")` to discover
 metrics and their source links, then request only the evidence the user needs.
 The four Atlas tools are read-only and use server-held credentials.
 
+For period-specific `atlas_question` evidence, always pass the requested
+`reporting_period`. An unfiltered read returns the latest snapshot across
+periods, which may not match the request. Use question numbers and canonical
+URLs from the report or search results; do not guess them.
+
 Read [the QBR agent guide](docs/qbr-agent-access.md) for tool selection, period
 semantics, and example requests. Reuse an existing Rudy connection; setup is
 only needed when the agent cannot discover or reach the tools.

@@ -23,7 +23,7 @@ may appear before these names. No client-side Atlas API key is needed.
 | `atlas_qbr_report(quarter="2026-Q3")` | Start here. Read a compact summary to discover metric IDs, definitions, observations, statuses, and source links. |
 | `atlas_qbr_report(quarter="2026-Q3", metric_ids=["enterprise_usage_retention"])` | Get full evidence for the requested metrics, including preparation and supporting results. Use at most ten IDs per call. |
 | `atlas_search_questions(query="revenue")` | Find additional saved questions relevant to the user's request. |
-| `atlas_question(number=15, reporting_period="2026-Q3")` | Read a question's saved snapshot and provenance for the requested period. Use question numbers from the report or search results. |
+| `atlas_question(number=question_number, reporting_period="2026-Q3")` | Read a question's saved snapshot and provenance for the requested period. Set `question_number` from the report or search results. |
 | `atlas_source_health()` | Check connector freshness and availability when they are unclear. This does not refresh data. |
 
 Use the summary to select metrics instead of fetching all full evidence. Return
@@ -39,9 +39,13 @@ report that gap.
   canonical Atlas source links. Flag stale, pending, and unavailable data.
 - Missing means not reported, not zero. Supporting results are separate evidence;
   do not relabel them as headline observations.
+- For every period-specific `atlas_question` read, pass the requested
+  `reporting_period`: `2026-07` for July, `2026-08` for August, `2026-09` for
+  September, or `2026-Q3` for Q3. Without it, the tool returns the latest saved
+  snapshot across periods, which may not match the request.
 - `reporting_period` accepts a quarter, month, or date. It selects the saved
-  snapshot for that period; it does not trim or recompute its rows. `as_of`
-  limits snapshots to those captured by the given timestamp.
+  snapshot for that period; it does not trim or recompute its rows. Use `as_of`
+  when the request limits evidence to snapshots captured by a given timestamp.
 - Source health and catalog search do not replace period-specific evidence.
 
 ## If Rudy is not connected

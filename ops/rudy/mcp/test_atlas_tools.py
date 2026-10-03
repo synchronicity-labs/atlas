@@ -67,7 +67,12 @@ class AtlasToolsTests(unittest.TestCase):
             self.assertEqual(server.tools, {})
 
     def test_validation_rejects_path_and_calendar_injection(self):
-        for quarter in ("2026-Q5", "2026-Q1/../../sources", "2026-Q1?x=y"):
+        for quarter in (
+            "0000-Q3",
+            "2026-Q5",
+            "2026-Q1/../../sources",
+            "2026-Q1?x=y",
+        ):
             with self.assertRaises(ValueError):
                 _validate_quarter(quarter)
         for period in ("2026-13", "2026-02-30", "2026-01/../sources"):
@@ -78,6 +83,22 @@ class AtlasToolsTests(unittest.TestCase):
                 _validate_question(1, None, timestamp)
         self.assertIsNone(_base_url("file:///etc/passwd"))
         self.assertIsNone(_base_url("http://atlas.example"))
+
+    def test_question_accepts_quarters_and_rejects_invalid_periods(self):
+        _validate_question(548, "2026-Q3", "2026-10-02T22:24:49.260Z")
+        _validate_question(548, "2026-09", None)
+        _validate_question(548, "2026-09-30", None)
+        for period in (
+            "0000-Q3",
+            "0000-01",
+            "0000-01-01",
+            "2026-Q0",
+            "2026-Q5",
+            "2026-13",
+            "2026-02-30",
+        ):
+            with self.subTest(period=period), self.assertRaises(ValueError):
+                _validate_question(548, period, None)
 
     def test_question_uses_fixed_route_encoded_query_and_server_secret(self):
         server = self.configured()
@@ -99,9 +120,9 @@ class AtlasToolsTests(unittest.TestCase):
 
         with patch("atlas_tools.urllib.request.build_opener") as build:
             build.return_value.open.side_effect = open_request
-            result = asyncio.run(server.tools["atlas_question"][0](42, "2026-10", "2026-10-03T12:00:00Z"))
+            result = asyncio.run(server.tools["atlas_question"][0](42, "2026-Q3", "2026-10-03T12:00:00Z"))
         self.assertEqual(json.loads(json.dumps(result)), {"status": "unknown", "provenance": {"saved": True}})
-        self.assertEqual(captured["url"], "https://atlas.example/internal/atlas/questions/42?reportingPeriod=2026-10&asOf=2026-10-03T12%3A00%3A00Z")
+        self.assertEqual(captured["url"], "https://atlas.example/internal/atlas/questions/42?reportingPeriod=2026-Q3&asOf=2026-10-03T12%3A00%3A00Z")
         self.assertEqual(captured["headers"]["Authorization"], "Bearer server-secret")
         self.assertEqual(captured["method"], "GET")
         self.assertEqual(captured["timeout"], 45)

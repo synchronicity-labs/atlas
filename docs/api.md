@@ -71,7 +71,10 @@ Internal agents read governed metrics through `GET /internal/atlas/catalog` and
 `GET /internal/atlas/questions/:number`, protected by `ATLAS_QUERY_SECRET`. A
 question response includes its immutable result snapshot, saved definition,
 freshness status, content hash, idempotency key, and source provenance. Historical
-reads accept `reportingPeriod=YYYY-MM` and `asOf=<ISO timestamp>`.
+reads accept `reportingPeriod=YYYY-Q1` through `YYYY-Q4`, `YYYY-MM`, or
+`YYYY-MM-DD`, plus `asOf=<ISO timestamp>`. A quarter selects the saved
+snapshot with that reporting period; it does not aggregate or trim snapshot rows.
+`asOf` limits the read to snapshots captured by that timestamp.
 
 Latest-only dashboard, catalog, and Rudy context reads use
 `apps/api/src/latest-snapshots.ts`. The database selects one snapshot ID per

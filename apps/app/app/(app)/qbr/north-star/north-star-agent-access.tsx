@@ -22,7 +22,7 @@ Call atlas_qbr_report with quarter "2026-Q3". By default it returns a compact su
 
 Request full evidence only for metrics you need, with at most 10 metric IDs per call. For example: atlas_qbr_report({quarter:'2026-Q3',metric_ids:['enterprise_usage_retention']}). The selected metrics include detailed sources and preparation.supportingResults. Preserve observation status, asOf, dataThrough, source URLs, and supporting-result provenance. Avoid requesting all full evidence by default; the upstream report is large.
 
-Use the source question links as canonical Atlas question URLs. Call atlas_question with the question number and, when useful, reporting_period and as_of to inspect its evidence. Treat supportingResults as separate supporting results, not headline observations. Use atlas_search_questions for targeted discovery and atlas_source_health to understand source freshness or availability; neither replaces the report's period-specific evidence.
+Use the source question links as canonical Atlas question URLs. Call atlas_question with the question number and, when useful, reporting_period and as_of to inspect its evidence. reporting_period accepts YYYY-Q1 through YYYY-Q4, YYYY-MM, or YYYY-MM-DD. A quarter selects the saved snapshot for that period; it does not trim rows. as_of limits the read to snapshots captured by that timestamp. Treat supportingResults as separate supporting results, not headline observations. Use atlas_search_questions for targeted discovery and atlas_source_health to understand source freshness or availability; neither replaces the report's period-specific evidence.
 
 MCP client configuration formats may differ. The copied JSON is a generic Claude-compatible example; use the equivalent server URL configuration for your client.
 

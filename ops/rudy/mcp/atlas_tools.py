@@ -10,8 +10,8 @@ from datetime import date, datetime
 from typing import Any, Dict, List, Optional
 
 
-_QUARTER = re.compile(r"^\d{4}-Q[1-4]$")
-_PERIOD = re.compile(r"^(\d{4})-(\d{2})(?:-(\d{2}))?$")
+_QUARTER = re.compile(r"^(?!0000-)\d{4}-Q[1-4]$")
+_PERIOD = re.compile(r"^(?!0000-)(\d{4})-(\d{2})(?:-(\d{2}))?$")
 _MAX_QUESTION = 2_147_483_647
 _MAX_SEARCH_LENGTH = 200
 _MAX_LIMIT = 100
@@ -53,13 +53,22 @@ def _validate_question(number, reporting_period, as_of):
     if isinstance(number, bool) or not isinstance(number, int) or not 1 <= number <= _MAX_QUESTION:
         raise ValueError("number must be a positive 32-bit integer")
     if reporting_period is not None:
-        match = _PERIOD.fullmatch(reporting_period) if isinstance(reporting_period, str) else None
-        if not match:
-            raise ValueError("reporting_period must be YYYY-MM or YYYY-MM-DD")
-        try:
-            date(int(match[1]), int(match[2]), int(match[3] or 1))
-        except ValueError as error:
-            raise ValueError("reporting_period must be a valid ISO date") from error
+        match = (
+            _PERIOD.fullmatch(reporting_period)
+            if isinstance(reporting_period, str)
+            else None
+        )
+        if not isinstance(reporting_period, str) or not _QUARTER.fullmatch(
+            reporting_period
+        ):
+            if not match:
+                raise ValueError(
+                    "reporting_period must be YYYY-Q1 through YYYY-Q4, YYYY-MM, or YYYY-MM-DD"
+                )
+            try:
+                date(int(match[1]), int(match[2]), int(match[3] or 1))
+            except ValueError as error:
+                raise ValueError("reporting_period must be a valid ISO date") from error
     if as_of is not None:
         if not isinstance(as_of, str) or "T" not in as_of:
             raise ValueError("as_of must be an ISO timestamp")
@@ -192,7 +201,10 @@ def register_atlas_tools(mcp):
                     break
         return {"schemaVersion": catalog.get("schemaVersion"), "results": results}
 
-    @tool("atlas_question", "Read a saved Atlas question and its immutable result snapshot.")
+    @tool(
+        "atlas_question",
+        "Read a saved Atlas question and immutable result snapshot, optionally filtered by quarter (YYYY-Q1 through YYYY-Q4), month (YYYY-MM), or date (YYYY-MM-DD) and as-of time.",
+    )
     async def atlas_question(
         number: int, reporting_period: Optional[str] = None, as_of: Optional[str] = None
     ) -> Dict[str, Any]:

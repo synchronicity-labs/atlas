@@ -41,7 +41,13 @@ const ITEMS: RailItem[] = [
 		match: "prefix",
 	},
 	{ title: "Metrics", href: "/metrics", icon: Analytics, match: "prefix" },
-	{ title: "QBR review", href: "/qbr", icon: Report, match: "prefix" },
+	{
+		title: "Q3 North Star",
+		href: "/qbr/north-star",
+		icon: Report,
+		match: "prefix",
+	},
+	{ title: "QBR review", href: "/qbr", icon: Report, match: "exact" },
 	{ title: "Questions", href: "/questions", icon: Catalog, match: "prefix" },
 	{
 		title: "Clients",

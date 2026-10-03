@@ -64,7 +64,15 @@ test("Atlas question HTTP reads accept supported periods and reject invalid filt
 			expect(result.body.reportingPeriod).toBe(period);
 		}
 
-		for (const period of ["2026-Q0", "2026-Q5", "2026-13", "2026-02-30"]) {
+		for (const period of [
+			"0000-Q3",
+			"0000-01",
+			"0000-01-01",
+			"2026-Q0",
+			"2026-Q5",
+			"2026-13",
+			"2026-02-30",
+		]) {
 			await request(app.getHttpServer())
 				.get(`/internal/atlas/questions/548?reportingPeriod=${period}`)
 				.set("Authorization", "Bearer test-read-secret")

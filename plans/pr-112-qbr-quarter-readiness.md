@@ -68,8 +68,13 @@ reported or provisional status and unknown data-through coverage.
 - The new HTTP contract failed before implementation: `2026-Q3` returned 400;
   invalid calendar periods reached the service. It passes after the fix,
   including quarter plus `asOf`, month, day, number-only reads, and invalid keys.
-- `bunx bun@1.3.12 test src/atlas-query/atlas-query.http.test.ts` from `apps/api`:
-  one passing boundary test, seven assertions.
+- `bunx bun@1.3.12 test src/atlas-query/atlas-query.http.test.ts
+  test/atlas-question-historical.http.spec.ts` from `apps/api`: two passing
+  boundary tests, thirteen assertions. Historical selection runs through the
+  real service and Prisma against an isolated loopback Postgres with existing
+  migrations. It checks competing snapshots, the as-of cutoff, intact rows,
+  content hash and idempotency provenance. CI uses its existing local database;
+  the test refuses a remote/shared database.
 - `uv run --no-project --python 3.12 --with mcp==1.26.0 python -B -m unittest
   discover -s ops/rudy/mcp`: ten passing tests, including real SDK registration.
   The quarter/as-of route check verifies the encoded upstream selector.
@@ -77,3 +82,8 @@ reported or provisional status and unknown data-through coverage.
   files. `git diff --check` passed.
 - Decimal arithmetic independently confirms the source months sum to Q3 and
   both annualization formulas above. No source query or shared write ran.
+- Year-zero regression cases failed before the review fix and pass afterward.
+  Both the API and MCP reject `0000-Q3` and year-zero month/day selectors.
+- The checked-in evidence fixture includes the full 135-metric period-presence
+  index and 36 relevant value excerpts. The reconciliation's Python recipe
+  reproduces the period counts and invoice arithmetic from repository files.

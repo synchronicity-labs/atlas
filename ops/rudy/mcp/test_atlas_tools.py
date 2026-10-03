@@ -67,7 +67,12 @@ class AtlasToolsTests(unittest.TestCase):
             self.assertEqual(server.tools, {})
 
     def test_validation_rejects_path_and_calendar_injection(self):
-        for quarter in ("2026-Q5", "2026-Q1/../../sources", "2026-Q1?x=y"):
+        for quarter in (
+            "0000-Q3",
+            "2026-Q5",
+            "2026-Q1/../../sources",
+            "2026-Q1?x=y",
+        ):
             with self.assertRaises(ValueError):
                 _validate_quarter(quarter)
         for period in ("2026-13", "2026-02-30", "2026-01/../sources"):
@@ -83,7 +88,15 @@ class AtlasToolsTests(unittest.TestCase):
         _validate_question(548, "2026-Q3", "2026-10-02T22:24:49.260Z")
         _validate_question(548, "2026-09", None)
         _validate_question(548, "2026-09-30", None)
-        for period in ("2026-Q0", "2026-Q5", "2026-13", "2026-02-30"):
+        for period in (
+            "0000-Q3",
+            "0000-01",
+            "0000-01-01",
+            "2026-Q0",
+            "2026-Q5",
+            "2026-13",
+            "2026-02-30",
+        ):
             with self.subTest(period=period), self.assertRaises(ValueError):
                 _validate_question(548, period, None)
 

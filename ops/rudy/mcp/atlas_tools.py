@@ -10,8 +10,8 @@ from datetime import date, datetime
 from typing import Any, Dict, List, Optional
 
 
-_QUARTER = re.compile(r"^\d{4}-Q[1-4]$")
-_PERIOD = re.compile(r"^(\d{4})-(\d{2})(?:-(\d{2}))?$")
+_QUARTER = re.compile(r"^(?!0000-)\d{4}-Q[1-4]$")
+_PERIOD = re.compile(r"^(?!0000-)(\d{4})-(\d{2})(?:-(\d{2}))?$")
 _MAX_QUESTION = 2_147_483_647
 _MAX_SEARCH_LENGTH = 200
 _MAX_LIMIT = 100

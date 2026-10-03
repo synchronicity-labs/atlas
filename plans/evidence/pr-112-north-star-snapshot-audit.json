@@ -1,0 +1,3470 @@
+{
+	"schemaVersion": "atlas.qbr.north-star-reconciliation-evidence.v1",
+	"classification": "captured definition rows and saved-observation excerpt; not a live Sheet/provider read",
+	"workbookUrl": "https://docs.google.com/spreadsheets/d/17oWmJqYGxWwHEbdVhvo1OCHLAUEv03bljDuPHaqGHwU/edit",
+	"sheetExports": [
+		{
+			"fileName": "north-star-live-planning-sheet-2026-10-03.json",
+			"fullExportSha256": "909235861bebe34200fd79d4faf8568172ed2f32c8294caea70ee75eee26f014",
+			"fetchedAt": "2026-10-03T08:50:51.499Z",
+			"workbookId": "17oWmJqYGxWwHEbdVhvo1OCHLAUEv03bljDuPHaqGHwU",
+			"workbookTitle": "Q3 metrics and planning",
+			"sheetId": 295651257,
+			"sheetTitle": "overview",
+			"capturedRange": "'overview'!A1:AE80",
+			"includedRange": "overview!A1:AE27",
+			"rows": [
+				{
+					"row": 1,
+					"values": ["NORTH STAR"]
+				},
+				{
+					"row": 2,
+					"values": [
+						"the metric",
+						"# of professional teams that used sync in the last month"
+					]
+				},
+				{
+					"row": 3,
+					"values": [
+						"in plain words",
+						"how many professional teams made something with sync in the last month. more professional teams, making more things, coming back."
+					]
+				},
+				{
+					"row": 4,
+					"values": [
+						"the unit",
+						"the TEAM. not the title, not the studio logo. two teams on one title (localization + production) = 2. one team through two doors = 1."
+					]
+				},
+				{
+					"row": 5,
+					"values": []
+				},
+				{
+					"row": 6,
+					"values": ["THE DOORS: how we qualify a team"]
+				},
+				{
+					"row": 7,
+					"values": ["door", "who the team is", "qualifies when"]
+				},
+				{
+					"row": 8,
+					"values": [
+						"visual dubbing",
+						"the localization team",
+						"active title / SOW"
+					]
+				},
+				{
+					"row": 9,
+					"values": ["ADR", "the production team", "active title / SOW"]
+				},
+				{
+					"row": 10,
+					"values": [
+						"prosumer",
+						"the paying org",
+						"≥ $100/mo sustained & > 3 billable generations & active in 2 different days"
+					]
+				},
+				{
+					"row": 11,
+					"values": [
+						"enterprise",
+						"the contracting org",
+						"contract signed AND usage > (contract value / 12)"
+					]
+				},
+				{
+					"row": 12,
+					"values": [
+						"preferred partners",
+						"the partner org (adapt global, havas, annapurna…)",
+						"≥ $P revenue (P TBD)"
+					]
+				},
+				{
+					"row": 13,
+					"values": [
+						"channel partners",
+						"the partner, counted as one team (their end customers aren't visible to us)",
+						"≥ $Y through partner (Y TBD)"
+					]
+				},
+				{
+					"row": 14,
+					"values": []
+				},
+				{
+					"row": 15,
+					"values": ["USING US"]
+				},
+				{
+					"row": 16,
+					"values": [
+						"v0 (today)",
+						"any qualifying activity this month: countable now from SOWs, deliveries, billing"
+					]
+				},
+				{
+					"row": 17,
+					"values": [
+						"v1 (once instrumented)",
+						"generated output in the trailing 28 days: real usage, not signatures"
+					]
+				},
+				{
+					"row": 18,
+					"values": []
+				},
+				{
+					"row": 19,
+					"values": ["METRIC TAGS"]
+				},
+				{
+					"row": 20,
+					"values": [
+						"primary",
+						"the one number a team (or the company) is judged by. one per team, no portfolios."
+					]
+				},
+				{
+					"row": 21,
+					"values": [
+						"input",
+						"a metric a team tracks because it drives their primary. lives in the team's tab, not the company scoreboard. (coming: each team defines theirs)"
+					]
+				},
+				{
+					"row": 22,
+					"values": [
+						"lagging",
+						"an outcome we read but don't manage directly: revenue, margin, runway. nobody owns a lagging number; teams own the inputs that move it."
+					]
+				},
+				{
+					"row": 23,
+					"values": [
+						"guardrail",
+						"a tripwire with a threshold. exists so the primary can't be gamed (e.g. tracking NDR stops buying team growth with price cuts). when it trips, we talk."
+					]
+				},
+				{
+					"row": 24,
+					"values": [
+						"view",
+						"not a metric, but a breakdown of the row above it (by door, by mix). formatted gray + italic."
+					]
+				},
+				{
+					"row": 25,
+					"values": []
+				},
+				{
+					"row": 26,
+					"values": [
+						"RULE",
+						"definitions and thresholds on this tab change only at QBR, on the record. if definitions drift, the numbers stop meaning anything."
+					]
+				},
+				{
+					"row": 27,
+					"values": []
+				}
+			]
+		},
+		{
+			"fileName": "north-star-live-kpis-sheet-2026-10-03.json",
+			"fullExportSha256": "6d30a90a753ce834f4fd25d4f12231e00b7cd357eafbf12e14094940d58ee3f8",
+			"fetchedAt": "2026-10-03T08:52:42.419Z",
+			"workbookId": "17oWmJqYGxWwHEbdVhvo1OCHLAUEv03bljDuPHaqGHwU",
+			"workbookTitle": "Q3 metrics and planning",
+			"sheetId": 1969699588,
+			"sheetTitle": "KPIs",
+			"capturedRange": "'KPIs'!A1:K18",
+			"includedRange": "KPIs!A1:K18",
+			"rows": [
+				{
+					"row": 1,
+					"values": [
+						"Domain",
+						"KPI",
+						"type",
+						"what it means",
+						"Q1",
+						"Q2",
+						"Change",
+						"Cadence",
+						"Source",
+						"Trackable Today?",
+						"Why We Track This"
+					]
+				},
+				{
+					"row": 2,
+					"values": []
+				},
+				{
+					"row": 3,
+					"values": [
+						"sync.",
+						"# of professional teams that used sync in the last month",
+						"primary",
+						"",
+						"",
+						"",
+						"",
+						"monthly",
+						"",
+						"",
+						"The one number that prices the company. $1B = ARR × multiple, and teams drive both: revenue now (every team pays), revenue later (titles end, teams renew and stay embedded), and the multiple itself (every professional team on sync is a team competitors don't have). The only metric every function can act on: marketing makes teams arrive, product keeps them, research makes more kinds of teams possible. Revenue can't be acted on directly; teams can. Mission: proliferate our tools to every professional team."
+					]
+				},
+				{
+					"row": 4,
+					"values": [
+						"",
+						"   ↳ reported by: net, gross adds, gross losses split by door.",
+						"view",
+						"",
+						"",
+						"",
+						"",
+						"monthly",
+						"",
+						"",
+						"Show the moving parts: new teams in, teams lost, and the net."
+					]
+				},
+				{
+					"row": 5,
+					"values": [
+						"",
+						"actualized revenue (monthly + YTD)",
+						"lagging",
+						"",
+						"",
+						"",
+						"",
+						"monthly",
+						"Stripe + Metabase",
+						"Yes",
+						"How much money we actually made. We read this number; teams manage the inputs that move it."
+					]
+				},
+				{
+					"row": 6,
+					"values": [
+						"",
+						"   ↳ mix: usage / subs / services ",
+						"view",
+						"",
+						"",
+						"",
+						"",
+						"monthly",
+						"",
+						"",
+						"Where the money comes from. Product revenue (usage + subs) is worth more per dollar than services revenue when someone values the company."
+					]
+				},
+				{
+					"row": 7,
+					"values": [
+						"",
+						"   ↳ annualized run rate",
+						"view",
+						"",
+						"",
+						"",
+						"",
+						"monthly",
+						"",
+						"",
+						"Last month × 12, a quick way to talk about our size. Never a target on its own."
+					]
+				},
+				{
+					"row": 8,
+					"values": [
+						"",
+						"gross margin",
+						"lagging",
+						"",
+						"",
+						"",
+						"",
+						"monthly",
+						"Metabase + compute costs",
+						"Partially",
+						"Of every dollar we make, how much we keep after compute and delivery costs. Revenue can grow while this quietly gets worse, so we watch it."
+					]
+				},
+				{
+					"row": 9,
+					"values": [
+						"",
+						"   ↳ split: product (usage+subs) vs services",
+						"view",
+						"",
+						"",
+						"",
+						"",
+						"monthly",
+						"",
+						"",
+						"Product margin should improve as we scale. Services margin buys studio relationships. The split shows which business we're becoming."
+					]
+				},
+				{
+					"row": 10,
+					"values": [
+						"",
+						"net burn + runway",
+						"lagging",
+						"",
+						"",
+						"",
+						"",
+						"monthly",
+						"finance (matt hobbs)",
+						"Yes",
+						"How much cash we spend per month, and how many months the money lasts. The $5M has to reach the finish line. Next version: burn multiple (matt is building the dashboard)."
+					]
+				},
+				{
+					"row": 11,
+					"values": [
+						"",
+						"NDR",
+						"guardrail",
+						"",
+						"",
+						"",
+						"",
+						"monthly",
+						"Metabase",
+						"Yes",
+						"Why this is a guardrail: we could grow active teams by dropping prices, and quietly shrink the business. NDR stops that trade. Of what existing customers paid us last year, how much are they paying now? Above 100% means customers grow on their own. We're at 57.6%. The job is driving revenue WHILE growing teams, never one by sacrificing the other. TRIP: below 100%."
+					]
+				},
+				{
+					"row": 12,
+					"values": [
+						"",
+						"   ↳ split by door: VD / ADR / prosumer / enterprise / preferred / channel",
+						"view",
+						"",
+						"",
+						"",
+						"",
+						"monthly",
+						"",
+						"",
+						"Same doors as the north star. The overall number says how bad; the split says where."
+					]
+				},
+				{
+					"row": 13,
+					"values": [
+						"",
+						"revenue concentration ",
+						"guardrail",
+						"",
+						"",
+						"",
+						"",
+						"monthly",
+						"Stripe + Metabase",
+						"Yes",
+						"How much of our money comes from one payer. If they leave, how much leaves with them? TRIP: biggest payer over 25% of total."
+					]
+				},
+				{
+					"row": 14,
+					"values": [
+						"",
+						"   ↳ top-1 and top-3 counterparty, % of total",
+						"view",
+						"",
+						"",
+						"",
+						"",
+						"",
+						"",
+						"",
+						"top-1 catches \"one phone call can kill us\"; top-3 catches three accounts quietly becoming half the business"
+					]
+				},
+				{
+					"row": 15,
+					"values": [
+						"",
+						"active rate (north star ÷ paid teams)",
+						"guardrail",
+						"",
+						"",
+						"",
+						"",
+						"monthly",
+						"Stripe + HubSpot + usage data",
+						"Partially",
+						"Of the teams currently giving us money (subscription, contract, or credit balance), how many actually used us this month? Catches teams that pay but went quiet; those churn next. Pay-as-you-go teams aren't counted: when they stop using, they stop paying, and that shows up elsewhere. TRIP: falling two months in a row."
+					]
+				},
+				{
+					"row": 16,
+					"values": []
+				},
+				{
+					"row": 17,
+					"values": []
+				},
+				{
+					"row": 18,
+					"values": ["GTM", " "]
+				}
+			]
+		}
+	],
+	"savedReportAudit": {
+		"fullAuditSha256": "ba638887ccf63411939b206e6346ffcac80db1e218cfdc51709ebacb09b5aa72",
+		"quarter": "2026-Q3",
+		"responseGeneratedAt": "2026-10-03T14:09:59.205Z",
+		"definitionVersion": "2026-09-29",
+		"sourcesRefreshed": false,
+		"periods": ["2026-07", "2026-08", "2026-09", "2026-Q3"],
+		"metricCount": 135,
+		"excerpts": {
+			"plg_teams": {
+				"label": "PLG professional teams",
+				"unit": "count",
+				"question": {
+					"number": 422,
+					"url": "https://atlas.pr.sync.so/questions/422"
+				},
+				"notApplicable": false,
+				"periodChecks": {
+					"2026-07": {
+						"keyPresent": true,
+						"observation": {
+							"value": 540,
+							"numerator": null,
+							"denominator": null,
+							"status": "provisional",
+							"sourceType": "automated_query",
+							"source": {
+								"label": "Atlas question 422",
+								"url": "https://atlas.pr.sync.so/questions/422"
+							},
+							"asOf": "2026-10-02T22:39:30.342Z",
+							"dataThrough": null,
+							"evidenceSource": {
+								"url": "https://atlas.pr.sync.so/questions/422",
+								"label": "Atlas governed source query; current-clean history"
+							},
+							"snapshotId": "qbr:plg_teams:d770e18241b331185eb04356",
+							"definitionHash": "39eddfb2223e3e29608e612f262f304d474e99495310019b5a5ba037ba92eac1",
+							"sourceQueryHash": "cbcc69b14a6fe7d8256d238fe3ad48859a37383a137c45326df4bc09812c5a68"
+						}
+					},
+					"2026-08": {
+						"keyPresent": true,
+						"observation": {
+							"value": 537,
+							"numerator": null,
+							"denominator": null,
+							"status": "provisional",
+							"sourceType": "automated_query",
+							"source": {
+								"label": "Atlas question 422",
+								"url": "https://atlas.pr.sync.so/questions/422"
+							},
+							"asOf": "2026-10-02T22:39:30.342Z",
+							"dataThrough": null,
+							"evidenceSource": {
+								"url": "https://atlas.pr.sync.so/questions/422",
+								"label": "Atlas governed source query; current-clean history"
+							},
+							"snapshotId": "qbr:plg_teams:d770e18241b331185eb04356",
+							"definitionHash": "39eddfb2223e3e29608e612f262f304d474e99495310019b5a5ba037ba92eac1",
+							"sourceQueryHash": "cbcc69b14a6fe7d8256d238fe3ad48859a37383a137c45326df4bc09812c5a68"
+						}
+					},
+					"2026-09": {
+						"keyPresent": true,
+						"observation": {
+							"value": 549,
+							"numerator": null,
+							"denominator": null,
+							"status": "provisional",
+							"sourceType": "automated_query",
+							"source": {
+								"label": "Atlas question 422",
+								"url": "https://atlas.pr.sync.so/questions/422"
+							},
+							"asOf": "2026-10-02T22:39:30.342Z",
+							"dataThrough": null,
+							"evidenceSource": {
+								"url": "https://atlas.pr.sync.so/questions/422",
+								"label": "Atlas governed source query; current-clean history"
+							},
+							"snapshotId": "qbr:plg_teams:d770e18241b331185eb04356",
+							"definitionHash": "39eddfb2223e3e29608e612f262f304d474e99495310019b5a5ba037ba92eac1",
+							"sourceQueryHash": "cbcc69b14a6fe7d8256d238fe3ad48859a37383a137c45326df4bc09812c5a68"
+						}
+					},
+					"2026-Q3": {
+						"keyPresent": true,
+						"observation": {
+							"value": 542,
+							"numerator": null,
+							"denominator": null,
+							"status": "provisional",
+							"sourceType": "automated_query",
+							"source": {
+								"label": "Atlas question 422",
+								"url": "https://atlas.pr.sync.so/questions/422"
+							},
+							"asOf": "2026-10-02T22:39:30.342Z",
+							"dataThrough": null,
+							"evidenceSource": {
+								"url": "https://atlas.pr.sync.so/questions/422",
+								"label": "Atlas governed source query; current-clean history"
+							},
+							"snapshotId": "qbr:plg_teams:d770e18241b331185eb04356",
+							"definitionHash": "39eddfb2223e3e29608e612f262f304d474e99495310019b5a5ba037ba92eac1",
+							"sourceQueryHash": "cbcc69b14a6fe7d8256d238fe3ad48859a37383a137c45326df4bc09812c5a68"
+						}
+					}
+				},
+				"supportingResults": {
+					"count": 1,
+					"classification": "separate supporting tables; excluded from headline observations"
+				}
+			},
+			"plg_active_rate": {
+				"label": "PLG professional-customer rate",
+				"unit": "percent",
+				"question": {
+					"number": 423,
+					"url": "https://atlas.pr.sync.so/questions/423"
+				},
+				"notApplicable": false,
+				"periodChecks": {
+					"2026-07": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					},
+					"2026-08": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					},
+					"2026-09": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					},
+					"2026-Q3": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					}
+				},
+				"supportingResults": {
+					"count": 3,
+					"classification": "separate supporting tables; excluded from headline observations"
+				}
+			},
+			"plg_usage_retention": {
+				"label": "PLG invoiced revenue NDR",
+				"unit": "percent",
+				"question": {
+					"number": 426,
+					"url": "https://atlas.pr.sync.so/questions/426"
+				},
+				"notApplicable": false,
+				"periodChecks": {
+					"2026-07": {
+						"keyPresent": true,
+						"observation": {
+							"value": 81.997344,
+							"numerator": 519827.77,
+							"denominator": 633956.84,
+							"status": "reported",
+							"sourceType": "reported",
+							"source": {
+								"label": "Atlas question 426",
+								"url": "https://atlas.pr.sync.so/questions/426"
+							},
+							"asOf": "2026-10-02T22:24:49.260Z",
+							"dataThrough": null,
+							"reportedBy": "Nacho's agent - Stripe invoice extraction",
+							"evidenceSource": {
+								"url": "https://docs.stripe.com/api/invoices/list",
+								"label": "Stripe run 74ec0c055d58; provisional PLG invoice NDR; unresolved base/current USD 750.00/750.00; API docs, extraction hashes in preparation"
+							},
+							"snapshotId": "qbr:plg_usage_retention:1b31bb530365ad56d23769d7",
+							"definitionHash": "523edef9da172201b8b172e39655d3c63f9e9e8980a66d15fe8fe197d5f6a6ec",
+							"sourceQueryHash": "e3992cae34c7a0bc81d9476772a7b9d8ef427500ea385a8efd8c439dea107de1"
+						}
+					},
+					"2026-08": {
+						"keyPresent": true,
+						"observation": {
+							"value": 78.958632,
+							"numerator": 513938.74,
+							"denominator": 650896.21,
+							"status": "reported",
+							"sourceType": "reported",
+							"source": {
+								"label": "Atlas question 426",
+								"url": "https://atlas.pr.sync.so/questions/426"
+							},
+							"asOf": "2026-10-02T22:24:49.260Z",
+							"dataThrough": null,
+							"reportedBy": "Nacho's agent - Stripe invoice extraction",
+							"evidenceSource": {
+								"url": "https://docs.stripe.com/api/invoices/list",
+								"label": "Stripe run 74ec0c055d58; provisional PLG invoice NDR; unresolved base/current USD 750.00/750.00; API docs, extraction hashes in preparation"
+							},
+							"snapshotId": "qbr:plg_usage_retention:1b31bb530365ad56d23769d7",
+							"definitionHash": "523edef9da172201b8b172e39655d3c63f9e9e8980a66d15fe8fe197d5f6a6ec",
+							"sourceQueryHash": "e3992cae34c7a0bc81d9476772a7b9d8ef427500ea385a8efd8c439dea107de1"
+						}
+					},
+					"2026-09": {
+						"keyPresent": true,
+						"observation": {
+							"value": 75.186651,
+							"numerator": 487489.65,
+							"denominator": 648372.61,
+							"status": "reported",
+							"sourceType": "reported",
+							"source": {
+								"label": "Atlas question 426",
+								"url": "https://atlas.pr.sync.so/questions/426"
+							},
+							"asOf": "2026-10-02T22:24:49.260Z",
+							"dataThrough": null,
+							"reportedBy": "Nacho's agent - Stripe invoice extraction",
+							"evidenceSource": {
+								"url": "https://docs.stripe.com/api/invoices/list",
+								"label": "Stripe run 74ec0c055d58; provisional PLG invoice NDR; unresolved base/current USD 750.00/750.00; API docs, extraction hashes in preparation"
+							},
+							"snapshotId": "qbr:plg_usage_retention:1b31bb530365ad56d23769d7",
+							"definitionHash": "523edef9da172201b8b172e39655d3c63f9e9e8980a66d15fe8fe197d5f6a6ec",
+							"sourceQueryHash": "e3992cae34c7a0bc81d9476772a7b9d8ef427500ea385a8efd8c439dea107de1"
+						}
+					},
+					"2026-Q3": {
+						"keyPresent": true,
+						"observation": {
+							"value": 70.655805,
+							"numerator": 1278813.58,
+							"denominator": 1809920.04,
+							"status": "reported",
+							"sourceType": "reported",
+							"source": {
+								"label": "Atlas question 426",
+								"url": "https://atlas.pr.sync.so/questions/426"
+							},
+							"asOf": "2026-10-02T22:24:49.260Z",
+							"dataThrough": null,
+							"reportedBy": "Nacho's agent - Stripe invoice extraction",
+							"evidenceSource": {
+								"url": "https://docs.stripe.com/api/invoices/list",
+								"label": "Stripe run 74ec0c055d58; provisional PLG invoice NDR; unresolved base/current USD 2,307.00/2,250.00; API docs, extraction hashes in preparation"
+							},
+							"snapshotId": "qbr:plg_usage_retention:1b31bb530365ad56d23769d7",
+							"definitionHash": "523edef9da172201b8b172e39655d3c63f9e9e8980a66d15fe8fe197d5f6a6ec",
+							"sourceQueryHash": "e3992cae34c7a0bc81d9476772a7b9d8ef427500ea385a8efd8c439dea107de1"
+						}
+					}
+				},
+				"supportingResults": {
+					"count": 1,
+					"classification": "separate supporting tables; excluded from headline observations"
+				}
+			},
+			"plg_top1": {
+				"label": "PLG top-1 concentration",
+				"unit": "percent",
+				"question": {
+					"number": 428,
+					"url": "https://atlas.pr.sync.so/questions/428"
+				},
+				"notApplicable": false,
+				"periodChecks": {
+					"2026-07": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					},
+					"2026-08": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					},
+					"2026-09": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					},
+					"2026-Q3": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					}
+				},
+				"supportingResults": {
+					"count": 1,
+					"classification": "separate supporting tables; excluded from headline observations"
+				}
+			},
+			"plg_top3": {
+				"label": "PLG top-3 concentration",
+				"unit": "percent",
+				"question": {
+					"number": 429,
+					"url": "https://atlas.pr.sync.so/questions/429"
+				},
+				"notApplicable": false,
+				"periodChecks": {
+					"2026-07": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					},
+					"2026-08": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					},
+					"2026-09": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					},
+					"2026-Q3": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					}
+				},
+				"supportingResults": {
+					"count": 1,
+					"classification": "separate supporting tables; excluded from headline observations"
+				}
+			},
+			"enterprise_active_rate": {
+				"label": "Enterprise professional-customer rate",
+				"unit": "percent",
+				"question": {
+					"number": 432,
+					"url": "https://atlas.pr.sync.so/questions/432"
+				},
+				"notApplicable": false,
+				"periodChecks": {
+					"2026-07": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					},
+					"2026-08": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					},
+					"2026-09": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					},
+					"2026-Q3": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					}
+				},
+				"supportingResults": {
+					"count": 2,
+					"classification": "separate supporting tables; excluded from headline observations"
+				}
+			},
+			"enterprise_contract_retention": {
+				"label": "Enterprise contracted annual value NDR",
+				"unit": "percent",
+				"question": {
+					"number": 436,
+					"url": "https://atlas.pr.sync.so/questions/436"
+				},
+				"notApplicable": false,
+				"periodChecks": {
+					"2026-07": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					},
+					"2026-08": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					},
+					"2026-09": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					},
+					"2026-Q3": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					}
+				},
+				"supportingResults": {
+					"count": 0,
+					"classification": "separate supporting tables; excluded from headline observations"
+				}
+			},
+			"enterprise_top1": {
+				"label": "Enterprise top-1 concentration",
+				"unit": "percent",
+				"question": {
+					"number": 437,
+					"url": "https://atlas.pr.sync.so/questions/437"
+				},
+				"notApplicable": false,
+				"periodChecks": {
+					"2026-07": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					},
+					"2026-08": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					},
+					"2026-09": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					},
+					"2026-Q3": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					}
+				},
+				"supportingResults": {
+					"count": 2,
+					"classification": "separate supporting tables; excluded from headline observations"
+				}
+			},
+			"enterprise_top3": {
+				"label": "Enterprise top-3 concentration",
+				"unit": "percent",
+				"question": {
+					"number": 438,
+					"url": "https://atlas.pr.sync.so/questions/438"
+				},
+				"notApplicable": false,
+				"periodChecks": {
+					"2026-07": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					},
+					"2026-08": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					},
+					"2026-09": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					},
+					"2026-Q3": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					}
+				},
+				"supportingResults": {
+					"count": 2,
+					"classification": "separate supporting tables; excluded from headline observations"
+				}
+			},
+			"channel_active_rate": {
+				"label": "Channel partners professional-customer rate",
+				"unit": "percent",
+				"question": {
+					"number": 441,
+					"url": "https://atlas.pr.sync.so/questions/441"
+				},
+				"notApplicable": false,
+				"periodChecks": {
+					"2026-07": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					},
+					"2026-08": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					},
+					"2026-09": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					},
+					"2026-Q3": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					}
+				},
+				"supportingResults": {
+					"count": 1,
+					"classification": "separate supporting tables; excluded from headline observations"
+				}
+			},
+			"channel_usage_retention": {
+				"label": "Channel partners invoiced revenue NDR",
+				"unit": "percent",
+				"question": {
+					"number": 444,
+					"url": "https://atlas.pr.sync.so/questions/444"
+				},
+				"notApplicable": false,
+				"periodChecks": {
+					"2026-07": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					},
+					"2026-08": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					},
+					"2026-09": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					},
+					"2026-Q3": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					}
+				},
+				"supportingResults": {
+					"count": 4,
+					"classification": "separate supporting tables; excluded from headline observations"
+				}
+			},
+			"channel_top1": {
+				"label": "Channel partners top-1 concentration",
+				"unit": "percent",
+				"question": {
+					"number": 446,
+					"url": "https://atlas.pr.sync.so/questions/446"
+				},
+				"notApplicable": false,
+				"periodChecks": {
+					"2026-07": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					},
+					"2026-08": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					},
+					"2026-09": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					},
+					"2026-Q3": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					}
+				},
+				"supportingResults": {
+					"count": 2,
+					"classification": "separate supporting tables; excluded from headline observations"
+				}
+			},
+			"channel_top3": {
+				"label": "Channel partners top-3 concentration",
+				"unit": "percent",
+				"question": {
+					"number": 447,
+					"url": "https://atlas.pr.sync.so/questions/447"
+				},
+				"notApplicable": false,
+				"periodChecks": {
+					"2026-07": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					},
+					"2026-08": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					},
+					"2026-09": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					},
+					"2026-Q3": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					}
+				},
+				"supportingResults": {
+					"count": 2,
+					"classification": "separate supporting tables; excluded from headline observations"
+				}
+			},
+			"productions_active_rate": {
+				"label": "Productions active rate",
+				"unit": "percent",
+				"question": {
+					"number": 450,
+					"url": "https://atlas.pr.sync.so/questions/450"
+				},
+				"notApplicable": true,
+				"periodChecks": {
+					"2026-07": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					},
+					"2026-08": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					},
+					"2026-09": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					},
+					"2026-Q3": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					}
+				},
+				"supportingResults": {
+					"count": 0,
+					"classification": "separate supporting tables; excluded from headline observations"
+				}
+			},
+			"productions_repeat_revenue_share": {
+				"label": "Productions TTM repeat-revenue share",
+				"unit": "percent",
+				"question": {
+					"number": 453,
+					"url": "https://atlas.pr.sync.so/questions/453"
+				},
+				"notApplicable": false,
+				"periodChecks": {
+					"2026-07": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					},
+					"2026-08": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					},
+					"2026-09": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					},
+					"2026-Q3": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					}
+				},
+				"supportingResults": {
+					"count": 0,
+					"classification": "separate supporting tables; excluded from headline observations"
+				}
+			},
+			"productions_top1": {
+				"label": "Productions top-1 concentration",
+				"unit": "percent",
+				"question": {
+					"number": 455,
+					"url": "https://atlas.pr.sync.so/questions/455"
+				},
+				"notApplicable": false,
+				"periodChecks": {
+					"2026-07": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					},
+					"2026-08": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					},
+					"2026-09": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					},
+					"2026-Q3": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					}
+				},
+				"supportingResults": {
+					"count": 0,
+					"classification": "separate supporting tables; excluded from headline observations"
+				}
+			},
+			"productions_top3": {
+				"label": "Productions top-3 concentration",
+				"unit": "percent",
+				"question": {
+					"number": 456,
+					"url": "https://atlas.pr.sync.so/questions/456"
+				},
+				"notApplicable": false,
+				"periodChecks": {
+					"2026-07": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					},
+					"2026-08": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					},
+					"2026-09": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					},
+					"2026-Q3": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					}
+				},
+				"supportingResults": {
+					"count": 0,
+					"classification": "separate supporting tables; excluded from headline observations"
+				}
+			},
+			"finance_product_margin": {
+				"label": "Product gross margin",
+				"unit": "percent",
+				"question": {
+					"number": 459,
+					"url": "https://atlas.pr.sync.so/questions/459"
+				},
+				"notApplicable": false,
+				"periodChecks": {
+					"2026-07": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					},
+					"2026-08": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					},
+					"2026-09": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					},
+					"2026-Q3": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					}
+				},
+				"supportingResults": {
+					"count": 1,
+					"classification": "separate supporting tables; excluded from headline observations"
+				}
+			},
+			"finance_services_margin": {
+				"label": "Services gross margin",
+				"unit": "percent",
+				"question": {
+					"number": 460,
+					"url": "https://atlas.pr.sync.so/questions/460"
+				},
+				"notApplicable": false,
+				"periodChecks": {
+					"2026-07": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					},
+					"2026-08": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					},
+					"2026-09": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					},
+					"2026-Q3": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					}
+				},
+				"supportingResults": {
+					"count": 0,
+					"classification": "separate supporting tables; excluded from headline observations"
+				}
+			},
+			"finance_net_burn": {
+				"label": "Net burn",
+				"unit": "usd",
+				"question": {
+					"number": 461,
+					"url": "https://atlas.pr.sync.so/questions/461"
+				},
+				"notApplicable": false,
+				"periodChecks": {
+					"2026-07": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					},
+					"2026-08": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					},
+					"2026-09": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					},
+					"2026-Q3": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					}
+				},
+				"supportingResults": {
+					"count": 0,
+					"classification": "separate supporting tables; excluded from headline observations"
+				}
+			},
+			"company_top1": {
+				"label": "Company top-1 concentration",
+				"unit": "percent",
+				"question": {
+					"number": 462,
+					"url": "https://atlas.pr.sync.so/questions/462"
+				},
+				"notApplicable": false,
+				"periodChecks": {
+					"2026-07": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					},
+					"2026-08": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					},
+					"2026-09": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					},
+					"2026-Q3": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					}
+				},
+				"supportingResults": {
+					"count": 2,
+					"classification": "separate supporting tables; excluded from headline observations"
+				}
+			},
+			"company_top3": {
+				"label": "Company top-3 concentration",
+				"unit": "percent",
+				"question": {
+					"number": 463,
+					"url": "https://atlas.pr.sync.so/questions/463"
+				},
+				"notApplicable": false,
+				"periodChecks": {
+					"2026-07": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					},
+					"2026-08": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					},
+					"2026-09": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					},
+					"2026-Q3": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					}
+				},
+				"supportingResults": {
+					"count": 2,
+					"classification": "separate supporting tables; excluded from headline observations"
+				}
+			},
+			"company_revenue": {
+				"label": "Company · Actualized revenue",
+				"unit": "usd",
+				"question": {
+					"number": 505,
+					"url": "https://atlas.pr.sync.so/questions/505"
+				},
+				"notApplicable": false,
+				"periodChecks": {
+					"2026-07": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					},
+					"2026-08": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					},
+					"2026-09": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					},
+					"2026-Q3": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					}
+				},
+				"supportingResults": {
+					"count": 0,
+					"classification": "separate supporting tables; excluded from headline observations"
+				}
+			},
+			"company_revenue_subscriptions": {
+				"label": "Subscriptions revenue",
+				"unit": "usd",
+				"question": {
+					"number": 527,
+					"url": "https://atlas.pr.sync.so/questions/527"
+				},
+				"notApplicable": false,
+				"periodChecks": {
+					"2026-07": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					},
+					"2026-08": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					},
+					"2026-09": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					},
+					"2026-Q3": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					}
+				},
+				"supportingResults": {
+					"count": 2,
+					"classification": "separate supporting tables; excluded from headline observations"
+				}
+			},
+			"company_revenue_usage": {
+				"label": "Usage revenue",
+				"unit": "usd",
+				"question": {
+					"number": 528,
+					"url": "https://atlas.pr.sync.so/questions/528"
+				},
+				"notApplicable": false,
+				"periodChecks": {
+					"2026-07": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					},
+					"2026-08": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					},
+					"2026-09": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					},
+					"2026-Q3": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					}
+				},
+				"supportingResults": {
+					"count": 3,
+					"classification": "separate supporting tables; excluded from headline observations"
+				}
+			},
+			"company_revenue_services": {
+				"label": "Services revenue",
+				"unit": "usd",
+				"question": {
+					"number": 529,
+					"url": "https://atlas.pr.sync.so/questions/529"
+				},
+				"notApplicable": false,
+				"periodChecks": {
+					"2026-07": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					},
+					"2026-08": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					},
+					"2026-09": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					},
+					"2026-Q3": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					}
+				},
+				"supportingResults": {
+					"count": 0,
+					"classification": "separate supporting tables; excluded from headline observations"
+				}
+			},
+			"finance_gross_margin": {
+				"label": "Company gross margin",
+				"unit": "percent",
+				"question": {
+					"number": 530,
+					"url": "https://atlas.pr.sync.so/questions/530"
+				},
+				"notApplicable": false,
+				"periodChecks": {
+					"2026-07": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					},
+					"2026-08": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					},
+					"2026-09": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					},
+					"2026-Q3": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					}
+				},
+				"supportingResults": {
+					"count": 1,
+					"classification": "separate supporting tables; excluded from headline observations"
+				}
+			},
+			"finance_runway": {
+				"label": "Approximate runway",
+				"unit": "months",
+				"question": {
+					"number": 535,
+					"url": "https://atlas.pr.sync.so/questions/535"
+				},
+				"notApplicable": false,
+				"periodChecks": {
+					"2026-07": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					},
+					"2026-08": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					},
+					"2026-09": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					},
+					"2026-Q3": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					}
+				},
+				"supportingResults": {
+					"count": 0,
+					"classification": "separate supporting tables; excluded from headline observations"
+				}
+			},
+			"company_teams_period_end": {
+				"label": "Company period-end professional teams",
+				"unit": "count",
+				"question": {
+					"number": 542,
+					"url": "https://atlas.pr.sync.so/questions/542"
+				},
+				"notApplicable": false,
+				"periodChecks": {
+					"2026-07": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					},
+					"2026-08": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					},
+					"2026-09": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					},
+					"2026-Q3": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					}
+				},
+				"supportingResults": {
+					"count": 0,
+					"classification": "separate supporting tables; excluded from headline observations"
+				}
+			},
+			"plg_teams_period_end": {
+				"label": "PLG period-end professional teams",
+				"unit": "count",
+				"question": {
+					"number": 543,
+					"url": "https://atlas.pr.sync.so/questions/543"
+				},
+				"notApplicable": false,
+				"periodChecks": {
+					"2026-07": {
+						"keyPresent": true,
+						"observation": {
+							"value": 540,
+							"numerator": null,
+							"denominator": null,
+							"status": "provisional",
+							"sourceType": "automated_query",
+							"source": {
+								"label": "Atlas question 543",
+								"url": "https://atlas.pr.sync.so/questions/543"
+							},
+							"asOf": "2026-10-02T22:39:30.350Z",
+							"dataThrough": null,
+							"evidenceSource": {
+								"url": "https://atlas.pr.sync.so/questions/543",
+								"label": "Atlas governed source query; current-clean history"
+							},
+							"snapshotId": "qbr:plg_teams_period_end:d7ab71da221966ed80938b92",
+							"definitionHash": "8b2dfee87c86fb32b21381cefe236a8d63f2342eb6886ae3a405361f35694657",
+							"sourceQueryHash": "cbcc69b14a6fe7d8256d238fe3ad48859a37383a137c45326df4bc09812c5a68"
+						}
+					},
+					"2026-08": {
+						"keyPresent": true,
+						"observation": {
+							"value": 537,
+							"numerator": null,
+							"denominator": null,
+							"status": "provisional",
+							"sourceType": "automated_query",
+							"source": {
+								"label": "Atlas question 543",
+								"url": "https://atlas.pr.sync.so/questions/543"
+							},
+							"asOf": "2026-10-02T22:39:30.350Z",
+							"dataThrough": null,
+							"evidenceSource": {
+								"url": "https://atlas.pr.sync.so/questions/543",
+								"label": "Atlas governed source query; current-clean history"
+							},
+							"snapshotId": "qbr:plg_teams_period_end:d7ab71da221966ed80938b92",
+							"definitionHash": "8b2dfee87c86fb32b21381cefe236a8d63f2342eb6886ae3a405361f35694657",
+							"sourceQueryHash": "cbcc69b14a6fe7d8256d238fe3ad48859a37383a137c45326df4bc09812c5a68"
+						}
+					},
+					"2026-09": {
+						"keyPresent": true,
+						"observation": {
+							"value": 549,
+							"numerator": null,
+							"denominator": null,
+							"status": "provisional",
+							"sourceType": "automated_query",
+							"source": {
+								"label": "Atlas question 543",
+								"url": "https://atlas.pr.sync.so/questions/543"
+							},
+							"asOf": "2026-10-02T22:39:30.350Z",
+							"dataThrough": null,
+							"evidenceSource": {
+								"url": "https://atlas.pr.sync.so/questions/543",
+								"label": "Atlas governed source query; current-clean history"
+							},
+							"snapshotId": "qbr:plg_teams_period_end:d7ab71da221966ed80938b92",
+							"definitionHash": "8b2dfee87c86fb32b21381cefe236a8d63f2342eb6886ae3a405361f35694657",
+							"sourceQueryHash": "cbcc69b14a6fe7d8256d238fe3ad48859a37383a137c45326df4bc09812c5a68"
+						}
+					},
+					"2026-Q3": {
+						"keyPresent": true,
+						"observation": {
+							"value": 549,
+							"numerator": null,
+							"denominator": null,
+							"status": "provisional",
+							"sourceType": "automated_query",
+							"source": {
+								"label": "Atlas question 543",
+								"url": "https://atlas.pr.sync.so/questions/543"
+							},
+							"asOf": "2026-10-02T22:39:30.350Z",
+							"dataThrough": null,
+							"evidenceSource": {
+								"url": "https://atlas.pr.sync.so/questions/543",
+								"label": "Atlas governed source query; current-clean history"
+							},
+							"snapshotId": "qbr:plg_teams_period_end:d7ab71da221966ed80938b92",
+							"definitionHash": "8b2dfee87c86fb32b21381cefe236a8d63f2342eb6886ae3a405361f35694657",
+							"sourceQueryHash": "cbcc69b14a6fe7d8256d238fe3ad48859a37383a137c45326df4bc09812c5a68"
+						}
+					}
+				},
+				"supportingResults": {
+					"count": 0,
+					"classification": "separate supporting tables; excluded from headline observations"
+				}
+			},
+			"enterprise_teams_period_end": {
+				"label": "Enterprise period-end professional teams",
+				"unit": "count",
+				"question": {
+					"number": 544,
+					"url": "https://atlas.pr.sync.so/questions/544"
+				},
+				"notApplicable": false,
+				"periodChecks": {
+					"2026-07": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					},
+					"2026-08": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					},
+					"2026-09": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					},
+					"2026-Q3": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					}
+				},
+				"supportingResults": {
+					"count": 0,
+					"classification": "separate supporting tables; excluded from headline observations"
+				}
+			},
+			"channel_teams_period_end": {
+				"label": "Channel period-end professional teams",
+				"unit": "count",
+				"question": {
+					"number": 545,
+					"url": "https://atlas.pr.sync.so/questions/545"
+				},
+				"notApplicable": false,
+				"periodChecks": {
+					"2026-07": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					},
+					"2026-08": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					},
+					"2026-09": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					},
+					"2026-Q3": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					}
+				},
+				"supportingResults": {
+					"count": 0,
+					"classification": "separate supporting tables; excluded from headline observations"
+				}
+			},
+			"productions_teams_period_end": {
+				"label": "Productions period-end professional teams",
+				"unit": "count",
+				"question": {
+					"number": 546,
+					"url": "https://atlas.pr.sync.so/questions/546"
+				},
+				"notApplicable": false,
+				"periodChecks": {
+					"2026-07": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					},
+					"2026-08": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					},
+					"2026-09": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					},
+					"2026-Q3": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					}
+				},
+				"supportingResults": {
+					"count": 0,
+					"classification": "separate supporting tables; excluded from headline observations"
+				}
+			},
+			"plg_booked_revenue": {
+				"label": "PLG · Booked revenue",
+				"unit": "usd",
+				"question": {
+					"number": 548,
+					"url": "https://atlas.pr.sync.so/questions/548"
+				},
+				"notApplicable": false,
+				"periodChecks": {
+					"2026-07": {
+						"keyPresent": true,
+						"observation": {
+							"value": 650614.99,
+							"numerator": null,
+							"denominator": null,
+							"status": "reported",
+							"sourceType": "reported",
+							"source": {
+								"label": "Atlas question 548",
+								"url": "https://atlas.pr.sync.so/questions/548"
+							},
+							"asOf": "2026-10-02T22:24:49.260Z",
+							"dataThrough": null,
+							"reportedBy": "Nacho's agent - Stripe invoice extraction",
+							"evidenceSource": {
+								"url": "https://docs.stripe.com/api/invoices/list",
+								"label": "Stripe run 74ec0c055d58; provisional PLG invoice attribution; unresolved net USD 750.00; API docs, extraction hashes in preparation"
+							},
+							"snapshotId": "qbr:plg_booked_revenue:759133406aa5eb4bb3c9299b",
+							"definitionHash": "094e2f45b8bd66d300019e9214d20ab84026421ec1fdebb140cb048448469ad9",
+							"sourceQueryHash": "e4994e91052916f1606005b344d5d2d1b55f3b58097412c1d3e32eab91e0e5e4"
+						}
+					},
+					"2026-08": {
+						"keyPresent": true,
+						"observation": {
+							"value": 648263.59,
+							"numerator": null,
+							"denominator": null,
+							"status": "reported",
+							"sourceType": "reported",
+							"source": {
+								"label": "Atlas question 548",
+								"url": "https://atlas.pr.sync.so/questions/548"
+							},
+							"asOf": "2026-10-02T22:24:49.260Z",
+							"dataThrough": null,
+							"reportedBy": "Nacho's agent - Stripe invoice extraction",
+							"evidenceSource": {
+								"url": "https://docs.stripe.com/api/invoices/list",
+								"label": "Stripe run 74ec0c055d58; provisional PLG invoice attribution; unresolved net USD 750.00; API docs, extraction hashes in preparation"
+							},
+							"snapshotId": "qbr:plg_booked_revenue:759133406aa5eb4bb3c9299b",
+							"definitionHash": "094e2f45b8bd66d300019e9214d20ab84026421ec1fdebb140cb048448469ad9",
+							"sourceQueryHash": "e4994e91052916f1606005b344d5d2d1b55f3b58097412c1d3e32eab91e0e5e4"
+						}
+					},
+					"2026-09": {
+						"keyPresent": true,
+						"observation": {
+							"value": 624410.46,
+							"numerator": null,
+							"denominator": null,
+							"status": "reported",
+							"sourceType": "reported",
+							"source": {
+								"label": "Atlas question 548",
+								"url": "https://atlas.pr.sync.so/questions/548"
+							},
+							"asOf": "2026-10-02T22:24:49.260Z",
+							"dataThrough": null,
+							"reportedBy": "Nacho's agent - Stripe invoice extraction",
+							"evidenceSource": {
+								"url": "https://docs.stripe.com/api/invoices/list",
+								"label": "Stripe run 74ec0c055d58; provisional PLG invoice attribution; unresolved net USD 7,308.55; API docs, extraction hashes in preparation"
+							},
+							"snapshotId": "qbr:plg_booked_revenue:759133406aa5eb4bb3c9299b",
+							"definitionHash": "094e2f45b8bd66d300019e9214d20ab84026421ec1fdebb140cb048448469ad9",
+							"sourceQueryHash": "e4994e91052916f1606005b344d5d2d1b55f3b58097412c1d3e32eab91e0e5e4"
+						}
+					},
+					"2026-Q3": {
+						"keyPresent": true,
+						"observation": {
+							"value": 1923289.04,
+							"numerator": null,
+							"denominator": null,
+							"status": "reported",
+							"sourceType": "reported",
+							"source": {
+								"label": "Atlas question 548",
+								"url": "https://atlas.pr.sync.so/questions/548"
+							},
+							"asOf": "2026-10-02T22:24:49.260Z",
+							"dataThrough": null,
+							"reportedBy": "Nacho's agent - Stripe invoice extraction",
+							"evidenceSource": {
+								"url": "https://docs.stripe.com/api/invoices/list",
+								"label": "Stripe run 74ec0c055d58; provisional PLG invoice attribution; unresolved net USD 8,808.55; API docs, extraction hashes in preparation"
+							},
+							"snapshotId": "qbr:plg_booked_revenue:759133406aa5eb4bb3c9299b",
+							"definitionHash": "094e2f45b8bd66d300019e9214d20ab84026421ec1fdebb140cb048448469ad9",
+							"sourceQueryHash": "e4994e91052916f1606005b344d5d2d1b55f3b58097412c1d3e32eab91e0e5e4"
+						}
+					}
+				},
+				"supportingResults": {
+					"count": 5,
+					"classification": "separate supporting tables; excluded from headline observations"
+				}
+			},
+			"company_annual_revenue_estimate": {
+				"label": "Total company · Estimated annual revenue",
+				"unit": "usd",
+				"question": {
+					"number": 552,
+					"url": "https://atlas.pr.sync.so/questions/552"
+				},
+				"notApplicable": false,
+				"periodChecks": {
+					"2026-07": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					},
+					"2026-08": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					},
+					"2026-09": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					},
+					"2026-Q3": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					}
+				},
+				"supportingResults": {
+					"count": 0,
+					"classification": "separate supporting tables; excluded from headline observations"
+				}
+			},
+			"plg_annual_revenue_estimate": {
+				"label": "PLG · Estimated annual revenue",
+				"unit": "usd",
+				"question": {
+					"number": 553,
+					"url": "https://atlas.pr.sync.so/questions/553"
+				},
+				"notApplicable": false,
+				"periodChecks": {
+					"2026-07": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					},
+					"2026-08": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					},
+					"2026-09": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					},
+					"2026-Q3": {
+						"keyPresent": false,
+						"interpretation": "not reported",
+						"observation": null
+					}
+				},
+				"supportingResults": {
+					"count": 1,
+					"classification": "separate supporting tables; excluded from headline observations"
+				}
+			}
+		},
+		"presenceIndex": {
+			"plg_teams": {
+				"notApplicable": false,
+				"question": {
+					"number": 422,
+					"url": "https://atlas.pr.sync.so/questions/422"
+				},
+				"observations": {
+					"2026-07": {
+						"status": "provisional",
+						"asOf": "2026-10-02T22:39:30.342Z",
+						"dataThrough": null
+					},
+					"2026-08": {
+						"status": "provisional",
+						"asOf": "2026-10-02T22:39:30.342Z",
+						"dataThrough": null
+					},
+					"2026-09": {
+						"status": "provisional",
+						"asOf": "2026-10-02T22:39:30.342Z",
+						"dataThrough": null
+					},
+					"2026-Q3": {
+						"status": "provisional",
+						"asOf": "2026-10-02T22:39:30.342Z",
+						"dataThrough": null
+					}
+				}
+			},
+			"plg_active_rate": {
+				"notApplicable": false,
+				"question": {
+					"number": 423,
+					"url": "https://atlas.pr.sync.so/questions/423"
+				},
+				"observations": {}
+			},
+			"plg_usage": {
+				"notApplicable": false,
+				"question": {
+					"number": 424,
+					"url": "https://atlas.pr.sync.so/questions/424"
+				},
+				"observations": {}
+			},
+			"plg_contracts": {
+				"notApplicable": true,
+				"question": {
+					"number": 425,
+					"url": "https://atlas.pr.sync.so/questions/425"
+				},
+				"observations": {}
+			},
+			"plg_usage_retention": {
+				"notApplicable": false,
+				"question": {
+					"number": 426,
+					"url": "https://atlas.pr.sync.so/questions/426"
+				},
+				"observations": {
+					"2026-07": {
+						"status": "reported",
+						"asOf": "2026-10-02T22:24:49.260Z",
+						"dataThrough": null
+					},
+					"2026-08": {
+						"status": "reported",
+						"asOf": "2026-10-02T22:24:49.260Z",
+						"dataThrough": null
+					},
+					"2026-09": {
+						"status": "reported",
+						"asOf": "2026-10-02T22:24:49.260Z",
+						"dataThrough": null
+					},
+					"2026-Q3": {
+						"status": "reported",
+						"asOf": "2026-10-02T22:24:49.260Z",
+						"dataThrough": null
+					}
+				}
+			},
+			"plg_contract_retention": {
+				"notApplicable": true,
+				"question": {
+					"number": 427,
+					"url": "https://atlas.pr.sync.so/questions/427"
+				},
+				"observations": {}
+			},
+			"plg_top1": {
+				"notApplicable": false,
+				"question": {
+					"number": 428,
+					"url": "https://atlas.pr.sync.so/questions/428"
+				},
+				"observations": {}
+			},
+			"plg_top3": {
+				"notApplicable": false,
+				"question": {
+					"number": 429,
+					"url": "https://atlas.pr.sync.so/questions/429"
+				},
+				"observations": {}
+			},
+			"plg_top10": {
+				"notApplicable": false,
+				"question": {
+					"number": 430,
+					"url": "https://atlas.pr.sync.so/questions/430"
+				},
+				"observations": {}
+			},
+			"enterprise_teams": {
+				"notApplicable": false,
+				"question": {
+					"number": 431,
+					"url": "https://atlas.pr.sync.so/questions/431"
+				},
+				"observations": {}
+			},
+			"enterprise_active_rate": {
+				"notApplicable": false,
+				"question": {
+					"number": 432,
+					"url": "https://atlas.pr.sync.so/questions/432"
+				},
+				"observations": {}
+			},
+			"enterprise_usage": {
+				"notApplicable": false,
+				"question": {
+					"number": 433,
+					"url": "https://atlas.pr.sync.so/questions/433"
+				},
+				"observations": {}
+			},
+			"enterprise_contracts": {
+				"notApplicable": false,
+				"question": {
+					"number": 434,
+					"url": "https://atlas.pr.sync.so/questions/434"
+				},
+				"observations": {}
+			},
+			"enterprise_usage_retention": {
+				"notApplicable": false,
+				"question": {
+					"number": 435,
+					"url": "https://atlas.pr.sync.so/questions/435"
+				},
+				"observations": {
+					"2026-07": {
+						"status": "provisional",
+						"asOf": "2026-10-02T22:40:05.414Z",
+						"dataThrough": null
+					},
+					"2026-08": {
+						"status": "provisional",
+						"asOf": "2026-10-02T22:40:05.414Z",
+						"dataThrough": null
+					},
+					"2026-09": {
+						"status": "provisional",
+						"asOf": "2026-10-02T22:40:05.414Z",
+						"dataThrough": null
+					},
+					"2026-Q3": {
+						"status": "provisional",
+						"asOf": "2026-10-02T22:40:05.414Z",
+						"dataThrough": null
+					}
+				}
+			},
+			"enterprise_contract_retention": {
+				"notApplicable": false,
+				"question": {
+					"number": 436,
+					"url": "https://atlas.pr.sync.so/questions/436"
+				},
+				"observations": {}
+			},
+			"enterprise_top1": {
+				"notApplicable": false,
+				"question": {
+					"number": 437,
+					"url": "https://atlas.pr.sync.so/questions/437"
+				},
+				"observations": {}
+			},
+			"enterprise_top3": {
+				"notApplicable": false,
+				"question": {
+					"number": 438,
+					"url": "https://atlas.pr.sync.so/questions/438"
+				},
+				"observations": {}
+			},
+			"enterprise_top10": {
+				"notApplicable": false,
+				"question": {
+					"number": 439,
+					"url": "https://atlas.pr.sync.so/questions/439"
+				},
+				"observations": {}
+			},
+			"channel_teams": {
+				"notApplicable": false,
+				"question": {
+					"number": 440,
+					"url": "https://atlas.pr.sync.so/questions/440"
+				},
+				"observations": {}
+			},
+			"channel_active_rate": {
+				"notApplicable": false,
+				"question": {
+					"number": 441,
+					"url": "https://atlas.pr.sync.so/questions/441"
+				},
+				"observations": {}
+			},
+			"channel_usage": {
+				"notApplicable": false,
+				"question": {
+					"number": 442,
+					"url": "https://atlas.pr.sync.so/questions/442"
+				},
+				"observations": {}
+			},
+			"channel_contracts": {
+				"notApplicable": false,
+				"question": {
+					"number": 443,
+					"url": "https://atlas.pr.sync.so/questions/443"
+				},
+				"observations": {}
+			},
+			"channel_usage_retention": {
+				"notApplicable": false,
+				"question": {
+					"number": 444,
+					"url": "https://atlas.pr.sync.so/questions/444"
+				},
+				"observations": {}
+			},
+			"channel_contract_retention": {
+				"notApplicable": false,
+				"question": {
+					"number": 445,
+					"url": "https://atlas.pr.sync.so/questions/445"
+				},
+				"observations": {}
+			},
+			"channel_top1": {
+				"notApplicable": false,
+				"question": {
+					"number": 446,
+					"url": "https://atlas.pr.sync.so/questions/446"
+				},
+				"observations": {}
+			},
+			"channel_top3": {
+				"notApplicable": false,
+				"question": {
+					"number": 447,
+					"url": "https://atlas.pr.sync.so/questions/447"
+				},
+				"observations": {}
+			},
+			"channel_top10": {
+				"notApplicable": false,
+				"question": {
+					"number": 448,
+					"url": "https://atlas.pr.sync.so/questions/448"
+				},
+				"observations": {}
+			},
+			"productions_teams": {
+				"notApplicable": false,
+				"question": {
+					"number": 449,
+					"url": "https://atlas.pr.sync.so/questions/449"
+				},
+				"observations": {}
+			},
+			"productions_active_rate": {
+				"notApplicable": true,
+				"question": {
+					"number": 450,
+					"url": "https://atlas.pr.sync.so/questions/450"
+				},
+				"observations": {}
+			},
+			"productions_usage": {
+				"notApplicable": false,
+				"question": {
+					"number": 451,
+					"url": "https://atlas.pr.sync.so/questions/451"
+				},
+				"observations": {}
+			},
+			"productions_contracts": {
+				"notApplicable": false,
+				"question": {
+					"number": 452,
+					"url": "https://atlas.pr.sync.so/questions/452"
+				},
+				"observations": {}
+			},
+			"productions_repeat_revenue_share": {
+				"notApplicable": false,
+				"question": {
+					"number": 453,
+					"url": "https://atlas.pr.sync.so/questions/453"
+				},
+				"observations": {}
+			},
+			"productions_contract_retention": {
+				"notApplicable": false,
+				"question": {
+					"number": 454,
+					"url": "https://atlas.pr.sync.so/questions/454"
+				},
+				"observations": {}
+			},
+			"productions_top1": {
+				"notApplicable": false,
+				"question": {
+					"number": 455,
+					"url": "https://atlas.pr.sync.so/questions/455"
+				},
+				"observations": {}
+			},
+			"productions_top3": {
+				"notApplicable": false,
+				"question": {
+					"number": 456,
+					"url": "https://atlas.pr.sync.so/questions/456"
+				},
+				"observations": {}
+			},
+			"productions_top10": {
+				"notApplicable": false,
+				"question": {
+					"number": 457,
+					"url": "https://atlas.pr.sync.so/questions/457"
+				},
+				"observations": {}
+			},
+			"company_teams": {
+				"notApplicable": false,
+				"question": {
+					"number": 458,
+					"url": "https://atlas.pr.sync.so/questions/458"
+				},
+				"observations": {}
+			},
+			"finance_product_margin": {
+				"notApplicable": false,
+				"question": {
+					"number": 459,
+					"url": "https://atlas.pr.sync.so/questions/459"
+				},
+				"observations": {}
+			},
+			"finance_services_margin": {
+				"notApplicable": false,
+				"question": {
+					"number": 460,
+					"url": "https://atlas.pr.sync.so/questions/460"
+				},
+				"observations": {}
+			},
+			"finance_net_burn": {
+				"notApplicable": false,
+				"question": {
+					"number": 461,
+					"url": "https://atlas.pr.sync.so/questions/461"
+				},
+				"observations": {}
+			},
+			"company_top1": {
+				"notApplicable": false,
+				"question": {
+					"number": 462,
+					"url": "https://atlas.pr.sync.so/questions/462"
+				},
+				"observations": {}
+			},
+			"company_top3": {
+				"notApplicable": false,
+				"question": {
+					"number": 463,
+					"url": "https://atlas.pr.sync.so/questions/463"
+				},
+				"observations": {}
+			},
+			"company_top10": {
+				"notApplicable": false,
+				"question": {
+					"number": 464,
+					"url": "https://atlas.pr.sync.so/questions/464"
+				},
+				"observations": {}
+			},
+			"sales_signed_teams": {
+				"notApplicable": false,
+				"question": {
+					"number": 465,
+					"url": "https://atlas.pr.sync.so/questions/465"
+				},
+				"observations": {}
+			},
+			"sales_new_logos": {
+				"notApplicable": false,
+				"question": {
+					"number": 466,
+					"url": "https://atlas.pr.sync.so/questions/466"
+				},
+				"observations": {}
+			},
+			"sales_inbound": {
+				"notApplicable": false,
+				"question": {
+					"number": 467,
+					"url": "https://atlas.pr.sync.so/questions/467"
+				},
+				"observations": {}
+			},
+			"sales_channel_live": {
+				"notApplicable": false,
+				"question": {
+					"number": 468,
+					"url": "https://atlas.pr.sync.so/questions/468"
+				},
+				"observations": {}
+			},
+			"sales_demo_conversion": {
+				"notApplicable": false,
+				"question": {
+					"number": 469,
+					"url": "https://atlas.pr.sync.so/questions/469"
+				},
+				"observations": {}
+			},
+			"marketing_visitors": {
+				"notApplicable": false,
+				"question": {
+					"number": 470,
+					"url": "https://atlas.pr.sync.so/questions/470"
+				},
+				"observations": {}
+			},
+			"marketing_clean_signups": {
+				"notApplicable": false,
+				"question": {
+					"number": 471,
+					"url": "https://atlas.pr.sync.so/questions/471"
+				},
+				"observations": {}
+			},
+			"marketing_qualified": {
+				"notApplicable": false,
+				"question": {
+					"number": 472,
+					"url": "https://atlas.pr.sync.so/questions/472"
+				},
+				"observations": {}
+			},
+			"product_m3_requalification": {
+				"notApplicable": false,
+				"question": {
+					"number": 473,
+					"url": "https://atlas.pr.sync.so/questions/473"
+				},
+				"observations": {
+					"2026-07": {
+						"status": "provisional",
+						"asOf": "2026-10-02T22:39:53.038Z",
+						"dataThrough": null
+					},
+					"2026-08": {
+						"status": "provisional",
+						"asOf": "2026-10-02T22:39:53.038Z",
+						"dataThrough": null
+					},
+					"2026-09": {
+						"status": "provisional",
+						"asOf": "2026-10-02T22:39:53.038Z",
+						"dataThrough": null
+					}
+				}
+			},
+			"product_m3_ndr": {
+				"notApplicable": false,
+				"question": {
+					"number": 474,
+					"url": "https://atlas.pr.sync.so/questions/474"
+				},
+				"observations": {
+					"2026-07": {
+						"status": "provisional",
+						"asOf": "2026-10-02T22:39:56.669Z",
+						"dataThrough": null
+					},
+					"2026-08": {
+						"status": "provisional",
+						"asOf": "2026-10-02T22:39:56.669Z",
+						"dataThrough": null
+					},
+					"2026-09": {
+						"status": "provisional",
+						"asOf": "2026-10-02T22:39:56.669Z",
+						"dataThrough": null
+					}
+				}
+			},
+			"product_reactivation": {
+				"notApplicable": false,
+				"question": {
+					"number": 475,
+					"url": "https://atlas.pr.sync.so/questions/475"
+				},
+				"observations": {
+					"2026-07": {
+						"status": "provisional",
+						"asOf": "2026-10-02T22:40:00.794Z",
+						"dataThrough": null
+					},
+					"2026-08": {
+						"status": "provisional",
+						"asOf": "2026-10-02T22:40:00.794Z",
+						"dataThrough": null
+					},
+					"2026-09": {
+						"status": "provisional",
+						"asOf": "2026-10-02T22:40:00.794Z",
+						"dataThrough": null
+					}
+				}
+			},
+			"product_return_lift": {
+				"notApplicable": false,
+				"question": {
+					"number": 476,
+					"url": "https://atlas.pr.sync.so/questions/476"
+				},
+				"observations": {
+					"2026-08": {
+						"status": "provisional",
+						"asOf": "2026-10-02T22:40:32.834Z",
+						"dataThrough": null
+					}
+				}
+			},
+			"product_feedback_coverage": {
+				"notApplicable": false,
+				"question": {
+					"number": 477,
+					"url": "https://atlas.pr.sync.so/questions/477"
+				},
+				"observations": {
+					"2026-07": {
+						"status": "provisional",
+						"asOf": "2026-10-02T22:40:22.572Z",
+						"dataThrough": null
+					},
+					"2026-08": {
+						"status": "provisional",
+						"asOf": "2026-10-02T22:40:22.572Z",
+						"dataThrough": null
+					},
+					"2026-09": {
+						"status": "provisional",
+						"asOf": "2026-10-02T22:40:22.572Z",
+						"dataThrough": null
+					},
+					"2026-Q3": {
+						"status": "provisional",
+						"asOf": "2026-10-02T22:40:22.572Z",
+						"dataThrough": null
+					}
+				}
+			},
+			"product_upvotes": {
+				"notApplicable": false,
+				"question": {
+					"number": 478,
+					"url": "https://atlas.pr.sync.so/questions/478"
+				},
+				"observations": {}
+			},
+			"product_attribution": {
+				"notApplicable": false,
+				"question": {
+					"number": 479,
+					"url": "https://atlas.pr.sync.so/questions/479"
+				},
+				"observations": {
+					"2026-07": {
+						"status": "provisional",
+						"asOf": "2026-10-02T22:40:26.336Z",
+						"dataThrough": null
+					},
+					"2026-08": {
+						"status": "provisional",
+						"asOf": "2026-10-02T22:40:26.336Z",
+						"dataThrough": null
+					},
+					"2026-09": {
+						"status": "provisional",
+						"asOf": "2026-10-02T22:40:26.336Z",
+						"dataThrough": null
+					},
+					"2026-Q3": {
+						"status": "provisional",
+						"asOf": "2026-10-02T22:40:26.336Z",
+						"dataThrough": null
+					}
+				}
+			},
+			"cs_logo_retention": {
+				"notApplicable": false,
+				"question": {
+					"number": 480,
+					"url": "https://atlas.pr.sync.so/questions/480"
+				},
+				"observations": {}
+			},
+			"cs_aged_tickets": {
+				"notApplicable": false,
+				"question": {
+					"number": 481,
+					"url": "https://atlas.pr.sync.so/questions/481"
+				},
+				"observations": {}
+			},
+			"cs_org_coverage": {
+				"notApplicable": false,
+				"question": {
+					"number": 482,
+					"url": "https://atlas.pr.sync.so/questions/482"
+				},
+				"observations": {}
+			},
+			"production_accepted_jobs": {
+				"notApplicable": false,
+				"question": {
+					"number": 483,
+					"url": "https://atlas.pr.sync.so/questions/483"
+				},
+				"observations": {}
+			},
+			"production_on_time": {
+				"notApplicable": false,
+				"question": {
+					"number": 484,
+					"url": "https://atlas.pr.sync.so/questions/484"
+				},
+				"observations": {}
+			},
+			"production_turnaround": {
+				"notApplicable": false,
+				"question": {
+					"number": 485,
+					"url": "https://atlas.pr.sync.so/questions/485"
+				},
+				"observations": {}
+			},
+			"production_hours": {
+				"notApplicable": false,
+				"question": {
+					"number": 486,
+					"url": "https://atlas.pr.sync.so/questions/486"
+				},
+				"observations": {}
+			},
+			"production_iterations": {
+				"notApplicable": false,
+				"question": {
+					"number": 487,
+					"url": "https://atlas.pr.sync.so/questions/487"
+				},
+				"observations": {}
+			},
+			"production_workspaces": {
+				"notApplicable": false,
+				"question": {
+					"number": 488,
+					"url": "https://atlas.pr.sync.so/questions/488"
+				},
+				"observations": {}
+			},
+			"ml_asd_frame": {
+				"notApplicable": false,
+				"question": {
+					"number": 489,
+					"url": "https://atlas.pr.sync.so/questions/489"
+				},
+				"observations": {}
+			},
+			"ml_asd_shot": {
+				"notApplicable": false,
+				"question": {
+					"number": 490,
+					"url": "https://atlas.pr.sync.so/questions/490"
+				},
+				"observations": {}
+			},
+			"ml_qc_agreement": {
+				"notApplicable": false,
+				"question": {
+					"number": 491,
+					"url": "https://atlas.pr.sync.so/questions/491"
+				},
+				"observations": {}
+			},
+			"platform_completion": {
+				"notApplicable": false,
+				"question": {
+					"number": 492,
+					"url": "https://atlas.pr.sync.so/questions/492"
+				},
+				"observations": {
+					"2026-07": {
+						"status": "provisional",
+						"asOf": "2026-10-02T22:40:12.170Z",
+						"dataThrough": null
+					},
+					"2026-08": {
+						"status": "provisional",
+						"asOf": "2026-10-02T22:40:12.170Z",
+						"dataThrough": null
+					},
+					"2026-09": {
+						"status": "provisional",
+						"asOf": "2026-10-02T22:40:12.170Z",
+						"dataThrough": null
+					},
+					"2026-Q3": {
+						"status": "provisional",
+						"asOf": "2026-10-02T22:40:12.170Z",
+						"dataThrough": null
+					}
+				}
+			},
+			"platform_latency": {
+				"notApplicable": false,
+				"question": {
+					"number": 493,
+					"url": "https://atlas.pr.sync.so/questions/493"
+				},
+				"observations": {}
+			},
+			"platform_unit_cost": {
+				"notApplicable": false,
+				"question": {
+					"number": 494,
+					"url": "https://atlas.pr.sync.so/questions/494"
+				},
+				"observations": {}
+			},
+			"research_zero_repair": {
+				"notApplicable": false,
+				"question": {
+					"number": 495,
+					"url": "https://atlas.pr.sync.so/questions/495"
+				},
+				"observations": {}
+			},
+			"research_training_speed": {
+				"notApplicable": false,
+				"question": {
+					"number": 496,
+					"url": "https://atlas.pr.sync.so/questions/496"
+				},
+				"observations": {}
+			},
+			"research_annotated_movies": {
+				"notApplicable": false,
+				"question": {
+					"number": 497,
+					"url": "https://atlas.pr.sync.so/questions/497"
+				},
+				"observations": {}
+			},
+			"research_mimic_use": {
+				"notApplicable": false,
+				"question": {
+					"number": 498,
+					"url": "https://atlas.pr.sync.so/questions/498"
+				},
+				"observations": {}
+			},
+			"ops_reporting_coverage": {
+				"notApplicable": false,
+				"question": {
+					"number": 499,
+					"url": "https://atlas.pr.sync.so/questions/499"
+				},
+				"observations": {}
+			},
+			"ops_pack_time": {
+				"notApplicable": false,
+				"question": {
+					"number": 500,
+					"url": "https://atlas.pr.sync.so/questions/500"
+				},
+				"observations": {}
+			},
+			"ops_exceptions": {
+				"notApplicable": false,
+				"question": {
+					"number": 501,
+					"url": "https://atlas.pr.sync.so/questions/501"
+				},
+				"observations": {}
+			},
+			"company_teams_adds": {
+				"notApplicable": false,
+				"question": {
+					"number": 502,
+					"url": "https://atlas.pr.sync.so/questions/502"
+				},
+				"observations": {}
+			},
+			"company_teams_losses": {
+				"notApplicable": false,
+				"question": {
+					"number": 503,
+					"url": "https://atlas.pr.sync.so/questions/503"
+				},
+				"observations": {}
+			},
+			"company_teams_net": {
+				"notApplicable": false,
+				"question": {
+					"number": 504,
+					"url": "https://atlas.pr.sync.so/questions/504"
+				},
+				"observations": {}
+			},
+			"company_revenue": {
+				"notApplicable": false,
+				"question": {
+					"number": 505,
+					"url": "https://atlas.pr.sync.so/questions/505"
+				},
+				"observations": {}
+			},
+			"company_customers": {
+				"notApplicable": false,
+				"question": {
+					"number": 506,
+					"url": "https://atlas.pr.sync.so/questions/506"
+				},
+				"observations": {}
+			},
+			"plg_teams_adds": {
+				"notApplicable": false,
+				"question": {
+					"number": 507,
+					"url": "https://atlas.pr.sync.so/questions/507"
+				},
+				"observations": {
+					"2026-07": {
+						"status": "provisional",
+						"asOf": "2026-10-02T22:39:36.465Z",
+						"dataThrough": null
+					},
+					"2026-08": {
+						"status": "provisional",
+						"asOf": "2026-10-02T22:39:36.465Z",
+						"dataThrough": null
+					},
+					"2026-09": {
+						"status": "provisional",
+						"asOf": "2026-10-02T22:39:36.465Z",
+						"dataThrough": null
+					},
+					"2026-Q3": {
+						"status": "provisional",
+						"asOf": "2026-10-02T22:39:36.465Z",
+						"dataThrough": null
+					}
+				}
+			},
+			"plg_teams_losses": {
+				"notApplicable": false,
+				"question": {
+					"number": 508,
+					"url": "https://atlas.pr.sync.so/questions/508"
+				},
+				"observations": {
+					"2026-07": {
+						"status": "provisional",
+						"asOf": "2026-10-02T22:39:43.036Z",
+						"dataThrough": null
+					},
+					"2026-08": {
+						"status": "provisional",
+						"asOf": "2026-10-02T22:39:43.036Z",
+						"dataThrough": null
+					},
+					"2026-09": {
+						"status": "provisional",
+						"asOf": "2026-10-02T22:39:43.036Z",
+						"dataThrough": null
+					},
+					"2026-Q3": {
+						"status": "provisional",
+						"asOf": "2026-10-02T22:39:43.036Z",
+						"dataThrough": null
+					}
+				}
+			},
+			"plg_teams_net": {
+				"notApplicable": false,
+				"question": {
+					"number": 509,
+					"url": "https://atlas.pr.sync.so/questions/509"
+				},
+				"observations": {
+					"2026-07": {
+						"status": "provisional",
+						"asOf": "2026-10-02T22:39:48.955Z",
+						"dataThrough": null
+					},
+					"2026-08": {
+						"status": "provisional",
+						"asOf": "2026-10-02T22:39:48.955Z",
+						"dataThrough": null
+					},
+					"2026-09": {
+						"status": "provisional",
+						"asOf": "2026-10-02T22:39:48.955Z",
+						"dataThrough": null
+					},
+					"2026-Q3": {
+						"status": "provisional",
+						"asOf": "2026-10-02T22:39:48.955Z",
+						"dataThrough": null
+					}
+				}
+			},
+			"plg_revenue": {
+				"notApplicable": false,
+				"question": {
+					"number": 510,
+					"url": "https://atlas.pr.sync.so/questions/510"
+				},
+				"observations": {}
+			},
+			"plg_customers": {
+				"notApplicable": false,
+				"question": {
+					"number": 511,
+					"url": "https://atlas.pr.sync.so/questions/511"
+				},
+				"observations": {}
+			},
+			"enterprise_teams_adds": {
+				"notApplicable": false,
+				"question": {
+					"number": 512,
+					"url": "https://atlas.pr.sync.so/questions/512"
+				},
+				"observations": {}
+			},
+			"enterprise_teams_losses": {
+				"notApplicable": false,
+				"question": {
+					"number": 513,
+					"url": "https://atlas.pr.sync.so/questions/513"
+				},
+				"observations": {}
+			},
+			"enterprise_teams_net": {
+				"notApplicable": false,
+				"question": {
+					"number": 514,
+					"url": "https://atlas.pr.sync.so/questions/514"
+				},
+				"observations": {}
+			},
+			"enterprise_revenue": {
+				"notApplicable": false,
+				"question": {
+					"number": 515,
+					"url": "https://atlas.pr.sync.so/questions/515"
+				},
+				"observations": {}
+			},
+			"enterprise_customers": {
+				"notApplicable": false,
+				"question": {
+					"number": 516,
+					"url": "https://atlas.pr.sync.so/questions/516"
+				},
+				"observations": {}
+			},
+			"channel_teams_adds": {
+				"notApplicable": false,
+				"question": {
+					"number": 517,
+					"url": "https://atlas.pr.sync.so/questions/517"
+				},
+				"observations": {}
+			},
+			"channel_teams_losses": {
+				"notApplicable": false,
+				"question": {
+					"number": 518,
+					"url": "https://atlas.pr.sync.so/questions/518"
+				},
+				"observations": {}
+			},
+			"channel_teams_net": {
+				"notApplicable": false,
+				"question": {
+					"number": 519,
+					"url": "https://atlas.pr.sync.so/questions/519"
+				},
+				"observations": {}
+			},
+			"channel_revenue": {
+				"notApplicable": false,
+				"question": {
+					"number": 520,
+					"url": "https://atlas.pr.sync.so/questions/520"
+				},
+				"observations": {}
+			},
+			"channel_customers": {
+				"notApplicable": false,
+				"question": {
+					"number": 521,
+					"url": "https://atlas.pr.sync.so/questions/521"
+				},
+				"observations": {}
+			},
+			"productions_teams_adds": {
+				"notApplicable": false,
+				"question": {
+					"number": 522,
+					"url": "https://atlas.pr.sync.so/questions/522"
+				},
+				"observations": {}
+			},
+			"productions_teams_losses": {
+				"notApplicable": false,
+				"question": {
+					"number": 523,
+					"url": "https://atlas.pr.sync.so/questions/523"
+				},
+				"observations": {}
+			},
+			"productions_teams_net": {
+				"notApplicable": false,
+				"question": {
+					"number": 524,
+					"url": "https://atlas.pr.sync.so/questions/524"
+				},
+				"observations": {}
+			},
+			"productions_revenue": {
+				"notApplicable": false,
+				"question": {
+					"number": 525,
+					"url": "https://atlas.pr.sync.so/questions/525"
+				},
+				"observations": {}
+			},
+			"productions_customers": {
+				"notApplicable": false,
+				"question": {
+					"number": 526,
+					"url": "https://atlas.pr.sync.so/questions/526"
+				},
+				"observations": {}
+			},
+			"company_revenue_subscriptions": {
+				"notApplicable": false,
+				"question": {
+					"number": 527,
+					"url": "https://atlas.pr.sync.so/questions/527"
+				},
+				"observations": {}
+			},
+			"company_revenue_usage": {
+				"notApplicable": false,
+				"question": {
+					"number": 528,
+					"url": "https://atlas.pr.sync.so/questions/528"
+				},
+				"observations": {}
+			},
+			"company_revenue_services": {
+				"notApplicable": false,
+				"question": {
+					"number": 529,
+					"url": "https://atlas.pr.sync.so/questions/529"
+				},
+				"observations": {}
+			},
+			"finance_gross_margin": {
+				"notApplicable": false,
+				"question": {
+					"number": 530,
+					"url": "https://atlas.pr.sync.so/questions/530"
+				},
+				"observations": {}
+			},
+			"finance_product_revenue": {
+				"notApplicable": false,
+				"question": {
+					"number": 531,
+					"url": "https://atlas.pr.sync.so/questions/531"
+				},
+				"observations": {}
+			},
+			"finance_product_cogs": {
+				"notApplicable": false,
+				"question": {
+					"number": 532,
+					"url": "https://atlas.pr.sync.so/questions/532"
+				},
+				"observations": {}
+			},
+			"finance_services_revenue": {
+				"notApplicable": false,
+				"question": {
+					"number": 533,
+					"url": "https://atlas.pr.sync.so/questions/533"
+				},
+				"observations": {}
+			},
+			"finance_services_cogs": {
+				"notApplicable": false,
+				"question": {
+					"number": 534,
+					"url": "https://atlas.pr.sync.so/questions/534"
+				},
+				"observations": {}
+			},
+			"finance_runway": {
+				"notApplicable": false,
+				"question": {
+					"number": 535,
+					"url": "https://atlas.pr.sync.so/questions/535"
+				},
+				"observations": {}
+			},
+			"plg_eligible_accounts": {
+				"notApplicable": false,
+				"question": {
+					"number": 536,
+					"url": "https://atlas.pr.sync.so/questions/536"
+				},
+				"observations": {}
+			},
+			"plg_active_accounts": {
+				"notApplicable": false,
+				"question": {
+					"number": 537,
+					"url": "https://atlas.pr.sync.so/questions/537"
+				},
+				"observations": {}
+			},
+			"enterprise_eligible_accounts": {
+				"notApplicable": false,
+				"question": {
+					"number": 538,
+					"url": "https://atlas.pr.sync.so/questions/538"
+				},
+				"observations": {}
+			},
+			"enterprise_active_accounts": {
+				"notApplicable": false,
+				"question": {
+					"number": 539,
+					"url": "https://atlas.pr.sync.so/questions/539"
+				},
+				"observations": {}
+			},
+			"channel_eligible_accounts": {
+				"notApplicable": false,
+				"question": {
+					"number": 540,
+					"url": "https://atlas.pr.sync.so/questions/540"
+				},
+				"observations": {}
+			},
+			"channel_active_accounts": {
+				"notApplicable": false,
+				"question": {
+					"number": 541,
+					"url": "https://atlas.pr.sync.so/questions/541"
+				},
+				"observations": {}
+			},
+			"company_teams_period_end": {
+				"notApplicable": false,
+				"question": {
+					"number": 542,
+					"url": "https://atlas.pr.sync.so/questions/542"
+				},
+				"observations": {}
+			},
+			"plg_teams_period_end": {
+				"notApplicable": false,
+				"question": {
+					"number": 543,
+					"url": "https://atlas.pr.sync.so/questions/543"
+				},
+				"observations": {
+					"2026-07": {
+						"status": "provisional",
+						"asOf": "2026-10-02T22:39:30.350Z",
+						"dataThrough": null
+					},
+					"2026-08": {
+						"status": "provisional",
+						"asOf": "2026-10-02T22:39:30.350Z",
+						"dataThrough": null
+					},
+					"2026-09": {
+						"status": "provisional",
+						"asOf": "2026-10-02T22:39:30.350Z",
+						"dataThrough": null
+					},
+					"2026-Q3": {
+						"status": "provisional",
+						"asOf": "2026-10-02T22:39:30.350Z",
+						"dataThrough": null
+					}
+				}
+			},
+			"enterprise_teams_period_end": {
+				"notApplicable": false,
+				"question": {
+					"number": 544,
+					"url": "https://atlas.pr.sync.so/questions/544"
+				},
+				"observations": {}
+			},
+			"channel_teams_period_end": {
+				"notApplicable": false,
+				"question": {
+					"number": 545,
+					"url": "https://atlas.pr.sync.so/questions/545"
+				},
+				"observations": {}
+			},
+			"productions_teams_period_end": {
+				"notApplicable": false,
+				"question": {
+					"number": 546,
+					"url": "https://atlas.pr.sync.so/questions/546"
+				},
+				"observations": {}
+			},
+			"company_booked_revenue": {
+				"notApplicable": false,
+				"question": {
+					"number": 547,
+					"url": "https://atlas.pr.sync.so/questions/547"
+				},
+				"observations": {}
+			},
+			"plg_booked_revenue": {
+				"notApplicable": false,
+				"question": {
+					"number": 548,
+					"url": "https://atlas.pr.sync.so/questions/548"
+				},
+				"observations": {
+					"2026-07": {
+						"status": "reported",
+						"asOf": "2026-10-02T22:24:49.260Z",
+						"dataThrough": null
+					},
+					"2026-08": {
+						"status": "reported",
+						"asOf": "2026-10-02T22:24:49.260Z",
+						"dataThrough": null
+					},
+					"2026-09": {
+						"status": "reported",
+						"asOf": "2026-10-02T22:24:49.260Z",
+						"dataThrough": null
+					},
+					"2026-Q3": {
+						"status": "reported",
+						"asOf": "2026-10-02T22:24:49.260Z",
+						"dataThrough": null
+					}
+				}
+			},
+			"enterprise_booked_revenue": {
+				"notApplicable": false,
+				"question": {
+					"number": 549,
+					"url": "https://atlas.pr.sync.so/questions/549"
+				},
+				"observations": {}
+			},
+			"channel_booked_revenue": {
+				"notApplicable": false,
+				"question": {
+					"number": 550,
+					"url": "https://atlas.pr.sync.so/questions/550"
+				},
+				"observations": {}
+			},
+			"productions_booked_revenue": {
+				"notApplicable": false,
+				"question": {
+					"number": 551,
+					"url": "https://atlas.pr.sync.so/questions/551"
+				},
+				"observations": {}
+			},
+			"company_annual_revenue_estimate": {
+				"notApplicable": false,
+				"question": {
+					"number": 552,
+					"url": "https://atlas.pr.sync.so/questions/552"
+				},
+				"observations": {}
+			},
+			"plg_annual_revenue_estimate": {
+				"notApplicable": false,
+				"question": {
+					"number": 553,
+					"url": "https://atlas.pr.sync.so/questions/553"
+				},
+				"observations": {}
+			},
+			"enterprise_annual_revenue_estimate": {
+				"notApplicable": false,
+				"question": {
+					"number": 554,
+					"url": "https://atlas.pr.sync.so/questions/554"
+				},
+				"observations": {}
+			},
+			"channel_annual_revenue_estimate": {
+				"notApplicable": false,
+				"question": {
+					"number": 555,
+					"url": "https://atlas.pr.sync.so/questions/555"
+				},
+				"observations": {}
+			},
+			"productions_annual_revenue_estimate": {
+				"notApplicable": false,
+				"question": {
+					"number": 556,
+					"url": "https://atlas.pr.sync.so/questions/556"
+				},
+				"observations": {}
+			}
+		}
+	},
+	"arithmeticPreview": {
+		"schemaVersion": "atlas.qbr.calculation-preview.v1",
+		"quarter": "2026-Q3",
+		"sourceReportGeneratedAt": "2026-10-03T09:10:32.940Z",
+		"sourcesRefreshed": false,
+		"sharedDataWritten": false,
+		"classification": "arithmetic candidates, not saved headline observations",
+		"sourceMetricId": "plg_booked_revenue",
+		"sourceQuestion": {
+			"number": 548,
+			"url": "https://atlas.pr.sync.so/questions/548"
+		},
+		"targetMetricId": "plg_annual_revenue_estimate",
+		"targetQuestion": {
+			"number": 553,
+			"url": "https://atlas.pr.sync.so/questions/553"
+		},
+		"targetDefinition": "PLG invoiced subscription and usage revenue multiplied by 12 divided by the number of months in the selected period.",
+		"calculations": [
+			{
+				"period": "2026-07",
+				"sourceValueUSD": 650614.99,
+				"months": 1,
+				"formula": "invoiced subscription and usage x12 / selected-period months",
+				"candidateValueUSD": 7807379.88,
+				"sourceStatus": "reported",
+				"asOf": "2026-10-02T22:24:49.260Z",
+				"dataThrough": null,
+				"sourceSnapshotId": "qbr:plg_booked_revenue:759133406aa5eb4bb3c9299b",
+				"sourceDefinitionHash": "094e2f45b8bd66d300019e9214d20ab84026421ec1fdebb140cb048448469ad9",
+				"sourceQueryHash": "e4994e91052916f1606005b344d5d2d1b55f3b58097412c1d3e32eab91e0e5e4",
+				"evidenceSource": {
+					"url": "https://docs.stripe.com/api/invoices/list",
+					"label": "Stripe run 74ec0c055d58; provisional PLG invoice attribution; unresolved net USD 750.00; API docs, extraction hashes in preparation"
+				}
+			},
+			{
+				"period": "2026-08",
+				"sourceValueUSD": 648263.59,
+				"months": 1,
+				"formula": "invoiced subscription and usage x12 / selected-period months",
+				"candidateValueUSD": 7779163.08,
+				"sourceStatus": "reported",
+				"asOf": "2026-10-02T22:24:49.260Z",
+				"dataThrough": null,
+				"sourceSnapshotId": "qbr:plg_booked_revenue:759133406aa5eb4bb3c9299b",
+				"sourceDefinitionHash": "094e2f45b8bd66d300019e9214d20ab84026421ec1fdebb140cb048448469ad9",
+				"sourceQueryHash": "e4994e91052916f1606005b344d5d2d1b55f3b58097412c1d3e32eab91e0e5e4",
+				"evidenceSource": {
+					"url": "https://docs.stripe.com/api/invoices/list",
+					"label": "Stripe run 74ec0c055d58; provisional PLG invoice attribution; unresolved net USD 750.00; API docs, extraction hashes in preparation"
+				}
+			},
+			{
+				"period": "2026-09",
+				"sourceValueUSD": 624410.46,
+				"months": 1,
+				"formula": "invoiced subscription and usage x12 / selected-period months",
+				"candidateValueUSD": 7492925.52,
+				"sourceStatus": "reported",
+				"asOf": "2026-10-02T22:24:49.260Z",
+				"dataThrough": null,
+				"sourceSnapshotId": "qbr:plg_booked_revenue:759133406aa5eb4bb3c9299b",
+				"sourceDefinitionHash": "094e2f45b8bd66d300019e9214d20ab84026421ec1fdebb140cb048448469ad9",
+				"sourceQueryHash": "e4994e91052916f1606005b344d5d2d1b55f3b58097412c1d3e32eab91e0e5e4",
+				"evidenceSource": {
+					"url": "https://docs.stripe.com/api/invoices/list",
+					"label": "Stripe run 74ec0c055d58; provisional PLG invoice attribution; unresolved net USD 7,308.55; API docs, extraction hashes in preparation"
+				}
+			},
+			{
+				"period": "2026-Q3",
+				"sourceValueUSD": 1923289.04,
+				"months": 3,
+				"formula": "invoiced subscription and usage x12 / selected-period months",
+				"candidateValueUSD": 7693156.16,
+				"sourceStatus": "reported",
+				"asOf": "2026-10-02T22:24:49.260Z",
+				"dataThrough": null,
+				"sourceSnapshotId": "qbr:plg_booked_revenue:759133406aa5eb4bb3c9299b",
+				"sourceDefinitionHash": "094e2f45b8bd66d300019e9214d20ab84026421ec1fdebb140cb048448469ad9",
+				"sourceQueryHash": "e4994e91052916f1606005b344d5d2d1b55f3b58097412c1d3e32eab91e0e5e4",
+				"evidenceSource": {
+					"url": "https://docs.stripe.com/api/invoices/list",
+					"label": "Stripe run 74ec0c055d58; provisional PLG invoice attribution; unresolved net USD 8,808.55; API docs, extraction hashes in preparation"
+				}
+			}
+		],
+		"limitations": [
+			"Includes unresolved PLG attribution. Q3 source evidence reports USD 8,808.55 unresolved.",
+			"No Finance tie-out or independently attested source watermark.",
+			"Q3 selected-period estimate differs from September x12 ending-month pace.",
+			"Neither amount is company revenue, company ARR, actualized revenue, or YTD.",
+			"Target observations remain absent; supporting results are not used as observations."
+		]
+	},
+	"omissions": [
+		"Workbook rows outside the North Star and KPIs definition ranges.",
+		"Raw supporting tables, source queries and customer-level commercial records.",
+		"Full values and detailed evidence for QBR metrics outside the reconciliation question set.",
+		"Secrets, cookies and runtime credentials."
+	]
+}

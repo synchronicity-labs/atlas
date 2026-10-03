@@ -9,8 +9,8 @@ import {
 
 export class AtlasQuestionQuery {
 	@IsOptional()
-	@Matches(/^(?:\d{4}-Q[1-4]|\d{4}-\d{2}(?:-\d{2})?)$/)
-	@ValidateIf((_object, value) => !/^\d{4}-Q[1-4]$/.test(value))
+	@Matches(/^(?!0000-)(?:\d{4}-Q[1-4]|\d{4}-\d{2}(?:-\d{2})?)$/)
+	@ValidateIf((_object, value) => !/^(?!0000-)\d{4}-Q[1-4]$/.test(value))
 	@IsISO8601({ strict: true })
 	reportingPeriod?: string;
 

@@ -469,24 +469,24 @@ export function NorthStarDashboard() {
 	).length;
 	const missingBySection = SECTIONS.map((section) => ({
 		...section,
-		metrics: section.rows
-			.map((id) => data.metrics[id])
-			.filter(
-				(metric): metric is Metric =>
-					metric !== undefined &&
-					!metric.notApplicable &&
-					!PERIODS.some(({ period }) => metric.observations[period]),
-			),
+		metrics: section.rows.flatMap((id) => {
+			const metric = data.metrics[id];
+			return metric &&
+				!metric.notApplicable &&
+				!PERIODS.some(({ period }) => metric.observations[period])
+				? [{ ...metric, id }]
+				: [];
+		}),
 	})).filter((section) => section.metrics.length);
 	const observedMetrics = SECTIONS.flatMap((section) =>
-		section.rows
-			.map((id) => ({ id, section: section.title, metric: data.metrics[id] }))
-			.filter(
-				(row): row is { id: string; section: string; metric: Metric } =>
-					row.metric !== undefined &&
-					!row.metric.notApplicable &&
-					PERIODS.some(({ period }) => row.metric.observations[period]),
-			),
+		section.rows.flatMap((id) => {
+			const metric = data.metrics[id];
+			return metric &&
+				!metric.notApplicable &&
+				PERIODS.some(({ period }) => metric.observations[period])
+				? [{ id, section: section.title, metric }]
+				: [];
+		}),
 	);
 	const missing = missingBySection.flatMap((section) => section.metrics);
 	const missingByDependency = groupMissingNorthStarMetrics(missing);
@@ -509,6 +509,12 @@ export function NorthStarDashboard() {
 					<summary className="cursor-pointer font-semibold">
 						Available results · {observedMetrics.length} measures
 					</summary>
+					<p className="mt-2 text-sm text-muted-foreground">
+						PLG counts use 3+ billable generations; the sheet says 4+ and that
+						definition is awaiting confirmation. Channel uses Prady’s approved
+						$1,000 net-revenue threshold rather than the sheet’s older
+						threshold.
+					</p>
 					<div className="mt-4 max-w-full overflow-x-auto">
 						<Table className="w-full min-w-[48rem]">
 							<TableHeader>

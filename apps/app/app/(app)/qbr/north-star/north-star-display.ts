@@ -24,21 +24,25 @@ export function metricSectionId(title: string) {
 
 const MISSING_DEPENDENCIES = [
 	{
-		key: "production",
-		title: "Production activity and executed SOWs",
-		description:
-			"Production activity, commercial records, and executed SOW evidence.",
-		matches: (id: string) =>
-			id.startsWith("productions_") || id.startsWith("production_"),
-	},
-	{
 		key: "finance",
 		title: "Finance close and approved revenue records",
 		description:
 			"Finance-approved close, allocation, and revenue reconciliation evidence.",
 		matches: (id: string) =>
 			id.startsWith("finance_") ||
-			/^(company|plg|enterprise|channel)_revenue/.test(id),
+			/^(company|plg|enterprise|channel|productions)_revenue(?:_|$)/.test(id),
+	},
+	{
+		key: "commercial-records",
+		title: "Commercial roster, agreements, SOWs, and parent mapping",
+		description: "Historical team, agreement, and customer-parent records.",
+		matches: (id: string) =>
+			/_top(?:1|3|10)$/.test(id) ||
+			(!id.startsWith("productions_") &&
+				!id.startsWith("production_") &&
+				/teams|booked_revenue|annual_revenue_estimate|contract_retention/.test(
+					id,
+				)),
 	},
 	{
 		key: "paid-denominators",
@@ -51,13 +55,12 @@ const MISSING_DEPENDENCIES = [
 			),
 	},
 	{
-		key: "commercial-records",
-		title: "Commercial roster, agreements, SOWs, and parent mapping",
-		description: "Historical team, agreement, and customer-parent records.",
+		key: "production",
+		title: "Production activity and executed SOWs",
+		description:
+			"Production team activity, commercial records, and executed SOW evidence.",
 		matches: (id: string) =>
-			/teams|booked_revenue|annual_revenue_estimate|contract_retention|top(1|3|10)$/.test(
-				id,
-			),
+			id.startsWith("productions_") || id.startsWith("production_"),
 	},
 ] as const;
 

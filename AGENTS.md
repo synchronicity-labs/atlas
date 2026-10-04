@@ -31,10 +31,13 @@ the server's tools. Start with `atlas_qbr_report(quarter="2026-Q3")` to discover
 metrics and their source links, then request only the evidence the user needs.
 The four Atlas tools are read-only and use server-held credentials.
 
-For period-specific `atlas_question` evidence, always pass the requested
-`reporting_period`. An unfiltered read returns the latest snapshot across
-periods, which may not match the request. Use question numbers and canonical
-URLs from the report or search results; do not guess them.
+For QBR source questions, pass `reporting_period="2026-Q3"` to
+`atlas_question`, including when checking July, August, or September. The
+quarterly snapshot contains rows for each observation period. Read headline
+values from `metrics[id].observations`, and source numbers and canonical URLs
+from `metrics[id].question`. Catalog search returns numbers and saved-period
+metadata, but no canonical URLs. For additional questions, verify the stored
+snapshot's scope and row dates. Report missing links or evidence; do not guess.
 
 Read [the QBR agent guide](docs/qbr-agent-access.md) for tool selection, period
 semantics, and example requests. Reuse an existing Rudy connection; setup is

@@ -22,8 +22,8 @@ may appear before these names. No client-side Atlas API key is needed.
 | --- | --- |
 | `atlas_qbr_report(quarter="2026-Q3")` | Start here. Read a compact summary to discover metric IDs, definitions, observations, statuses, and source links. |
 | `atlas_qbr_report(quarter="2026-Q3", metric_ids=["enterprise_usage_retention"])` | Get full evidence for the requested metrics, including preparation and supporting results. Use at most ten IDs per call. |
-| `atlas_search_questions(query="revenue")` | Find additional saved questions relevant to the user's request. |
-| `atlas_question(number=question_number, reporting_period="2026-Q3")` | Read a question's saved snapshot and provenance for the requested period. Set `question_number` from the report or search results. |
+| `atlas_search_questions(query="revenue")` | Find additional saved questions and their numbers. `latestResult.reportingPeriod`, when present, describes the latest saved snapshot's scope. Search does not return canonical question URLs. |
+| `atlas_question(number=question_number, reporting_period="2026-Q3")` | Read a QBR source question's quarterly snapshot, including its monthly observation rows. Set `question_number` from `metrics[id].question.number`. |
 | `atlas_source_health()` | Check connector freshness and availability when they are unclear. This does not refresh data. |
 
 Use the summary to select metrics instead of fetching all full evidence. Return
@@ -33,19 +33,28 @@ report that gap.
 
 ## Keep the evidence accurate
 
-- Treat July (`2026-07`), August (`2026-08`), September (`2026-09`), and Q3
-  (`2026-Q3`) observations separately. A monthly value is not a quarter value.
+- Read headline values from `metrics[id].observations`. Treat July (`2026-07`),
+  August (`2026-08`), September (`2026-09`), and Q3 (`2026-Q3`) observations
+  separately. A monthly value is not a quarter value.
 - Preserve units, definitions, observation status, `asOf`, `dataThrough`, and
   canonical Atlas source links. Flag stale, pending, and unavailable data.
 - Missing means not reported, not zero. Supporting results are separate evidence;
   do not relabel them as headline observations.
-- For every period-specific `atlas_question` read, pass the requested
-  `reporting_period`: `2026-07` for July, `2026-08` for August, `2026-09` for
-  September, or `2026-Q3` for Q3. Without it, the tool returns the latest saved
-  snapshot across periods, which may not match the request.
+- For QBR source questions, pass `reporting_period="2026-Q3"`, even when
+  checking July, August, or September. QBR snapshots are stored under the
+  quarter; monthly and quarterly observations are separate rows inside that
+  snapshot. Match the requested observation's `period` in those rows.
+- For additional questions, select the stored snapshot's period and check that
+  its rows cover the requested dates. Catalog metadata describes the latest
+  saved period when available; it does not prove coverage for another period.
+  Without a filter, `atlas_question` returns the latest snapshot across periods.
 - `reporting_period` accepts a quarter, month, or date. It selects the saved
   snapshot for that period; it does not trim or recompute its rows. Use `as_of`
   when the request limits evidence to snapshots captured by a given timestamp.
+- Use QBR question numbers and canonical URLs from `metrics[id].question`.
+  Search returns question numbers but no canonical URLs. If additional evidence
+  has no returned canonical link, cite its question number and explain that the
+  link is unavailable. Do not invent URLs or claim missing evidence is present.
 - Source health and catalog search do not replace period-specific evidence.
 
 ## If Rudy is not connected

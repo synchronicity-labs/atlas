@@ -216,12 +216,16 @@ test("Q3 movement SQL counts quarter additions and losses once per team", () => 
 
 test("Q3 movement SQL reconciles synthetic team lifecycles", () => {
 	const monthlyOrgs = `select '2026-07-01' as month, 'july_then_lost' as organizationId, 3 as billable_generations, 2 as active_days, 100 as accrued_value
+union all select '2026-08-01', 'july_then_lost', 2, 2, 100
 union all select '2026-08-01', 'return_after_may', 3, 2, 100
 union all select '2026-05-01', 'return_after_may', 3, 2, 100
+union all select '2026-06-01', 'return_after_may', 2, 2, 100
 union all select '2026-07-01', 'entrant_multi_q3', 3, 2, 100
 union all select '2026-08-01', 'entrant_multi_q3', 3, 2, 100
 union all select '2026-09-01', 'entrant_multi_q3', 3, 2, 100
 union all select '2026-06-01', 'june_leave_return', 3, 2, 100
+union all select '2026-07-01', 'june_leave_return', 2, 2, 100
+union all select '2026-08-01', 'june_leave_return', 2, 2, 100
 union all select '2026-09-01', 'june_leave_return', 3, 2, 100
 union all select '2026-06-01', 'starting_dropout', 3, 2, 100
 union all select '2026-05-01', 'prior_only', 3, 2, 100
@@ -234,7 +238,15 @@ union all select '2026-07-01', 'below_threshold', 2, 2, 100`;
 		qbrQuarterMovementQuery(monthlyOrgs),
 	);
 	const db = new Database(":memory:");
-	const result = db.query(query).get() as Record<string, number>;
+	const result = db.query(query).get() as {
+		starting_teams: number;
+		ending_teams: number;
+		new_teams: number;
+		reactivated_teams: number;
+		gross_adds: number;
+		gross_losses: number;
+		net_change: number;
+	};
 	db.close();
 	expect(result).toEqual({
 		starting_teams: 3,

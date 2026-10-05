@@ -1,4 +1,5 @@
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it, spyOn } from "bun:test";
+import { MetabaseClient } from "./metabase.client";
 import {
 	buildTinybirdEligibility,
 	compactEligibilityQuery,
@@ -6,6 +7,7 @@ import {
 	governProductPostgresQuery,
 	governTinybirdQuery,
 	hasSubscribedPopulation,
+	TinybirdEligibilityService,
 } from "./tinybird-eligibility.service";
 
 const row = (input: Partial<EligibilityRow>): EligibilityRow => ({
@@ -113,15 +115,88 @@ where "organizationPlanType" in ('hobbyist', 'creator', 'growth', 'scale')`,
 });
 
 describe("product activity eligibility", () => {
-	it("requests only bounded internal exclusion rows", () => {
+	it("requests all required exclusions with authoritative subscription state", () => {
 		const query = compactEligibilityQuery().toLowerCase();
 
-		expect(query).toContain("@sync.so");
-		expect(query).toContain("@sync.labs");
-		expect(query).not.toContain("u.banned");
-		expect(query).not.toContain("first_subscribed_at");
-		expect(query).toContain("limit 2000");
+		expect(query).toContain("lower(coalesce(u.email");
+		expect(query).toContain("from auth.users u");
+		expect(query).toContain("u.banned");
+		expect(query).toContain("u.is_anonymous");
+		expect(query).toContain("first_subscribed_at");
+		expect(query).toContain(
+			"population.banned and not population.has_subscribed",
+		);
+		expect(query).toContain("limit 1000000");
 	});
+
+	it("loads ban and subscription fields from the source export", async () => {
+		const previousUrl = process.env.METABASE_BASE_URL;
+		const previousKey = process.env.METABASE_API_KEY;
+		process.env.METABASE_BASE_URL = "https://metabase.example.test";
+		process.env.METABASE_API_KEY = "test-only";
+		const exportRows = spyOn(
+			MetabaseClient.prototype,
+			"exportRows",
+		).mockResolvedValue([
+			{
+				user_id: "never-paid",
+				email: "external@example.com",
+				banned: true,
+				has_subscribed: false,
+				source_row_count: 2,
+			},
+			{
+				user_id: "paid-before-ban",
+				email: "external@example.com",
+				banned: true,
+				has_subscribed: true,
+				source_row_count: 2,
+			},
+		]);
+		try {
+			const snapshot = await new TinybirdEligibilityService().current();
+			expect(snapshot.complete).toBe(true);
+			expect(snapshot.excludedUserIds).toEqual(["never-paid"]);
+		} finally {
+			exportRows.mockRestore();
+			if (previousUrl === undefined) delete process.env.METABASE_BASE_URL;
+			else process.env.METABASE_BASE_URL = previousUrl;
+			if (previousKey === undefined) delete process.env.METABASE_API_KEY;
+			else process.env.METABASE_API_KEY = previousKey;
+		}
+	});
+
+	it.each([undefined, "bad-count", 3])(
+		"rejects an incomplete or invalid source export (%s)",
+		async (sourceRows) => {
+			const previousUrl = process.env.METABASE_BASE_URL;
+			const previousKey = process.env.METABASE_API_KEY;
+			process.env.METABASE_BASE_URL = "https://metabase.example.test";
+			process.env.METABASE_API_KEY = "test-only";
+			const exportRows = spyOn(
+				MetabaseClient.prototype,
+				"exportRows",
+			).mockResolvedValue([
+				{
+					user_id: "never-paid",
+					banned: true,
+					has_subscribed: false,
+					source_row_count: sourceRows,
+				},
+			]);
+			try {
+				await expect(
+					new TinybirdEligibilityService().current(),
+				).rejects.toThrow("Product eligibility export is incomplete");
+			} finally {
+				exportRows.mockRestore();
+				if (previousUrl === undefined) delete process.env.METABASE_BASE_URL;
+				else process.env.METABASE_BASE_URL = previousUrl;
+				if (previousKey === undefined) delete process.env.METABASE_API_KEY;
+				else process.env.METABASE_API_KEY = previousKey;
+			}
+		},
+	);
 
 	it("recognizes quoted paid-plan predicates", () => {
 		expect(

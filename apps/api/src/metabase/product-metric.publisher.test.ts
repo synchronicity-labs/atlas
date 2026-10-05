@@ -205,10 +205,10 @@ describe("product feedback metric registry", () => {
 
 	test("keeps cross-site Marketing metrics provisional until source coverage is complete", () => {
 		expect(
-			marketingSourceCoverageChecks("marketing:ga4:visitors").map(
+			marketingSourceCoverageChecks("marketing:posthog:visitors").map(
 				(check) => check.name,
 			),
-		).toEqual(["shared_cross_site_visitor_identity"]);
+		).toEqual(["complete_marketing_pageview_coverage"]);
 		expect(
 			marketingSourceCoverageChecks(
 				"marketing:posthog:visitor-signup-rate",

@@ -117,6 +117,18 @@ export function requiresRevenueEligibility(
 	return query.source === "product_analytics";
 }
 
+export function assertCompleteProductUserEligibility(input: {
+	complete: boolean;
+	sourceRows: number;
+	returnedRows: number;
+}): void {
+	if (!input.complete || input.sourceRows !== input.returnedRows) {
+		throw new Error(
+			"Marketing PostHog eligibility snapshot is incomplete; the query was not executed.",
+		);
+	}
+}
+
 function sourceVerificationChecks(
 	sourceExternalId: string | null,
 	query: ReturnType<typeof marketingQuery.parse>,
@@ -608,6 +620,7 @@ export class MarketingService {
 		policy: "PRODUCT_ACTIVITY" | "MONEY";
 	}> {
 		const eligibility = await this.tinybirdEligibility.current();
+		assertCompleteProductUserEligibility(eligibility);
 		const excludedExternalIds = eligibility.excludedUserIds;
 		return {
 			predicate: productUserEligibilityPredicate(excludedExternalIds),
@@ -681,13 +694,13 @@ export function marketingAttemptVerificationRows(input: {
 			verifiedAt: input.capturedAt,
 		},
 		{
-			name: "approved_cross_property_definition",
+			name: "approved_marketing_scope",
 			referenceType: "definition_approval",
 			referenceValue: json({ required: true }),
 			actualValue: json({
 				approved: true,
 				definition:
-					"Count one person once across Sync sites whenever a stable shared identity is available.",
+					"Count one PostHog person once on approved public Marketing pages; exclude direct-auth and product-app routes.",
 			}),
 			evidence: json({
 				approvedBy: "metric-owner",
@@ -696,19 +709,16 @@ export function marketingAttemptVerificationRows(input: {
 			...passed,
 		},
 		{
-			name: "cross_site_identity_bridge",
-			referenceType: "identity_policy",
-			referenceValue: json({
-				required: true,
-				identity: "shared_person_id",
-			}),
+			name: "complete_marketing_pageview_coverage",
+			referenceType: "source_coverage",
+			referenceValue: json({ required: true }),
 			actualValue: json({
-				implemented: false,
-				currentSource: "summed_ga4_property_totals",
+				complete: false,
+				currentSource: "posthog_public_marketing_pageviews",
 			}),
 			evidence: json({
 				reason:
-					"The current GA4 Data API result has property totals but no raw shared person ID. Connect the GA4 BigQuery export with user_id, or instrument every Sync site in one PostHog project with shared identity, before this count can be deduplicated.",
+					"PostHog pageview coverage for every approved public Marketing surface, including blog and docs, still needs confirmation before this result can be certified.",
 			}),
 			status: VerificationStatus.PENDING,
 			verifiedBy: null,

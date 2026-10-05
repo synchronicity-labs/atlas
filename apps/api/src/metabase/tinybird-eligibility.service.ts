@@ -5,20 +5,43 @@ import { MetabaseClient } from "./metabase.client";
 import { metabaseConfig } from "./metabase.config";
 
 export function compactEligibilityQuery(): string {
-	return `select
-  u.id::text as user_id,
-  lower(coalesce(u.email, '')) as email,
-  lower(coalesce(uo.role, '')) as membership_role,
-  o.id::text as organization_id,
-  o.stripe_customer_id::text as customer_id,
+	return `with population as (
+  select
+    u.id::text as user_id,
+    lower(coalesce(u.email, '')) as email,
+    coalesce(u.banned, false) as banned,
+    coalesce(u.disabled, false) as disabled,
+    coalesce(u.is_anonymous, false) as is_anonymous,
+    lower(coalesce(uo.role, '')) as membership_role,
+    o.id::text as organization_id,
+    o.stripe_customer_id::text as customer_id,
+    exists (
+      select 1
+      from public.user_organizations paid_membership
+      join public.organizations paid_organization
+        on paid_organization.id = paid_membership.organization_id
+      where paid_membership.user_id = u.id
+        and paid_organization.first_subscribed_at is not null
+    ) as has_subscribed
+  from auth.users u
+  left join public.user_organizations uo on uo.user_id = u.id
+  left join public.organizations o on o.id = uo.organization_id
+  where lower(coalesce(u.email, '')) like '%@sync.so'
+    or lower(coalesce(u.email, '')) like '%@sync.labs'
+    or coalesce(u.banned, false)
+), filtered as (
+  select population.*
+  from population
+  where population.email like '%@sync.so'
+    or population.email like '%@sync.labs'
+    or (population.banned and not population.has_subscribed)
+)
+select
+  filtered.*,
   count(*) over()::bigint as source_row_count
-from auth.users u
-left join public.user_organizations uo on uo.user_id = u.id
-left join public.organizations o on o.id = uo.organization_id
-where lower(coalesce(u.email, '')) like '%@sync.so'
-  or lower(coalesce(u.email, '')) like '%@sync.labs'
-order by u.id, o.id
-limit 2000`;
+from filtered
+order by user_id, organization_id
+limit 1000000`;
 }
 
 const USER_TABLES = [
@@ -123,27 +146,26 @@ export class TinybirdEligibilityService {
 	}
 
 	private async baseRows() {
-		const cacheKey = "compact-internal-exclusions";
+		const cacheKey = "complete-product-exclusions";
 		const cached = this.baseCache.get(cacheKey);
 		if (cached && cached.expiresAt > Date.now()) {
 			return cached;
 		}
 		const config = metabaseConfig();
 		if (!config) throw new Error("Metabase is not configured.");
-		const result = await new MetabaseClient(config).preview({
-			language: "SQL",
+		const rows = await new MetabaseClient(config).exportRows({
 			queryText: compactEligibilityQuery(),
 			databaseExternalId: "34",
 		});
-		const rows = result.rows.map((values) =>
-			Object.fromEntries(
-				result.columns.map((column, index) => [
-					column.name,
-					values[index] ?? null,
-				]),
-			),
-		);
-		const sourceRows = number(rows[0]?.source_row_count, rows.length);
+		const sourceRows =
+			rows.length === 0 ? 0 : Number(rows[0]?.source_row_count);
+		if (
+			!Number.isSafeInteger(sourceRows) ||
+			sourceRows !== rows.length ||
+			rows.some((row) => Number(row.source_row_count) !== sourceRows)
+		) {
+			throw new Error("Product eligibility export is incomplete.");
+		}
 		const capturedAt = new Date();
 		const value = {
 			expiresAt: Date.now() + 5 * 60 * 1000,
@@ -152,13 +174,13 @@ export class TinybirdEligibilityService {
 			rows: rows.map((row) => ({
 				userId: text(row.user_id),
 				email: text(row.email),
-				banned: false,
-				disabled: false,
-				isAnonymous: false,
+				banned: booleanValue(row.banned),
+				disabled: booleanValue(row.disabled),
+				isAnonymous: booleanValue(row.is_anonymous),
 				membershipRole: text(row.membership_role),
 				organizationId: text(row.organization_id),
 				customerId: text(row.customer_id),
-				hasSubscribed: false,
+				hasSubscribed: booleanValue(row.has_subscribed),
 			})),
 		};
 		this.baseCache.set(cacheKey, value);
@@ -706,7 +728,6 @@ function text(value: unknown): string {
 	return typeof value === "string" ? value.trim() : "";
 }
 
-function number(value: unknown, fallback: number): number {
-	const parsed = Number(value);
-	return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : fallback;
+function booleanValue(value: unknown): boolean {
+	return value === true || value === 1 || value === "1" || value === "true";
 }

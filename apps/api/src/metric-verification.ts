@@ -44,6 +44,9 @@ const CHECK_LABELS: Record<string, string> = {
 	approved_cross_property_definition: "Cross-site visitor rule is approved",
 	cross_site_identity_bridge:
 		"The same person is counted once across Sync sites",
+	approved_marketing_scope: "Public Marketing visitor scope is approved",
+	complete_marketing_pageview_coverage:
+		"PostHog covers the approved public Marketing pages",
 	approved_rating_definition: "Positive-rating rule is approved",
 	approved_completed_status: "Completed-generation rule is approved",
 	matt_panel_logo_churn_match: "Logo churn matches Matt's reference panel",

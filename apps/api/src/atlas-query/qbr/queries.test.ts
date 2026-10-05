@@ -245,9 +245,9 @@ union all select '2026-07-01', 'below_threshold', 2, 2, 100`;
 		gross_losses: 3,
 		net_change: 0,
 	});
-	expect(
-		result.starting_teams + result.gross_adds - result.gross_losses,
-	).toBe(result.ending_teams);
+	expect(result.starting_teams + result.gross_adds - result.gross_losses).toBe(
+		result.ending_teams,
+	);
 });
 
 test("Q3 return lift pools counts only after all quarter assignments mature", () => {

@@ -47,17 +47,33 @@ export function healthyResponse(name: string, status: number, body: unknown) {
 }
 
 async function vercelApi(path: string) {
+	const args = ["api", path, "--scope", "sync-labs", "--raw"];
 	try {
-		const { stdout } = await execute(
-			"vercel",
-			["api", path, "--scope", "sync-labs", "--raw"],
-			{ timeout: 30_000, maxBuffer: 4 * 1024 * 1024 },
-		);
+		const { stdout } = await execute("vercel", args, {
+			timeout: 30_000,
+			maxBuffer: 4 * 1024 * 1024,
+		});
 		return JSON.parse(stdout);
-	} catch {
-		throw new Error(
-			"Could not inspect Vercel. Check CLI login and team access.",
-		);
+	} catch (error) {
+		if (
+			!(error instanceof Error) ||
+			(error as NodeJS.ErrnoException).code !== "ENOENT"
+		) {
+			throw new Error(
+				"Could not inspect Vercel. Check CLI login and team access.",
+			);
+		}
+		try {
+			const { stdout } = await execute("bunx", ["--bun", "vercel", ...args], {
+				timeout: 30_000,
+				maxBuffer: 4 * 1024 * 1024,
+			});
+			return JSON.parse(stdout);
+		} catch {
+			throw new Error(
+				"Could not inspect Vercel. Check Bun/Vercel CLI login and team access.",
+			);
+		}
 	}
 }
 

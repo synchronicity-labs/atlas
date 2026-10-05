@@ -289,27 +289,123 @@ function description(metric: RegistryMetric): string {
 	].join("\n\n");
 }
 
-const PREVIOUS_DESCRIPTION_HASHES: Partial<Record<string, string>> = {
-	enterprise_usage_retention:
-		"6078c20e2a3995c65a94aaec60d41e2421e4c6ec173f711beea535b0ebb5d809",
-	plg_teams: "940a1ac2544877f854baf30b183f436d3f1e0b4ec075e80c901fe39a3bd04d3b",
-	product_m3_requalification:
-		"31d6a21a8b9b4cea95c039c883347703cdadfe50b405b75afcfc7a8a3d9899ef",
-	product_m3_ndr:
-		"5e83150805c8e6ddd9da94f7b975fba9c487bd82e48a636bbbdbc3cb07d70148",
-	product_reactivation:
-		"e3d11938c87b2daa53a2e631829047722f704df1cd93e11b0ad09575aa0ade65",
-	platform_completion:
-		"a0017c78eead656155655addbe87919f106431d691c6f6e868c67f1509c86cce",
+const PREVIOUS_DESCRIPTION_HASHES: Partial<Record<string, string | string[]>> =
+	{
+		enterprise_usage_retention:
+			"6078c20e2a3995c65a94aaec60d41e2421e4c6ec173f711beea535b0ebb5d809",
+		plg_teams:
+			"940a1ac2544877f854baf30b183f436d3f1e0b4ec075e80c901fe39a3bd04d3b",
+		product_m3_requalification:
+			"31d6a21a8b9b4cea95c039c883347703cdadfe50b405b75afcfc7a8a3d9899ef",
+		product_m3_ndr:
+			"5e83150805c8e6ddd9da94f7b975fba9c487bd82e48a636bbbdbc3cb07d70148",
+		product_reactivation:
+			"e3d11938c87b2daa53a2e631829047722f704df1cd93e11b0ad09575aa0ade65",
+		platform_completion:
+			"a0017c78eead656155655addbe87919f106431d691c6f6e868c67f1509c86cce",
+		plg_teams_adds: [
+			"6e4758023316bfc49adcc2d98652c1476b395d3a96cd80b7121eca98ffd13855",
+			"a2ef8c377ffcb62644d2344641c68814a19c70ee55d3aca9f41accd99806dc77",
+		],
+		plg_teams_losses: [
+			"06c476fff3883697ed7a96712c52677808675287ddbac34c0ad729e2bccbd086",
+			"b19527614794944c88a52c7d9713dd1ffa1d7e585ede95671f7c51e539837099",
+		],
+		plg_teams_net: [
+			"b1f54be2d0fc58d0489ca52e18dd4f287f152ebc66b4f90b5fc4477ef5399901",
+			"93026e25846e79e527e77c81b78e7f9042c77fc3de391569e15116cac0e3b4a2",
+		],
+		company_teams_adds:
+			"608bbbe62a7e7a8c8d34191f0f3f687fa5d844c55176c49a3fa8765250ab10cb",
+		company_teams_losses:
+			"8b6c9c587072e9a714b75760930b801f361ce8870eded538359bd9cb1fdfda9e",
+		company_teams_net:
+			"01e25323b591766bf8c617210ad28f339c7268a8f88a0fddb390e4eec9dcd0bf",
+		enterprise_teams_adds:
+			"b6e8cc3f2ec088f7e1b4b5feef350cb56bcf4007c3f720404d186a5c4f0aaa04",
+		enterprise_teams_losses:
+			"a4090cdc5dff1af441daaac46bcb0e641ac10850d78b2b22d03557c3ca134011",
+		enterprise_teams_net:
+			"6b466140ddc23837d2d677958a6cae71e60265e393320d6b29e0bc47f80ee9b7",
+		channel_teams_adds:
+			"230d0a6c3de16991c2f13681b710d03ecfdad95920232711ca777682802151d5",
+		channel_teams_losses:
+			"31bcd6fb0e428b37f55d57220e16e2d399ab0ead004acceb8e6372325f23ca7f",
+		channel_teams_net:
+			"5cd438f7ea44b207b826083250e377c87c6d8c6d5d0c444173da81c760d2d21f",
+		productions_teams_adds:
+			"76481cd0aef6fddd0810c2234464fb1c9a593c6ecac51d92770c6e28f0eeba85",
+		productions_teams_losses:
+			"2adb339b04a1306aa0c7f419c35b3177dffa8c50a36deac17dea651e90b92e45",
+		productions_teams_net:
+			"edda1b32591600f2571793cc6710fff08b35c5ca04bfd3148753b332d3b3b0b5",
+		plg_teams_period_end:
+			"8b6bbac2b691e8deebc785f2a6765d67280b3fa115228a2eb456e7d8e531f88e",
+	};
+
+const PREVIOUS_DEFINITION_HASHES: Partial<Record<string, string>> = {
+	company_teams_adds:
+		"1417617245ac8f21dd0ce8749205e504090ea3f1469085a6d01ae9257a618d02",
+	company_teams_losses:
+		"0183e366438f4d265564cb36497ad0ed3de6b3637a9c233b385637bd2d9699a0",
+	company_teams_net:
+		"0c841cf65051067dfe040d0fb1959f07b3cf6d8f6f162cc4348e3483b2341807",
+	enterprise_teams_adds:
+		"1417617245ac8f21dd0ce8749205e504090ea3f1469085a6d01ae9257a618d02",
+	enterprise_teams_losses:
+		"0183e366438f4d265564cb36497ad0ed3de6b3637a9c233b385637bd2d9699a0",
+	enterprise_teams_net:
+		"0c841cf65051067dfe040d0fb1959f07b3cf6d8f6f162cc4348e3483b2341807",
+	channel_teams_adds:
+		"1417617245ac8f21dd0ce8749205e504090ea3f1469085a6d01ae9257a618d02",
+	channel_teams_losses:
+		"0183e366438f4d265564cb36497ad0ed3de6b3637a9c233b385637bd2d9699a0",
+	channel_teams_net:
+		"0c841cf65051067dfe040d0fb1959f07b3cf6d8f6f162cc4348e3483b2341807",
+	productions_teams_adds:
+		"1417617245ac8f21dd0ce8749205e504090ea3f1469085a6d01ae9257a618d02",
+	productions_teams_losses:
+		"0183e366438f4d265564cb36497ad0ed3de6b3637a9c233b385637bd2d9699a0",
+	productions_teams_net:
+		"0c841cf65051067dfe040d0fb1959f07b3cf6d8f6f162cc4348e3483b2341807",
 	plg_teams_adds:
-		"6e4758023316bfc49adcc2d98652c1476b395d3a96cd80b7121eca98ffd13855",
+		"1417617245ac8f21dd0ce8749205e504090ea3f1469085a6d01ae9257a618d02",
 	plg_teams_losses:
-		"06c476fff3883697ed7a96712c52677808675287ddbac34c0ad729e2bccbd086",
+		"0183e366438f4d265564cb36497ad0ed3de6b3637a9c233b385637bd2d9699a0",
 	plg_teams_net:
-		"b1f54be2d0fc58d0489ca52e18dd4f287f152ebc66b4f90b5fc4477ef5399901",
-	plg_teams_period_end:
-		"8b6bbac2b691e8deebc785f2a6765d67280b3fa115228a2eb456e7d8e531f88e",
+		"0c841cf65051067dfe040d0fb1959f07b3cf6d8f6f162cc4348e3483b2341807",
 };
+
+const PREVIOUS_QUERY_HASHES: Partial<Record<string, string | string[]>> = {
+	plg_teams_adds:
+		"89a001d0f3a3745f4bc2561c251e0a4eeb9831ed8514fb29888c643ed48497fd",
+	plg_teams_losses:
+		"b18ac3d7853f464560f1db8003ee836329e8c52b0824400f0e9b263e1be32b21",
+	plg_teams_net:
+		"f7aa97fea19a725a6d66b65681fe239eaf6a627e45a26dcbbc16f50df2c5c593",
+};
+
+function isPreviousDefinition(metric: RegistryMetric, value: unknown) {
+	return PREVIOUS_DEFINITION_HASHES[metric.id] === value;
+}
+
+function isPreviousDescription(metricId: string, value: string) {
+	const previous = PREVIOUS_DESCRIPTION_HASHES[metricId];
+	const hashes = [
+		hash(value),
+		createHash("sha256").update(value).digest("hex"),
+	];
+	if (Array.isArray(previous))
+		return previous.some((item) => hashes.includes(item));
+	return hashes.includes(previous ?? "");
+}
+
+function isPreviousQueryHash(metricId: string, value: unknown) {
+	const previous = PREVIOUS_QUERY_HASHES[metricId];
+	return Array.isArray(previous)
+		? typeof value === "string" && previous.includes(value)
+		: previous === value;
+}
 
 function validDate(value: string, field: string): Date {
 	const date = new Date(value);
@@ -620,16 +716,19 @@ function assertRegisteredQuestion(
 			latest.queryLanguage !==
 				(metric.automated ? QueryLanguage.SQL : QueryLanguage.API)) ||
 		(question.description !== description(metric) &&
-			PREVIOUS_DESCRIPTION_HASHES[metric.id] !== hash(question.description)) ||
+			(question.description === null ||
+				!isPreviousDescription(metric.id, question.description))) ||
 		!metadata ||
 		metadata.metricId !== metric.id ||
-		metadata.definitionHash !== metricDefinitionHash(metric) ||
+		(metadata.definitionHash !== metricDefinitionHash(metric) &&
+			!isPreviousDefinition(metric, metadata.definitionHash)) ||
 		(!managedPromotion && metadata.automated !== metric.automated) ||
-		metadata.queryHash !==
+		(metadata.queryHash !==
 			hash({
 				queryText: latest.queryText,
 				databaseExternalId: question.databaseExternalId,
-			})
+			}) &&
+			!isPreviousQueryHash(metric.id, metadata.queryHash))
 	)
 		throw new ConflictException(
 			`Existing QBR question ${metric.id} has unexpected or user-edited state.`,
@@ -735,7 +834,8 @@ export class AtlasQbrService {
 						if (
 							latest.queryText !== sql ||
 							existing.databaseExternalId !==
-								(query?.databaseExternalId ?? null)
+								(query?.databaseExternalId ?? null) ||
+							metadata.definitionHash !== metricDefinitionHash(metric)
 						) {
 							const nextVersion = latest.version + 1;
 							await tx.question.update({
@@ -1082,7 +1182,16 @@ export class AtlasQbrService {
 				}
 			}
 			for (const observation of observations) {
-				const old = byPeriod.get(observation.period);
+				let old = byPeriod.get(observation.period);
+				if (
+					old &&
+					old.definitionHash !== metricDefinitionHash(metric) &&
+					!old.reportedBy &&
+					observation.status === "provisional"
+				) {
+					byPeriod.delete(observation.period);
+					old = undefined;
+				}
 				if (old) {
 					if (old.definitionHash !== metricDefinitionHash(metric))
 						throw new ConflictException(

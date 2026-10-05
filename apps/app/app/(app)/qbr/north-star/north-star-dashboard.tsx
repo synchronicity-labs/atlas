@@ -208,6 +208,13 @@ function PlanningScope({ metrics }: { metrics: Record<string, Metric> }) {
 					company total.
 				</p>
 				<p className="text-sm text-muted-foreground">
+					Quarter movement counts each team once across the quarter. Gross adds
+					are new plus reactivated teams; gross losses include teams that
+					qualified during the quarter but fell below the activity criteria by
+					quarter-end. A team can appear in both categories. First observed is
+					labelled new until complete history is verified.
+				</p>
+				<p className="text-sm text-muted-foreground">
 					Monthly values retain their authored definitions. Booked revenue
 					follows each door’s authored basis. Actualized revenue, booked
 					revenue, and estimated annual revenue remain separate; no YTD totals

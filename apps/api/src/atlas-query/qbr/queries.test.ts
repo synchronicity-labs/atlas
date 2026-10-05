@@ -102,15 +102,40 @@ test("Q3 aggregates require all three months and use the authored aggregation", 
 	expect(qbrQuarterValue("product_m3_ndr", months, now)).toBeNull();
 });
 
-test("Q3 movement SQL compares September and June membership sets", () => {
+test("Q3 movement SQL counts quarter additions and losses once per team", () => {
 	const queries = qbrQueries(new Date("2026-10-01T00:00:00Z"));
 	for (const id of ["plg_teams_adds", "plg_teams_losses", "plg_teams_net"]) {
 		const query = queries[id]?.queryText ?? "";
 		expect(query).toContain("quarter_value");
 		expect(query).toContain("month = toDate('2026-06-01')");
 		expect(query).toContain("month = toDate('2026-09-01')");
+		expect(query).toContain(
+			"maxIf(1, month >= toDate('2026-07-01') and month < addMonths(toDate('2026-07-01'), 3)) as during",
+		);
+		expect(query).toContain(
+			"maxIf(1, month < toDate('2026-07-01')) as had_history",
+		);
+		expect(query).toContain(
+			"countIf(starting = 0 and during = 1 and had_history = 0) as new_teams",
+		);
+		expect(query).toContain(
+			"countIf(starting = 0 and during = 1 and had_history = 1) as reactivated_teams",
+		);
+		expect(query).toContain(
+			"countIf(starting = 0 and during = 1) as gross_adds",
+		);
+		expect(query).toContain(
+			"countIf((starting = 1 or during = 1) and ending = 0) as gross_losses",
+		);
+		expect(query).toContain("countIf(starting = 1) as starting_teams");
+		expect(query).toContain("countIf(ending = 1) as ending_teams");
+		expect(query).toContain(
+			"countIf(ending = 1) - countIf(starting = 1) as net_change",
+		);
 		expect(query).not.toContain("sum(gross_adds)");
 		expect(query).not.toContain("sum(gross_losses)");
+		expect(query).not.toContain("september = 1 and june = 0");
+		expect(query).not.toContain("june = 1 and september = 0");
 	}
 });
 

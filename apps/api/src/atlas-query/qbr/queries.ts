@@ -279,19 +279,24 @@ group by s.month`;
 	const quarterMovement = `with monthly_orgs as (${monthlyOrgs}), professional as (
   select month, organizationId from monthly_orgs
   where billable_generations >= 3 and active_days >= 2 and accrued_value >= 100
+), quarter_membership as (
+  select organizationId,
+    maxIf(1, month = toDate('2026-06-01')) as starting,
+    maxIf(1, month >= toDate('2026-07-01') and month < addMonths(toDate('2026-07-01'), 3)) as during,
+    maxIf(1, month = toDate('2026-09-01')) as ending,
+    maxIf(1, month < toDate('2026-07-01')) as had_history
+  from professional
+  group by organizationId
 )
 select
-  countIf(september = 1 and june = 0) as gross_adds,
-  countIf(june = 1 and september = 0) as gross_losses,
-  countIf(september = 1) - countIf(june = 1) as net_change
-from (
-  select organizationId,
-    maxIf(1, month = toDate('2026-06-01')) as june,
-    maxIf(1, month = toDate('2026-09-01')) as september
-  from professional
-  where month in (toDate('2026-06-01'), toDate('2026-09-01'))
-  group by organizationId
-)`;
+  countIf(starting = 1) as starting_teams,
+  countIf(ending = 1) as ending_teams,
+  countIf(starting = 0 and during = 1 and had_history = 0) as new_teams,
+  countIf(starting = 0 and during = 1 and had_history = 1) as reactivated_teams,
+  countIf(starting = 0 and during = 1) as gross_adds,
+  countIf((starting = 1 or during = 1) and ending = 0) as gross_losses,
+  countIf(ending = 1) - countIf(starting = 1) as net_change
+from quarter_membership`;
 	const cohorts = `with monthly_orgs as (${monthlyOrgs}), starting as (
   select * from monthly_orgs where billable_generations >= 3 and active_days >= 2 and accrued_value >= 100
 )

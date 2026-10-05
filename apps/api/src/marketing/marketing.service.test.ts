@@ -5,6 +5,7 @@ import type { TinybirdEligibilityService } from "../metabase/tinybird-eligibilit
 import type { GbrainEvidenceService } from "./gbrain-evidence.service";
 import { MarketingClient } from "./marketing.client";
 import {
+	assertCompleteProductUserEligibility,
 	groupMarketingQuestionsBySource,
 	MarketingService,
 	marketingAttemptVerificationRows,
@@ -12,10 +13,10 @@ import {
 } from "./marketing.service";
 
 describe("marketing metric attempts", () => {
-	test("records the approved visitor definition and keeps the identity bridge pending", () => {
+	test("records the approved visitor definition and keeps coverage pending", () => {
 		const rows = marketingAttemptVerificationRows({
 			questionNumber: 2001,
-			questionVersion: 2,
+			questionVersion: 4,
 			capturedAt: new Date("2026-08-14T12:00:00.000Z"),
 			resultPresent: true,
 		});
@@ -24,13 +25,23 @@ describe("marketing metric attempts", () => {
 			["read_only_query", "PASSED"],
 			["source_snapshot", "PASSED"],
 			["result_non_empty", "PASSED"],
-			["approved_cross_property_definition", "PASSED"],
-			["cross_site_identity_bridge", "PENDING"],
+			["approved_marketing_scope", "PASSED"],
+			["complete_marketing_pageview_coverage", "PENDING"],
 		]);
 	});
 });
 
 describe("marketing source runs", () => {
+	test("rejects an incomplete PostHog eligibility snapshot", () => {
+		expect(() =>
+			assertCompleteProductUserEligibility({
+				complete: false,
+				sourceRows: 10_001,
+				returnedRows: 10_000,
+			}),
+		).toThrow("eligibility snapshot is incomplete");
+	});
+
 	test("records a timed-out question and still publishes the next question", async () => {
 		const publish = mock(async () => undefined);
 		const updateRun = mock(async () => ({}));

@@ -4197,16 +4197,8 @@ function buildQuestionMetricSpec(
 export function marketingSourceCoverageChecks(
 	sourceExternalId: string | null,
 ): Array<{ name: string; reason: string }> {
-	if (sourceExternalId === "marketing:ga4:visitors") {
-		return [
-			{
-				name: "shared_cross_site_visitor_identity",
-				reason:
-					"The approved Marketing scope spans several sites. The current GA4 property totals can count the same person more than once because the sites do not yet expose one stable shared visitor ID to Atlas.",
-			},
-		];
-	}
 	if (
+		sourceExternalId === "marketing:posthog:visitors" ||
 		sourceExternalId === "marketing:posthog:visitor-signup" ||
 		sourceExternalId === "marketing:posthog:visitor-signup-rate"
 	) {

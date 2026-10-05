@@ -238,11 +238,17 @@ SET
   "updatedAt" = CURRENT_TIMESTAMP
 WHERE "key" = 'marketing.website_visitors';
 
-UPDATE "question"
+UPDATE "question" q
 SET
-  "metricVersionId" = 'atlas-metric-version-marketing-website-visitors-v3',
+  "metricVersionId" = (
+    SELECT mv."id"
+    FROM "metrics"."metricVersion" mv
+    JOIN "metrics"."metricDefinition" md ON md."id" = mv."metricId"
+    WHERE md."key" = 'marketing.website_visitors'
+      AND mv."version" = 3
+  ),
   "purpose" = 'RECONCILIATION',
   "updatedAt" = CURRENT_TIMESTAMP
-WHERE "number" = 2001;
+WHERE q."number" = 2001;
 
 COMMIT;

@@ -1,6 +1,81 @@
+import { Database } from "bun:sqlite";
 import { expect, test } from "bun:test";
-import { isQbrPlgQuestion, qbrQuarterValue, qbrQueries } from "./queries";
+import {
+	isQbrPlgQuestion,
+	qbrQuarterMovementQuery,
+	qbrQuarterValue,
+	qbrQueries,
+} from "./queries";
 import registry from "./registry.json";
+
+function splitSqlArguments(value: string) {
+	const argumentsList: string[] = [];
+	let depth = 0;
+	let start = 0;
+	for (let index = 0; index < value.length; index += 1) {
+		const character = value[index];
+		if (character === "(") depth += 1;
+		if (character === ")") depth -= 1;
+		if (character === "," && depth === 0) {
+			argumentsList.push(value.slice(start, index).trim());
+			start = index + 1;
+		}
+	}
+	argumentsList.push(value.slice(start).trim());
+	return argumentsList;
+}
+
+function replaceSqlFunction(
+	query: string,
+	name: string,
+	replace: (argumentsList: string[]) => string,
+) {
+	let result = "";
+	let cursor = 0;
+	const marker = `${name}(`;
+	while (cursor < query.length) {
+		const start = query.indexOf(marker, cursor);
+		if (start === -1) {
+			result += query.slice(cursor);
+			break;
+		}
+		result += query.slice(cursor, start);
+		let depth = 1;
+		let end = start + marker.length;
+		while (depth > 0 && end < query.length) {
+			if (query[end] === "(") depth += 1;
+			if (query[end] === ")") depth -= 1;
+			end += 1;
+		}
+		result += replace(
+			splitSqlArguments(query.slice(start + marker.length, end - 1)),
+		);
+		cursor = end;
+	}
+	return result;
+}
+
+function sqliteQuarterMovementQuery(query: string) {
+	let result = replaceSqlFunction(query, "toDate", ([value = ""]) => value);
+	result = replaceSqlFunction(
+		result,
+		"addMonths",
+		([value = "", amount = ""]) => {
+			const months = Number(amount);
+			return `date(${value}, '${months >= 0 ? "+" : ""}${months} months')`;
+		},
+	);
+	result = replaceSqlFunction(
+		result,
+		"maxIf",
+		([value = "", condition = ""]) => {
+			return `max(CASE WHEN ${condition} THEN ${value} ELSE 0 END)`;
+		},
+	);
+	return replaceSqlFunction(result, "countIf", ([condition = ""]) => {
+		return `sum(CASE WHEN ${condition} THEN 1 ELSE 0 END)`;
+	});
+}
 
 test("QBR queries cover exactly the automated metrics with closed UTC month boundaries", () => {
 	const queries = qbrQueries(new Date("2026-09-30T23:59:59Z"));
@@ -137,6 +212,42 @@ test("Q3 movement SQL counts quarter additions and losses once per team", () => 
 		expect(query).not.toContain("september = 1 and june = 0");
 		expect(query).not.toContain("june = 1 and september = 0");
 	}
+});
+
+test("Q3 movement SQL reconciles synthetic team lifecycles", () => {
+	const monthlyOrgs = `select '2026-07-01' as month, 'july_then_lost' as organizationId, 3 as billable_generations, 2 as active_days, 100 as accrued_value
+union all select '2026-08-01', 'return_after_may', 3, 2, 100
+union all select '2026-05-01', 'return_after_may', 3, 2, 100
+union all select '2026-07-01', 'entrant_multi_q3', 3, 2, 100
+union all select '2026-08-01', 'entrant_multi_q3', 3, 2, 100
+union all select '2026-09-01', 'entrant_multi_q3', 3, 2, 100
+union all select '2026-06-01', 'june_leave_return', 3, 2, 100
+union all select '2026-09-01', 'june_leave_return', 3, 2, 100
+union all select '2026-06-01', 'starting_dropout', 3, 2, 100
+union all select '2026-05-01', 'prior_only', 3, 2, 100
+union all select '2026-06-01', 'bridge', 3, 2, 100
+union all select '2026-07-01', 'bridge', 3, 2, 100
+union all select '2026-08-01', 'bridge', 3, 2, 100
+union all select '2026-09-01', 'bridge', 3, 2, 100
+union all select '2026-07-01', 'below_threshold', 2, 2, 100`;
+	const query = sqliteQuarterMovementQuery(
+		qbrQuarterMovementQuery(monthlyOrgs),
+	);
+	const db = new Database(":memory:");
+	const result = db.query(query).get() as Record<string, number>;
+	db.close();
+	expect(result).toEqual({
+		starting_teams: 3,
+		ending_teams: 3,
+		new_teams: 2,
+		reactivated_teams: 1,
+		gross_adds: 3,
+		gross_losses: 3,
+		net_change: 0,
+	});
+	expect(
+		result.starting_teams + result.gross_adds - result.gross_losses,
+	).toBe(result.ending_teams);
 });
 
 test("Q3 return lift pools counts only after all quarter assignments mature", () => {

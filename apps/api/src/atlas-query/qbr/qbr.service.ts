@@ -385,8 +385,24 @@ const PREVIOUS_QUERY_HASHES: Partial<Record<string, string | string[]>> = {
 		"f7aa97fea19a725a6d66b65681fe239eaf6a627e45a26dcbbc16f50df2c5c593",
 };
 
+const LEGACY_PREPARATION_BASIS: Partial<Record<string, string>> = {
+	productions_teams_adds:
+		"Gross additions: teams in the selected ending month’s qualifying set but not the comparison ending month’s set, including newly qualifying and reactivated teams. Quarter compares quarter-end sets (September vs June); month compares with its prior month. Quarter movements are endpoint-set changes, not the sum of monthly movements. Company totals deduplicate teams and exclude door migrations without a company qualification change.",
+	productions_teams_losses:
+		"Gross losses: teams in the comparison ending month’s qualifying set but not the selected ending month’s set; positive count. Quarter compares quarter-end sets (September vs June); month compares with its prior month. Quarter movements are endpoint-set changes, not the sum of monthly movements. Company totals deduplicate teams and exclude door migrations without a company qualification change.",
+	productions_teams_net:
+		"Current-month qualifying team count minus prior-month qualifying team count; equals gross adds minus gross losses. Company union deduplicates canonical teams; door counts may overlap.",
+};
+
 function isPreviousDefinition(metric: RegistryMetric, value: unknown) {
 	return PREVIOUS_DEFINITION_HASHES[metric.id] === value;
+}
+
+function isLegacyDefinition(
+	metric: RegistryMetric,
+	value: unknown,
+): value is string {
+	return typeof value === "string" && isPreviousDefinition(metric, value);
 }
 
 function isPreviousDescription(metricId: string, value: string) {
@@ -405,6 +421,48 @@ function isPreviousQueryHash(metricId: string, value: unknown) {
 	return Array.isArray(previous)
 		? typeof value === "string" && previous.includes(value)
 		: previous === value;
+}
+
+function migratedPreparation(
+	metric: RegistryMetric,
+	preparation: Prisma.JsonValue | undefined,
+) {
+	const legacyBasis = LEGACY_PREPARATION_BASIS[metric.id];
+	if (!legacyBasis) return null;
+	const parsed = storedPreparation(preparation);
+	if (!parsed) return null;
+	const manualAsk = parsed.manualAsk
+		.replaceAll(legacyBasis, metric.definition)
+		.replaceAll(
+			"comparable June and September qualifying-team rosters",
+			"June starting and July, August and September qualifying-team rosters, plus available pre-quarter qualification history",
+		)
+		.replaceAll(
+			"endpoint joins and calculation",
+			"team identity joins and quarter-wide movement calculation",
+		);
+	const updated = {
+		...parsed,
+		gap: parsed.gap.replaceAll(
+			"comparable June and September qualifying team sets",
+			"June starting and complete July–September qualifying team sets",
+		),
+		manualAsk:
+			manualAsk !== parsed.manualAsk && !manualAsk.includes(metric.definition)
+				? `${manualAsk}\n\nApply this basis: ${metric.definition}`
+				: manualAsk,
+		q4Build: parsed.q4Build.replaceAll(
+			"preserve endpoint sets for period-end movement",
+			"preserve monthly sets for period-end counts and deduplicated quarter-wide movement",
+		),
+	};
+	if (hash(parsed) === hash(updated)) return null;
+	const checked = preparationSchema.safeParse(updated);
+	if (!checked.success)
+		throw new ConflictException(
+			"Migrated QBR preparation exceeds its storage limits.",
+		);
+	return checked.data;
 }
 
 function validDate(value: string, field: string): Date {
@@ -790,7 +848,15 @@ export class AtlasQbrService {
 							in: registry.metrics.map((metric) => `qbr:${metric.id}`),
 						},
 					},
-					include: { versions: { orderBy: { version: "desc" }, take: 1 } },
+					include: {
+						versions: { orderBy: { version: "desc" }, take: 1 },
+						qbrPreparations: {
+							where: { quarter: REGISTRY_QUARTER },
+							orderBy: { version: "desc" },
+							take: 1,
+							select: { version: true, preparation: true },
+						},
+					},
 				});
 				const existingByExternalId = new Map(
 					existingQuestions.map((question) => [
@@ -804,6 +870,7 @@ export class AtlasQbrService {
 					Prisma.QuestionCreateManyInput & { id: string }
 				> = [];
 				const newVersions: Prisma.QuestionVersionCreateManyInput[] = [];
+				const migratedPreparations: Prisma.QbrPreparationCreateManyInput[] = [];
 				for (const metric of registry.metrics) {
 					const externalId = `qbr:${metric.id}`;
 					const query = metric.automated ? queries[metric.id] : null;
@@ -863,6 +930,19 @@ export class AtlasQbrService {
 								},
 							});
 						}
+						const previousPreparation = existing.qbrPreparations?.[0];
+						const nextPreparation = migratedPreparation(
+							metric,
+							previousPreparation?.preparation,
+						);
+						if (nextPreparation && previousPreparation) {
+							migratedPreparations.push({
+								questionId: existing.id,
+								quarter: REGISTRY_QUARTER,
+								version: previousPreparation.version + 1,
+								preparation: json(nextPreparation),
+							});
+						}
 						result[metric.id] = existing.publicNumber;
 						continue;
 					}
@@ -906,6 +986,8 @@ export class AtlasQbrService {
 						result[question.sourceExternalId.slice(4)] = question.publicNumber;
 					}
 				}
+				if (migratedPreparations.length)
+					await tx.qbrPreparation.createMany({ data: migratedPreparations });
 				return result;
 			},
 			{ maxWait: 10_000, timeout: 60_000 },
@@ -1175,31 +1257,28 @@ export class AtlasQbrService {
 					if (
 						(period === REPORTING_PERIOD || /^2026-0[6-9]$/.test(period)) &&
 						(old.status === "provisional" || old.status === "verified") &&
-						!old.reportedBy &&
 						!incomingPeriods.has(period)
 					)
 						byPeriod.delete(period);
 				}
 			}
 			for (const observation of observations) {
-				let old = byPeriod.get(observation.period);
-				if (
-					old &&
-					old.definitionHash !== metricDefinitionHash(metric) &&
-					!old.reportedBy &&
-					observation.status === "provisional"
-				) {
-					byPeriod.delete(observation.period);
-					old = undefined;
-				}
+				const old = byPeriod.get(observation.period);
 				if (old) {
-					if (old.definitionHash !== metricDefinitionHash(metric))
+					const definitionChanged =
+						old.definitionHash !== metricDefinitionHash(metric);
+					const legacyReplacement =
+						definitionChanged &&
+						isLegacyDefinition(metric, old.definitionHash) &&
+						observation.status === "provisional";
+					if (definitionChanged && !legacyReplacement)
 						throw new ConflictException(
 							`Stored QBR observation ${metric.id}/${observation.period} uses another definition.`,
 						);
 					if (
 						(old.status === "reported" || old.reportedBy) &&
-						observation.status === "provisional"
+						observation.status === "provisional" &&
+						!legacyReplacement
 					)
 						throw new ConflictException(
 							`Provisional refresh cannot replace reported QBR observation ${metric.id}/${observation.period}.`,
@@ -1214,7 +1293,9 @@ export class AtlasQbrService {
 					if (
 						old.dataThrough &&
 						!(
-							old.status === "verified" && observation.status === "provisional"
+							!definitionChanged &&
+							old.status === "verified" &&
+							observation.status === "provisional"
 						) &&
 						(!observation.dataThrough ||
 							validDate(observation.dataThrough, "dataThrough") <
@@ -1385,14 +1466,17 @@ export class AtlasQbrService {
 				: null;
 			if (snapshot) {
 				for (const row of rowsFrom(snapshot.rows, snapshot.columns)) {
-					if (row.definitionHash !== metricDefinitionHash(metric))
-						throw new ConflictException(
-							`QBR observation ${metric.id}/${row.period} has a mismatched definition hash.`,
-						);
 					if (row.snapshotId !== snapshot.id)
 						throw new ConflictException(
 							`QBR observation ${metric.id}/${row.period} has a mismatched snapshot ID.`,
 						);
+					if (row.definitionHash !== metricDefinitionHash(metric)) {
+						if (!isLegacyDefinition(metric, row.definitionHash))
+							throw new ConflictException(
+								`QBR observation ${metric.id}/${row.period} has a mismatched definition hash.`,
+							);
+						continue;
+					}
 					if (row.status === "verified") {
 						validateObservation(metric, row);
 						const currentQueryHash = qbrMetadata(

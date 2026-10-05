@@ -2099,7 +2099,7 @@
 			"id": "company_teams_adds",
 			"label": "Company · Gross adds",
 			"unit": "count",
-			"definition": "Gross additions: teams in the selected ending month’s qualifying set but not the comparison ending month’s set, including newly qualifying and reactivated teams. Quarter compares quarter-end sets (September vs June); month compares with its prior month. Quarter movements are endpoint-set changes, not the sum of monthly movements. Company totals deduplicate teams and exclude door migrations without a company qualification change.",
+			"definition": "Gross adds = new + reactivated teams. For a quarter, count a team once when it is absent from the starting qualifying set and qualifies at least once during the quarter. New means the first qualifying observation in available history; until complete history is verified, first observed is labelled new. Reactivated means previously qualified in available history, inactive at quarter start, then qualifying during the quarter. A team may count as both an addition and a loss if it qualifies during the quarter but is below the activity criteria at quarter-end. Monthly additions compare the prior and current month. Company totals deduplicate teams and exclude door migrations without a company qualification change.",
 			"notApplicable": false,
 			"automated": false,
 			"preparation": {
@@ -2121,7 +2121,7 @@
 			"id": "company_teams_losses",
 			"label": "Company · Gross losses",
 			"unit": "count",
-			"definition": "Gross losses: teams in the comparison ending month’s qualifying set but not the selected ending month’s set; positive count. Quarter compares quarter-end sets (September vs June); month compares with its prior month. Quarter movements are endpoint-set changes, not the sum of monthly movements. Company totals deduplicate teams and exclude door migrations without a company qualification change.",
+			"definition": "Gross losses: for a quarter, teams qualifying at the start or at any point during the quarter that are below the activity criteria at quarter-end, counted once. This includes new or reactivated entrants that later fall below the criteria. Monthly losses compare the prior and current month. Falling below the activity criteria is not the same as cancelling or stopping payment. Company totals deduplicate teams and exclude door migrations without a company qualification change.",
 			"notApplicable": false,
 			"automated": false,
 			"preparation": {
@@ -2143,7 +2143,7 @@
 			"id": "company_teams_net",
 			"label": "Company · Net change",
 			"unit": "count",
-			"definition": "Current-month qualifying team count minus prior-month qualifying team count; equals gross adds minus gross losses. Company union deduplicates canonical teams; door counts may overlap.",
+			"definition": "Quarter net change = ending active teams − starting teams = new + reactivated − lost. Monthly net change is the current-month qualifying team count minus the prior-month count. Company union deduplicates canonical teams; door counts may overlap.",
 			"notApplicable": false,
 			"automated": false,
 			"preparation": {
@@ -2209,7 +2209,7 @@
 			"id": "plg_teams_adds",
 			"label": "PLG · Gross adds",
 			"unit": "count",
-			"definition": "Gross additions: teams in the selected ending month’s qualifying set but not the comparison ending month’s set, including newly qualifying and reactivated teams. Quarter compares quarter-end sets (September vs June); month compares with its prior month. Quarter movements are endpoint-set changes, not the sum of monthly movements. Company totals deduplicate teams and exclude door migrations without a company qualification change.",
+			"definition": "Gross adds = new + reactivated teams. For a quarter, count a team once when it is absent from the starting qualifying set and qualifies at least once during the quarter. New means the first qualifying observation in available history; until complete history is verified, first observed is labelled new. Reactivated means previously qualified in available history, inactive at quarter start, then qualifying during the quarter. A team may count as both an addition and a loss if it qualifies during the quarter but is below the activity criteria at quarter-end. Monthly additions compare the prior and current month. Company totals deduplicate teams and exclude door migrations without a company qualification change.",
 			"notApplicable": false,
 			"automated": true,
 			"preparation": {
@@ -2242,7 +2242,7 @@
 			"id": "plg_teams_losses",
 			"label": "PLG · Gross losses",
 			"unit": "count",
-			"definition": "Gross losses: teams in the comparison ending month’s qualifying set but not the selected ending month’s set; positive count. Quarter compares quarter-end sets (September vs June); month compares with its prior month. Quarter movements are endpoint-set changes, not the sum of monthly movements. Company totals deduplicate teams and exclude door migrations without a company qualification change.",
+			"definition": "Gross losses: for a quarter, teams qualifying at the start or at any point during the quarter that are below the activity criteria at quarter-end, counted once. This includes new or reactivated entrants that later fall below the criteria. Monthly losses compare the prior and current month. Falling below the activity criteria is not the same as cancelling or stopping payment. Company totals deduplicate teams and exclude door migrations without a company qualification change.",
 			"notApplicable": false,
 			"automated": true,
 			"preparation": {
@@ -2275,7 +2275,7 @@
 			"id": "plg_teams_net",
 			"label": "PLG · Net change",
 			"unit": "count",
-			"definition": "Current-month qualifying team count minus prior-month qualifying team count; equals gross adds minus gross losses. Company union deduplicates canonical teams; door counts may overlap.",
+			"definition": "Quarter net change = ending active teams − starting teams = new + reactivated − lost. Monthly net change is the current-month qualifying team count minus the prior-month count. Company union deduplicates canonical teams; door counts may overlap.",
 			"notApplicable": false,
 			"automated": true,
 			"preparation": {
@@ -2352,7 +2352,7 @@
 			"id": "enterprise_teams_adds",
 			"label": "Enterprise · Gross adds",
 			"unit": "count",
-			"definition": "Gross additions: teams in the selected ending month’s qualifying set but not the comparison ending month’s set, including newly qualifying and reactivated teams. Quarter compares quarter-end sets (September vs June); month compares with its prior month. Quarter movements are endpoint-set changes, not the sum of monthly movements. Company totals deduplicate teams and exclude door migrations without a company qualification change.",
+			"definition": "Gross adds = new + reactivated teams. For a quarter, count a team once when it is absent from the starting qualifying set and qualifies at least once during the quarter. New means the first qualifying observation in available history; until complete history is verified, first observed is labelled new. Reactivated means previously qualified in available history, inactive at quarter start, then qualifying during the quarter. A team may count as both an addition and a loss if it qualifies during the quarter but is below the activity criteria at quarter-end. Monthly additions compare the prior and current month. Company totals deduplicate teams and exclude door migrations without a company qualification change.",
 			"notApplicable": false,
 			"automated": false,
 			"preparation": {
@@ -2374,7 +2374,7 @@
 			"id": "enterprise_teams_losses",
 			"label": "Enterprise · Gross losses",
 			"unit": "count",
-			"definition": "Gross losses: teams in the comparison ending month’s qualifying set but not the selected ending month’s set; positive count. Quarter compares quarter-end sets (September vs June); month compares with its prior month. Quarter movements are endpoint-set changes, not the sum of monthly movements. Company totals deduplicate teams and exclude door migrations without a company qualification change.",
+			"definition": "Gross losses: for a quarter, teams qualifying at the start or at any point during the quarter that are below the activity criteria at quarter-end, counted once. This includes new or reactivated entrants that later fall below the criteria. Monthly losses compare the prior and current month. Falling below the activity criteria is not the same as cancelling or stopping payment. Company totals deduplicate teams and exclude door migrations without a company qualification change.",
 			"notApplicable": false,
 			"automated": false,
 			"preparation": {
@@ -2396,7 +2396,7 @@
 			"id": "enterprise_teams_net",
 			"label": "Enterprise · Net change",
 			"unit": "count",
-			"definition": "Current-month qualifying team count minus prior-month qualifying team count; equals gross adds minus gross losses. Company union deduplicates canonical teams; door counts may overlap.",
+			"definition": "Quarter net change = ending active teams − starting teams = new + reactivated − lost. Monthly net change is the current-month qualifying team count minus the prior-month count. Company union deduplicates canonical teams; door counts may overlap.",
 			"notApplicable": false,
 			"automated": false,
 			"preparation": {
@@ -2462,7 +2462,7 @@
 			"id": "channel_teams_adds",
 			"label": "Channel · Gross adds",
 			"unit": "count",
-			"definition": "Gross additions: teams in the selected ending month’s qualifying set but not the comparison ending month’s set, including newly qualifying and reactivated teams. Quarter compares quarter-end sets (September vs June); month compares with its prior month. Quarter movements are endpoint-set changes, not the sum of monthly movements. Company totals deduplicate teams and exclude door migrations without a company qualification change.",
+			"definition": "Gross adds = new + reactivated teams. For a quarter, count a team once when it is absent from the starting qualifying set and qualifies at least once during the quarter. New means the first qualifying observation in available history; until complete history is verified, first observed is labelled new. Reactivated means previously qualified in available history, inactive at quarter start, then qualifying during the quarter. A team may count as both an addition and a loss if it qualifies during the quarter but is below the activity criteria at quarter-end. Monthly additions compare the prior and current month. Company totals deduplicate teams and exclude door migrations without a company qualification change.",
 			"notApplicable": false,
 			"automated": false,
 			"preparation": {
@@ -2484,7 +2484,7 @@
 			"id": "channel_teams_losses",
 			"label": "Channel · Gross losses",
 			"unit": "count",
-			"definition": "Gross losses: teams in the comparison ending month’s qualifying set but not the selected ending month’s set; positive count. Quarter compares quarter-end sets (September vs June); month compares with its prior month. Quarter movements are endpoint-set changes, not the sum of monthly movements. Company totals deduplicate teams and exclude door migrations without a company qualification change.",
+			"definition": "Gross losses: for a quarter, teams qualifying at the start or at any point during the quarter that are below the activity criteria at quarter-end, counted once. This includes new or reactivated entrants that later fall below the criteria. Monthly losses compare the prior and current month. Falling below the activity criteria is not the same as cancelling or stopping payment. Company totals deduplicate teams and exclude door migrations without a company qualification change.",
 			"notApplicable": false,
 			"automated": false,
 			"preparation": {
@@ -2506,7 +2506,7 @@
 			"id": "channel_teams_net",
 			"label": "Channel · Net change",
 			"unit": "count",
-			"definition": "Current-month qualifying team count minus prior-month qualifying team count; equals gross adds minus gross losses. Company union deduplicates canonical teams; door counts may overlap.",
+			"definition": "Quarter net change = ending active teams − starting teams = new + reactivated − lost. Monthly net change is the current-month qualifying team count minus the prior-month count. Company union deduplicates canonical teams; door counts may overlap.",
 			"notApplicable": false,
 			"automated": false,
 			"preparation": {
@@ -2572,7 +2572,7 @@
 			"id": "productions_teams_adds",
 			"label": "Productions · Gross adds",
 			"unit": "count",
-			"definition": "Gross additions: teams in the selected ending month’s qualifying set but not the comparison ending month’s set, including newly qualifying and reactivated teams. Quarter compares quarter-end sets (September vs June); month compares with its prior month. Quarter movements are endpoint-set changes, not the sum of monthly movements. Company totals deduplicate teams and exclude door migrations without a company qualification change.",
+			"definition": "Gross adds = new + reactivated teams. For a quarter, count a team once when it is absent from the starting qualifying set and qualifies at least once during the quarter. New means the first qualifying observation in available history; until complete history is verified, first observed is labelled new. Reactivated means previously qualified in available history, inactive at quarter start, then qualifying during the quarter. A team may count as both an addition and a loss if it qualifies during the quarter but is below the activity criteria at quarter-end. Monthly additions compare the prior and current month. Company totals deduplicate teams and exclude door migrations without a company qualification change.",
 			"notApplicable": false,
 			"automated": false,
 			"preparation": {
@@ -2584,7 +2584,7 @@
 				},
 				"gap": "No exact reviewed automated result identified. The lead must identify the authoritative period evidence; a planning link is only the definition reference.",
 				"dataLocation": "Production customer/title/SOW records and job/shot event history; invoice or usage records only where the authored metric basis requires them. Planning workbook links are definition references.",
-				"manualAsk": "For Productions · Gross adds, send Q3 Production rows with: monthly active title/SOW roster, customer/team ID, active SOW/title ID, VD/ADR category, effective dates, and monthly usage/throughput evidence; do not count each title as a separate team. Apply this basis: Gross additions: teams in the selected ending month’s qualifying set but not the comparison ending month’s set, including newly qualifying and reactivated teams. Quarter compares quarter-end sets (September vs June); month compares with its prior month. Quarter movements are endpoint-set changes, not the sum of monthly movements. Company totals deduplicate teams and exclude door migrations without a company qualification change. Include UTC extraction time and missing history; do not send Product generation/subscription IDs.",
+				"manualAsk": "For Productions · Gross adds, send Q3 Production rows with: monthly active title/SOW roster, customer/team ID, active SOW/title ID, VD/ADR category, effective dates, and monthly usage/throughput evidence; do not count each title as a separate team. Apply this basis: Gross adds = new + reactivated teams. For a quarter, count a team once when it is absent from the starting qualifying set and qualifies at least once during the quarter. New means the first qualifying observation in available history; until complete history is verified, first observed is labelled new. Reactivated means previously qualified in available history, inactive at quarter start, then qualifying during the quarter. A team may count as both an addition and a loss if it qualifies during the quarter but is below the activity criteria at quarter-end. Monthly additions compare the prior and current month. Company totals deduplicate teams and exclude door migrations without a company qualification change. Include UTC extraction time and missing history; do not send Product generation/subscription IDs.",
 				"q4Build": "Create one append-only job/shot event feed from the authoritative Production records, with stable job and shot IDs, event timestamps and changed-deadline history. Calculate accepted-job counts, acceptance turnaround, due-date compliance, touch-hours per comparable delivered shot, iterations per shot and required-workspace adoption from that feed. Retain unfinished/due jobs in the on-time denominator; stratify the cohort; publish source coverage and acceptance evidence. Until the full history is structured, keep the measures manual. Add signed SOW/capacity-agreement and invoice/usage event IDs for Production door measures; keep the authored event basis separate and reconcile the line once to Finance.",
 				"workstream": "production_events",
 				"sources": []
@@ -2594,7 +2594,7 @@
 			"id": "productions_teams_losses",
 			"label": "Productions · Gross losses",
 			"unit": "count",
-			"definition": "Gross losses: teams in the comparison ending month’s qualifying set but not the selected ending month’s set; positive count. Quarter compares quarter-end sets (September vs June); month compares with its prior month. Quarter movements are endpoint-set changes, not the sum of monthly movements. Company totals deduplicate teams and exclude door migrations without a company qualification change.",
+			"definition": "Gross losses: for a quarter, teams qualifying at the start or at any point during the quarter that are below the activity criteria at quarter-end, counted once. This includes new or reactivated entrants that later fall below the criteria. Monthly losses compare the prior and current month. Falling below the activity criteria is not the same as cancelling or stopping payment. Company totals deduplicate teams and exclude door migrations without a company qualification change.",
 			"notApplicable": false,
 			"automated": false,
 			"preparation": {
@@ -2606,7 +2606,7 @@
 				},
 				"gap": "No exact reviewed automated result identified. The lead must identify the authoritative period evidence; a planning link is only the definition reference.",
 				"dataLocation": "Production customer/title/SOW records and job/shot event history; invoice or usage records only where the authored metric basis requires them. Planning workbook links are definition references.",
-				"manualAsk": "For Productions · Gross losses, send Q3 Production rows with: monthly active title/SOW roster, customer/team ID, active SOW/title ID, VD/ADR category, effective dates, and monthly usage/throughput evidence; do not count each title as a separate team. Apply this basis: Gross losses: teams in the comparison ending month’s qualifying set but not the selected ending month’s set; positive count. Quarter compares quarter-end sets (September vs June); month compares with its prior month. Quarter movements are endpoint-set changes, not the sum of monthly movements. Company totals deduplicate teams and exclude door migrations without a company qualification change. Include UTC extraction time and missing history; do not send Product generation/subscription IDs.",
+				"manualAsk": "For Productions · Gross losses, send Q3 Production rows with: monthly active title/SOW roster, customer/team ID, active SOW/title ID, VD/ADR category, effective dates, and monthly usage/throughput evidence; do not count each title as a separate team. Apply this basis: Gross losses: for a quarter, teams qualifying at the start or at any point during the quarter that are below the activity criteria at quarter-end, counted once. This includes new or reactivated entrants that later fall below the criteria. Monthly losses compare the prior and current month. Falling below the activity criteria is not the same as cancelling or stopping payment. Company totals deduplicate teams and exclude door migrations without a company qualification change. Include UTC extraction time and missing history; do not send Product generation/subscription IDs.",
 				"q4Build": "Create one append-only job/shot event feed from the authoritative Production records, with stable job and shot IDs, event timestamps and changed-deadline history. Calculate accepted-job counts, acceptance turnaround, due-date compliance, touch-hours per comparable delivered shot, iterations per shot and required-workspace adoption from that feed. Retain unfinished/due jobs in the on-time denominator; stratify the cohort; publish source coverage and acceptance evidence. Until the full history is structured, keep the measures manual. Add signed SOW/capacity-agreement and invoice/usage event IDs for Production door measures; keep the authored event basis separate and reconcile the line once to Finance.",
 				"workstream": "production_events",
 				"sources": []
@@ -2616,7 +2616,7 @@
 			"id": "productions_teams_net",
 			"label": "Productions · Net change",
 			"unit": "count",
-			"definition": "Current-month qualifying team count minus prior-month qualifying team count; equals gross adds minus gross losses. Company union deduplicates canonical teams; door counts may overlap.",
+			"definition": "Quarter net change = ending active teams − starting teams = new + reactivated − lost. Monthly net change is the current-month qualifying team count minus the prior-month count. Company union deduplicates canonical teams; door counts may overlap.",
 			"notApplicable": false,
 			"automated": false,
 			"preparation": {
@@ -2628,7 +2628,7 @@
 				},
 				"gap": "No exact reviewed automated result identified. The lead must identify the authoritative period evidence; a planning link is only the definition reference.",
 				"dataLocation": "Production customer/title/SOW records and job/shot event history; invoice or usage records only where the authored metric basis requires them. Planning workbook links are definition references.",
-				"manualAsk": "For Productions · Net change, send Q3 Production rows with: monthly active title/SOW roster, customer/team ID, active SOW/title ID, VD/ADR category, effective dates, and monthly usage/throughput evidence; do not count each title as a separate team. Apply this basis: Current-month qualifying team count minus prior-month qualifying team count; equals gross adds minus gross losses. Company union deduplicates canonical teams; door counts may overlap. Include UTC extraction time and missing history; do not send Product generation/subscription IDs.",
+				"manualAsk": "For Productions · Net change, send Q3 Production rows with: monthly active title/SOW roster, customer/team ID, active SOW/title ID, VD/ADR category, effective dates, and monthly usage/throughput evidence; do not count each title as a separate team. Apply this basis: Quarter net change = ending active teams − starting teams = new + reactivated − lost. Monthly net change is the current-month qualifying team count minus the prior-month count. Company union deduplicates canonical teams; door counts may overlap. Include UTC extraction time and missing history; do not send Product generation/subscription IDs.",
 				"q4Build": "Create one append-only job/shot event feed from the authoritative Production records, with stable job and shot IDs, event timestamps and changed-deadline history. Calculate accepted-job counts, acceptance turnaround, due-date compliance, touch-hours per comparable delivered shot, iterations per shot and required-workspace adoption from that feed. Retain unfinished/due jobs in the on-time denominator; stratify the cohort; publish source coverage and acceptance evidence. Until the full history is structured, keep the measures manual. Add signed SOW/capacity-agreement and invoice/usage event IDs for Production door measures; keep the authored event basis separate and reconcile the line once to Finance.",
 				"workstream": "production_events",
 				"sources": []

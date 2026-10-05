@@ -523,6 +523,134 @@ describe("AtlasQbrService", () => {
 		expect(tx.resultSnapshot.create).not.toHaveBeenCalled();
 	});
 
+	test("migrates reported observations across a known definition change", async () => {
+		const columns = [
+			"period",
+			"value",
+			"numerator",
+			"denominator",
+			"status",
+			"evidenceSource",
+			"asOf",
+			"dataThrough",
+			"cohortMonth",
+			"reportedBy",
+			"definitionHash",
+			"source_label",
+			"source_url",
+			"snapshotId",
+		];
+		const oldDefinitionHash =
+			"1417617245ac8f21dd0ce8749205e504090ea3f1469085a6d01ae9257a618d02";
+		const previous = [
+			"2026-Q3",
+			10,
+			null,
+			null,
+			"reported",
+			{ label: "Evidence", url: "https://evidence.example/report" },
+			"2026-10-02T12:00:00.000Z",
+			null,
+			null,
+			"Reviewer",
+			oldDefinitionHash,
+			"Atlas question 215",
+			"https://atlas.pr.sync.so/questions/215",
+			"old-snapshot",
+		];
+		let created: Record<string, unknown> | undefined;
+		const question = registeredQuestion("plg_teams_adds");
+		const tx = {
+			$executeRaw: mock(async () => 1),
+			question: { findUnique: mock(async () => question) },
+			resultSnapshot: {
+				findFirst: mock(async () => ({
+					id: "old-snapshot",
+					rows: [previous],
+					columns: columns.map((name) => ({ name })),
+				})),
+				findUnique: mock(async () => null),
+				create: mock(async ({ data }: { data: Record<string, unknown> }) => {
+					created = data;
+					return { id: data.id };
+				}),
+			},
+		};
+		const service = new AtlasQbrService({
+			$transaction: (fn: (arg: typeof tx) => unknown) => fn(tx),
+		} as unknown as Db);
+
+		await service.recordObservations("plg_teams_adds", [
+			observation("2026-Q3", 12),
+		]);
+		if (!created) throw new Error("Expected migrated QBR snapshot.");
+		const rows = created.rows as unknown[][];
+		const definitionIndex = columns.indexOf("definitionHash");
+		const reporterIndex = columns.indexOf("reportedBy");
+		expect(rows[0]?.[definitionIndex]).toBe(definitionHash("plg_teams_adds"));
+		expect(rows[0]?.[reporterIndex]).toBeNull();
+	});
+
+	test("keeps stale-data protection during a definition migration", async () => {
+		const columns = [
+			"period",
+			"value",
+			"numerator",
+			"denominator",
+			"status",
+			"evidenceSource",
+			"asOf",
+			"dataThrough",
+			"cohortMonth",
+			"reportedBy",
+			"definitionHash",
+			"source_label",
+			"source_url",
+			"snapshotId",
+		];
+		const previous = [
+			"2026-Q3",
+			10,
+			null,
+			null,
+			"reported",
+			{ label: "Evidence", url: "https://evidence.example/report" },
+			"2026-10-06T12:00:00.000Z",
+			null,
+			null,
+			"Reviewer",
+			"1417617245ac8f21dd0ce8749205e504090ea3f1469085a6d01ae9257a618d02",
+			"Atlas question 215",
+			"https://atlas.pr.sync.so/questions/215",
+			"old-snapshot",
+		];
+		const tx = {
+			$executeRaw: mock(async () => 1),
+			question: {
+				findUnique: mock(async () => registeredQuestion("plg_teams_adds")),
+			},
+			resultSnapshot: {
+				findFirst: mock(async () => ({
+					id: "old-snapshot",
+					rows: [previous],
+					columns: columns.map((name) => ({ name })),
+				})),
+				findUnique: mock(async () => null),
+				create: mock(),
+			},
+		};
+		const service = new AtlasQbrService({
+			$transaction: (fn: (arg: typeof tx) => unknown) => fn(tx),
+		} as unknown as Db);
+
+		await expect(
+			service.recordObservations("plg_teams_adds", [
+				observation("2026-Q3", 12),
+			]),
+		).rejects.toThrow("Stale QBR observation rejected");
+		expect(tx.resultSnapshot.create).not.toHaveBeenCalled();
+	});
+
 	test("private preparations stay in separate version history and survive registration", async () => {
 		type Stored = {
 			id: string;

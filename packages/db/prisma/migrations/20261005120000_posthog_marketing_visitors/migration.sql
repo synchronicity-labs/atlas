@@ -188,9 +188,9 @@ INSERT INTO "metrics"."metricVersion" (
   "computation", "verificationPolicy", "cadence", "contentHash", "createdBy", "createdAt"
 )
 SELECT
-  'atlas-metric-version-marketing-website-visitors-v3',
+  'atlas-metric-version-marketing-website-visitors-posthog-public-person',
   md."id",
-  3,
+  COALESCE(MAX(existing."version"), 0) + 1,
   '{"entity":"PostHog person","measure":"monthly unique public marketing visitor","scope":"approved public Sync Marketing pages","identityRule":"Count one PostHog person once per UTC month.","excludedRoutes":["/home","/login","/signup","/onboarding","/billing","/projects","/settings"]}'::jsonb,
   '{"timeZone":"UTC","grain":"MONTH","identity":"posthog_person_id","currentState":"pending_marketing_pageview_coverage"}'::jsonb,
   '{"currentOperation":"count distinct person_id by month after the approved public marketing path filter","knownMismatch":"PostHog pageview coverage for blog and docs is not yet complete enough for certification."}'::jsonb,
@@ -200,7 +200,9 @@ SELECT
   'atlas',
   CURRENT_TIMESTAMP
 FROM "metrics"."metricDefinition" md
+LEFT JOIN "metrics"."metricVersion" existing ON existing."metricId" = md."id"
 WHERE md."key" = 'marketing.website_visitors'
+GROUP BY md."id"
 ON CONFLICT ("metricId", "version") DO NOTHING;
 
 INSERT INTO "metrics"."metricInput" (
@@ -228,7 +230,7 @@ JOIN LATERAL (
   FROM "questionVersion"
   WHERE "questionId" = q."id" AND "version" = 4
 ) qv ON true
-WHERE md."key" = 'marketing.website_visitors' AND mv."version" = 3
+WHERE md."key" = 'marketing.website_visitors' AND mv."id" = 'atlas-metric-version-marketing-website-visitors-posthog-public-person'
 ON CONFLICT ("metricVersionId", "alias") DO NOTHING;
 
 UPDATE "metrics"."metricDefinition"
@@ -245,7 +247,7 @@ SET
     FROM "metrics"."metricVersion" mv
     JOIN "metrics"."metricDefinition" md ON md."id" = mv."metricId"
     WHERE md."key" = 'marketing.website_visitors'
-      AND mv."version" = 3
+      AND mv."id" = 'atlas-metric-version-marketing-website-visitors-posthog-public-person'
   ),
   "purpose" = 'RECONCILIATION',
   "updatedAt" = CURRENT_TIMESTAMP

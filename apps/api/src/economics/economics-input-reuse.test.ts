@@ -120,3 +120,27 @@ test("cost per minute reports matched and estimated model coverage", () => {
 		["2026-09-01T00:00:00.000Z", "sync-3", null, 2, 0.5, "estimated"],
 	]);
 });
+
+test("normalizes Product model aliases before joining Modal costs", async () => {
+	process.env.METABASE_BASE_URL = "https://metabase.example.test";
+	process.env.METABASE_API_KEY = "test-only";
+	const service = new EconomicsService(
+		{} as never,
+		{} as never,
+		{} as never,
+	);
+	spyOn(MetabaseClient.prototype, "preview").mockResolvedValue({
+		columns: [],
+		rows: [
+			["2026-08", "sync2", 1],
+			["2026-08", "sync-2.0-pro", 2],
+			["2026-08", "sync3", 3],
+		],
+	});
+
+	await expect(service["loadOutputMinutes"]()).resolves.toEqual([
+		{ month: "2026-08", model: "sync-2", outputMinutes: 1 },
+		{ month: "2026-08", model: "sync-2-pro", outputMinutes: 2 },
+		{ month: "2026-08", model: "sync-3", outputMinutes: 3 },
+	]);
+});

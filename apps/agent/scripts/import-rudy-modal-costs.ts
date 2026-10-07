@@ -8,6 +8,11 @@ from collections import defaultdict
 from datetime import date, datetime, timedelta, timezone
 
 mapping = {
+    "sync2": "sync-2",
+    "sync-2.0": "sync-2",
+    "sync2-pro": "sync-2-pro",
+    "sync-2.0-pro": "sync-2-pro",
+    "sync3": "sync-3",
     "sync-v2.5-v0": "sync-2-pro",
     "sync-v2.5-v0-pw": "sync-2-pro",
     "sync-v2.0.0-short-v1-25fps": "sync-2",
@@ -30,7 +35,7 @@ def model(value):
         return "sync-3"
     return "other"
 
-today = date.today()
+today = datetime.now(timezone.utc).date()
 month_start = today.replace(day=1)
 previous_start = (month_start - timedelta(days=1)).replace(day=1)
 entries = []

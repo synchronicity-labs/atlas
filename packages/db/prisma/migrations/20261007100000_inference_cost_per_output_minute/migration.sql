@@ -2,13 +2,22 @@ INSERT INTO "question" (
   "id", "number", "name", "description", "connector", "sourceId",
   "sourceExternalId", "sourceDashboardExternalId", "databaseExternalId",
   "status", "createdAt", "updatedAt"
-) VALUES (
-  'atlas-economics-question-cost-per-minute', 5008,
+)
+SELECT
+  'atlas-economics-question-cost-per-minute', COALESCE(
+    (
+      SELECT MIN(candidate)
+      FROM generate_series(5008, 9999) AS candidates(candidate)
+      WHERE NOT EXISTS (
+        SELECT 1 FROM "question" WHERE "question"."number" = candidate
+      )
+    ),
+    (SELECT COALESCE(MAX("number"), 5007) + 1 FROM "question")
+  ),
   'Cost per completed output minute by model',
   'Aggregate mapped Modal cost divided by completed, non-deleted output minutes for each model. Periods without a matching Modal export use the available per-model cost-per-minute rate and are marked as estimates.',
   'ATLAS', 'atlas-economics-source', 'economics:cost-per-minute',
-  'atlas:economics:overview', '34', 'ACTIVE', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
-);
+  'atlas:economics:overview', '34', 'ACTIVE', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP;
 
 INSERT INTO "questionVersion" (
   "id", "questionId", "version", "queryLanguage", "queryText", "display",

@@ -52,7 +52,7 @@ export const ECONOMICS_OUTPUT_MINUTES_QUERY = `select
   sum(g.output_media_length) / 60.0 as output_minutes
 from public.generations g
 where g.finished_at >= date_trunc('month', now() at time zone 'UTC') - interval '6 months'
-  and g.finished_at < now()
+  and g.finished_at < date_trunc('day', now() at time zone 'UTC')
   and g.deleted_at is null
   and g.status::text = 'COMPLETED'
   and g.output_media_length > 0
@@ -846,6 +846,16 @@ export function buildMonthlyEconomics(
 
 function normalizeModel(model: string): string {
 	const value = model.trim().toLowerCase();
+	const aliases: Array<[string, string]> = [
+		["sync2", "sync-2"],
+		["sync-2.0", "sync-2"],
+		["sync2-pro", "sync-2-pro"],
+		["sync-2.0-pro", "sync-2-pro"],
+		["sync3", "sync-3"],
+	];
+	for (const [alias, target] of aliases) {
+		if (value === alias) return target;
+	}
 	const prefixes: Array<[string, string]> = [
 		["sync-v2.5-v0", "sync-2-pro"],
 		["sync-v2.5-v0-pw", "sync-2-pro"],

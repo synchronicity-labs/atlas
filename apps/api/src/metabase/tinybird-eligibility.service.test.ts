@@ -3,9 +3,13 @@ import {
 	buildTinybirdEligibility,
 	compactEligibilityQuery,
 	type EligibilityRow,
+	excludePaidPilotIdentities,
 	governProductPostgresQuery,
 	governTinybirdQuery,
 	hasSubscribedPopulation,
+	pilotOrganizationQuery,
+	TinybirdEligibilityService,
+	usesProductGenerationUsage,
 } from "./tinybird-eligibility.service";
 
 const row = (input: Partial<EligibilityRow>): EligibilityRow => ({
@@ -110,9 +114,102 @@ where "organizationPlanType" in ('hobbyist', 'creator', 'growth', 'scale')`,
 		expect(governed.eligibility.complete).toBe(true);
 		expect(governed.eligibility.limitation).toBeUndefined();
 	});
+
+	it("keeps integration usage outside the pilot exclusion scope", () => {
+		expect(
+			usesProductGenerationUsage(
+				"166",
+				"select * from sync_prod.sync_usage_integration_tts",
+			),
+		).toBe(false);
+		expect(
+			usesProductGenerationUsage("166", "select * from sync_prod.sync_usage3"),
+		).toBe(true);
+		const snapshot = buildTinybirdEligibility(
+			[],
+			new Date("2026-08-19T00:00:00.000Z"),
+			0,
+			"SUBSCRIBED_ORGANIZATIONS",
+			"PRODUCT_ACTIVITY",
+			[],
+			[],
+			true,
+			[
+				{
+					organizationId: "pilot-org",
+					customerId: "pilot-customer",
+					startedAt: new Date("2026-08-01T00:00:00.000Z"),
+					endedAt: null,
+				},
+			],
+		);
+		const governed = governTinybirdQuery(
+			"select * from sync_prod.sync_usage_integration_tts",
+			"166",
+			snapshot,
+		);
+
+		expect(governed.applied).toBe(true);
+		expect(governed.queryText).not.toContain("pilot-org");
+	});
+
+	it("applies pilot windows to the usage period", () => {
+		const snapshot = buildTinybirdEligibility(
+			[],
+			new Date("2026-08-19T00:00:00.000Z"),
+			0,
+			"SUBSCRIBED_ORGANIZATIONS",
+			"MONEY",
+			[],
+			[],
+			true,
+			[
+				{
+					organizationId: "pilot-org",
+					customerId: "pilot-customer",
+					startedAt: new Date("2026-08-01T00:00:00.000Z"),
+					endedAt: new Date("2026-09-01T00:00:00.000Z"),
+				},
+			],
+		);
+		const governed = governTinybirdQuery(
+			"select * from sync_prod.sync_usage3",
+			"166",
+			snapshot,
+		);
+
+		expect(governed.applied).toBe(true);
+		expect(governed.queryText).toContain('"generationEndedAt"');
+		expect(governed.queryText).toContain("2026-08-01T00:00:00.000Z");
+		expect(governed.queryText).toContain("2026-09-01T00:00:00.000Z");
+	});
 });
 
 describe("product activity eligibility", () => {
+	it("keeps marketing complete and includes pilots when paid usage is blocked", async () => {
+		const service = new TinybirdEligibilityService({} as never);
+		Object.assign(service, {
+			baseRows: async () => ({
+				rows: [row({ email: "operator@sync.so" })],
+				capturedAt: new Date("2026-10-07T00:00:00.000Z"),
+				sourceRows: 1,
+				pilotOrganizationIds: ["pilot-org"],
+				pilotCustomerIds: ["pilot-customer"],
+				pilotSourceRows: 2,
+				pilotReturnedRows: 1,
+				pilotSourceComplete: false,
+			}),
+		});
+
+		const marketing = await service.currentForMarketing();
+		expect(marketing.complete).toBe(true);
+		expect(marketing.excludedOrganizationIds).toEqual(["org-1"]);
+		expect(marketing.excludedCustomerIds).toEqual(["customer-1"]);
+		const revenue = await service.currentForRevenue();
+		expect(revenue.complete).toBe(false);
+		expect(revenue.excludedOrganizationIds).toContain("pilot-org");
+	});
+
 	it("requests only bounded internal exclusion rows", () => {
 		const query = compactEligibilityQuery().toLowerCase();
 
@@ -121,6 +218,57 @@ describe("product activity eligibility", () => {
 		expect(query).not.toContain("u.banned");
 		expect(query).not.toContain("first_subscribed_at");
 		expect(query).toContain("limit 2000");
+	});
+
+	it("uses explicit Product pilot markers and plan values with period bounds", () => {
+		const query = pilotOrganizationQuery().toLowerCase();
+
+		expect(query).toContain("f.pilot_type");
+		expect(query).toContain("o.plan");
+		expect(query).toContain("f.enterprise_pilot_accepted_at");
+		expect(query).toContain("f.enterprise_pilot_expires_at");
+		expect(query).toContain("pilot_started_at");
+		expect(query).toContain("pilot_ended_at");
+		expect(query).toContain("select distinct");
+		expect(query).not.toContain("enterprise_pilot_accepted_at is not null");
+	});
+
+	it("keeps verified paid organizations and customers out of pilot exclusions", () => {
+		expect(
+			excludePaidPilotIdentities(
+				[
+					{ organization_id: "org-paid", customer_id: "cus-paid" },
+					{ organization_id: "org-unpaid", customer_id: "cus-unpaid" },
+				],
+				new Set(["org-paid"]),
+				new Set(["cus-paid"]),
+			),
+		).toEqual([{ organization_id: "org-unpaid", customer_id: "cus-unpaid" }]);
+	});
+
+	it("adds pilot organizations and customers to every exclusion policy", () => {
+		const snapshot = buildTinybirdEligibility(
+			[
+				row({
+					userId: "internal",
+					email: "operator@sync.so",
+					organizationId: "org-1",
+					customerId: "customer-1",
+				}),
+			],
+			new Date("2026-08-19T00:00:00.000Z"),
+			1,
+			"SUBSCRIBED_ORGANIZATIONS",
+			"MONEY",
+			["pilot-org"],
+			["pilot-customer"],
+		);
+
+		expect(snapshot.excludedOrganizationIds).toEqual(["org-1", "pilot-org"]);
+		expect(snapshot.excludedCustomerIds).toEqual([
+			"customer-1",
+			"pilot-customer",
+		]);
 	});
 
 	it("recognizes quoted paid-plan predicates", () => {
@@ -176,6 +324,22 @@ where "organizationPlanType" in ('hobbyist', 'creator')`),
 			"atlas_population_organization.first_subscribed_at",
 		);
 		expect(governed.queryText).toContain("atlas_population_user.banned");
+	});
+
+	it("filters pilot organizations from Product Postgres populations", () => {
+		const governed = governProductPostgresQuery(
+			"select count(*) from public.generations g join public.organizations o on o.id = g.organization_id",
+			"PRODUCT_ACTIVITY",
+			["pilot-org"],
+		);
+
+		expect(governed.applied).toBe(true);
+		expect(governed.queryText).toContain(
+			"atlas_population_generation.organization_id not in ('pilot-org')",
+		);
+		expect(governed.queryText).toContain(
+			"atlas_population_organization.id not in ('pilot-org')",
+		);
 	});
 
 	it.each(["generations", "generation_feedback", "generation_score"])(

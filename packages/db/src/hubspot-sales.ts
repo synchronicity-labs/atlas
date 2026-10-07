@@ -5,6 +5,7 @@ import {
 } from "./generated/prisma/enums";
 
 export type HubspotSalesQuery = {
+	source?: "hubspot" | "product";
 	report:
 		| "open-pipeline"
 		| "weighted-pipeline"
@@ -162,10 +163,14 @@ function pipelineFilter(deal: DealRecord, query: HubspotSalesQuery): boolean {
 
 export function parseHubspotSalesQuery(value: unknown): HubspotSalesQuery {
 	const input = record(value);
-	if (input.source !== "hubspot") {
-		throw new Error("Sales questions require the HubSpot source.");
-	}
 	const report = stringValue(input.report) as HubspotSalesQuery["report"];
+	const source = stringValue(input.source) as HubspotSalesQuery["source"];
+	if (
+		source !== "hubspot" &&
+		!(source === "product" && report === "active-pilot-adoption")
+	) {
+		throw new Error("Sales questions require an approved source.");
+	}
 	const supported = new Set<HubspotSalesQuery["report"]>([
 		"open-pipeline",
 		"weighted-pipeline",
@@ -199,7 +204,7 @@ export function parseHubspotSalesQuery(value: unknown): HubspotSalesQuery {
 	const pipelines = Array.isArray(input.pipelines)
 		? input.pipelines.map(stringValue).filter(Boolean)
 		: [];
-	return { report, months, pipelines };
+	return { source, report, months, pipelines };
 }
 
 function parsePipeline(
@@ -296,8 +301,11 @@ type PilotSummaryPipeline = {
 export type ActivePilotRegistryEntry = {
 	account: string;
 	domain: string | null;
+	organizationId?: string | null;
+	customerId?: string | null;
 	owner: string;
 	pilotStartedAt: Date | null;
+	pilotEndedAt?: Date | null;
 };
 
 export type ActivePilotRegistry = {

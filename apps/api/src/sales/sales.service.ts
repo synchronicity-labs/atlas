@@ -1,7 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { type Db, type Prisma, SyncMode, SyncRunStatus } from "@crm/db";
 import {
-	activePilotRegistry,
 	executeHubspotSalesQuery,
 	parseHubspotSalesQuery,
 } from "@crm/db/hubspot-sales";
@@ -17,6 +16,9 @@ import {
 import {
 	buildPilotAdoptionQuery,
 	emptyPilotAdoptionResult,
+	excludePaidPilotRegistryEntries,
+	parseProductPilotRegistry,
+	productPilotRegistryQuery,
 } from "./pilot-adoption";
 import { pilotAdoptionVerificationChecks } from "./pilot-adoption-verification";
 import { pilotSummaryVerificationChecks } from "./pilot-verification";
@@ -52,7 +54,17 @@ export class SalesService {
 		}
 		const parsedQuery = parseHubspotSalesQuery(query);
 		if (parsedQuery.report === "active-pilot-adoption") {
-			const registry = await activePilotRegistry(this.db);
+			const config = metabaseConfig();
+			if (!config) throw new Error("Metabase is not configured.");
+			const pilotRegistryResult = await new MetabaseClient(config).preview({
+				language: "SQL",
+				queryText: productPilotRegistryQuery(),
+				databaseExternalId: "34",
+			});
+			const registry = await excludePaidPilotRegistryEntries(
+				this.db,
+				parseProductPilotRegistry(pilotRegistryResult),
+			);
 			const adoptionQuery = buildPilotAdoptionQuery(registry);
 			let result = emptyPilotAdoptionResult();
 			let eligibility = {
@@ -70,8 +82,6 @@ export class SalesService {
 				enforcement: "POSTGRES_LIVE_JOIN" as const,
 			};
 			if (adoptionQuery) {
-				const config = metabaseConfig();
-				if (!config) throw new Error("Metabase is not configured.");
 				const raw = await new MetabaseClient(config).preview({
 					language: "SQL",
 					queryText: adoptionQuery,
@@ -141,7 +151,7 @@ export class SalesService {
 				verificationChecks: pilotAdoptionVerificationChecks({
 					result,
 					query: parsedQuery,
-					queryText: adoptionQuery,
+					queryText: `${productPilotRegistryQuery()}\n${adoptionQuery}`,
 					registryCount: registry.entries.length,
 					dataThrough: registry.dataThrough,
 				}),

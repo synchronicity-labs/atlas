@@ -13,7 +13,18 @@ const client = new MetabaseClient({
 	userBatchSize: 100,
 	maxBackfillMonths: 6,
 });
-const service = new ProductEligibilityService({} as never, {} as never);
+const service = new ProductEligibilityService(
+	{} as never,
+	{} as never,
+	{
+		currentForPaidActivity: async () => ({ complete: true }),
+		govern: (queryText: string) => ({
+			queryText,
+			applied: true,
+			eligibility: { complete: true },
+		}),
+	} as never,
+);
 
 function attributionRow(index: number, count: number) {
 	return {

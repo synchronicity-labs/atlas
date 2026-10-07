@@ -17,6 +17,7 @@ import {
 	productEligibilityQuery,
 } from "./product-eligibility.contracts";
 import { ProductMetricPublisher } from "./product-metric.publisher";
+import { TinybirdEligibilityService } from "./tinybird-eligibility.service";
 
 const SOURCE_KEY = "atlas:product-eligibility";
 const MAX_ATTRIBUTION_ROWS = 1_000_000;
@@ -168,6 +169,7 @@ export class ProductEligibilityService {
 	constructor(
 		@InjectDatabase() private readonly db: Db,
 		private readonly metricPublisher: ProductMetricPublisher,
+		private readonly tinybirdEligibility: TinybirdEligibilityService,
 	) {}
 
 	async preview(queryText: string): Promise<MetabaseResult> {
@@ -563,9 +565,7 @@ export class ProductEligibilityService {
 		const start = `${periods[0]}-01 00:00:00`;
 		const end = `${nextMonth(periods.at(-1) ?? periods[0] ?? "")}-01 00:00:00`;
 		const rows: AttributionRow[] = [];
-		const result = await client.exportRows({
-			databaseExternalId: "166",
-			queryText: `with attributed as (
+		const queryText = `with attributed as (
   select toStartOfMonth(generationCreatedAt) as period, organizationId,
     toDate(generationCreatedAt) as activity_date,
     ifNull(userId, '') as user_id, ifNull(apiKeyId, '') as api_key_id,
@@ -593,7 +593,19 @@ from qualified
 where monthly_generations >= 3 and active_days >= 2
   and monthly_millicents / 100000.0 >= 100
 order by period, organizationId, activity_date, user_id, api_key_id
-limit ${MAX_ATTRIBUTION_ROWS}`,
+limit ${MAX_ATTRIBUTION_ROWS}`;
+		const eligibility = await this.tinybirdEligibility.currentForPaidActivity();
+		const governed = this.tinybirdEligibility.govern(
+			queryText,
+			"166",
+			eligibility,
+		);
+		if (!governed.applied || !governed.eligibility.complete) {
+			throw new Error("Product attribution usage population is incomplete.");
+		}
+		const result = await client.exportRows({
+			databaseExternalId: "166",
+			queryText: governed.queryText,
 		});
 		const sourceRows =
 			result.length === 0 ? 0 : Number(result[0]?.source_row_count);

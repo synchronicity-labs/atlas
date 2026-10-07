@@ -62,7 +62,7 @@ describe("shared Metabase preview and refresh preparation", () => {
 		);
 		expect(prepared.input.queryText).toContain("atlas_population_generations");
 		expect(prepared.input.queryText).toEndWith("limit 2000");
-		expect(eligibility.current).toHaveBeenCalledTimes(1);
+		expect(eligibility.currentForPaidActivity).toHaveBeenCalledTimes(1);
 	});
 
 	it("applies the same filter after compiling a Product visual question", async () => {

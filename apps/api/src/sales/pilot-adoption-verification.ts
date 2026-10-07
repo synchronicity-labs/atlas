@@ -5,7 +5,6 @@ import type {
 } from "@crm/db/hubspot-sales";
 import type { PublishVerificationCheck } from "../metabase/product-metric.publisher";
 
-const PIPELINES = ["989457121", "1984250589"];
 const PRIVATE_COLUMNS = [
 	"domain",
 	"email",
@@ -54,28 +53,28 @@ export function pilotAdoptionVerificationChecks(input: {
 			"active_registry_parity",
 			rows.length === input.registryCount &&
 				rows.every((row) => row.pilot_status === "active"),
-			"Every approved active HubSpot pilot must appear exactly once in the result.",
+			"Every approved active Product pilot must appear exactly once in the result.",
 			{ registry: input.registryCount, returned: rows.length },
 		),
 		check(
-			"deal_stage_mapping",
-			JSON.stringify([...input.query.pipelines].sort()) ===
-				JSON.stringify([...PIPELINES].sort()),
-			"The question must use the approved Enterprise and Studio pilot pipelines.",
-			{ pipelines: input.query.pipelines },
+			"pilot_source_mapping",
+			(input.query.source === "hubspot" || input.query.source === "product") &&
+				normalizedSql.includes("public.organization_features") &&
+				!normalizedSql.includes("hubspot"),
+			"The pilot registry must use Product DB pilot fields as the internal override, while preserving the approved HubSpot source route.",
+			{ source: input.query.source },
 		),
 		check(
 			"account_identity_join",
 			mappings.every((value) =>
-				["domain_verified", "not_verified"].includes(value),
+				["organization_verified", "not_verified"].includes(value),
 			) &&
-				normalizedSql.includes(
-					"split_part(lower(u.email::text), '@', 2) = r.domain",
-				),
-			"Workspace identity must use exact company-domain evidence and must keep unmatched pilots visible.",
+				normalizedSql.includes("uo.organization_id = r.organization_id::uuid"),
+			"Workspace identity must use the Product organization ID and keep unmatched pilots visible.",
 			{
-				domainVerified: mappings.filter((value) => value === "domain_verified")
-					.length,
+				organizationVerified: mappings.filter(
+					(value) => value === "organization_verified",
+				).length,
 				notVerified: mappings.filter((value) => value === "not_verified")
 					.length,
 			},
@@ -104,7 +103,7 @@ export function pilotAdoptionVerificationChecks(input: {
 			input.dataThrough.getTime() > 0 &&
 				input.dataThrough.getTime() <= Date.now() &&
 				rows.every((row) => timestamp(row.data_through) === dataThrough),
-			"Every row must use the HubSpot source watermark, which is older than the live product query.",
+			"Every row must use one complete report watermark.",
 			{ dataThrough },
 		),
 	];

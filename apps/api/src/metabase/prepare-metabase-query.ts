@@ -15,6 +15,7 @@ import {
 	type GovernedTinybirdQuery,
 	hasSubscribedPopulation,
 	type TinybirdEligibilityService,
+	usesProductGenerationUsage,
 } from "./tinybird-eligibility.service";
 
 export type MetabaseQuestionContext = {
@@ -66,9 +67,14 @@ export async function prepareGovernedMetabaseQuery(
 			classifiedQueryText,
 		)
 			? await eligibility.currentForRevenue()
-			: hasSubscribedPopulation(classifiedQueryText)
+			: usesProductGenerationUsage(
+						question.databaseExternalId,
+						classifiedQueryText,
+					)
 				? await eligibility.currentForPaidActivity()
-				: await eligibility.current();
+				: hasSubscribedPopulation(classifiedQueryText)
+					? await eligibility.current()
+					: await eligibility.current();
 		governed = eligibility.govern(
 			classifiedQueryText,
 			question.databaseExternalId,

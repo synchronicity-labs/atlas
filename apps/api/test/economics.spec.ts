@@ -232,9 +232,17 @@ describe("inference economics", () => {
 			null,
 			"incomplete",
 		]);
-		expect(spendResult.rows).toEqual([
-			["2026-07-01T00:00:00.000Z", null],
-			["2026-09-01T00:00:00.000Z", 87],
-		]);
+		const currentPeriod = new Date().toISOString().slice(0, 7);
+		const [year = 0, month = 1] = currentPeriod.split("-").map(Number);
+		const expectedPeriods = Array.from({ length: 7 }, (_, index) => {
+			const period = new Date(Date.UTC(year, month - 1 - (6 - index), 1));
+			return `${period.toISOString().slice(0, 7)}-01T00:00:00.000Z`;
+		});
+		expect(spendResult.rows).toEqual(
+			expectedPeriods.map((period) => [
+				period,
+				period.startsWith("2026-09") ? 87 : null,
+			]),
+		);
 	});
 });

@@ -432,7 +432,13 @@ export class EconomicsService {
 						data: { state: SourceStatus.ERROR, lastError: errorMessage },
 					}),
 				]);
-				return { cardsProcessed, snapshotsCreated, errors };
+				return {
+					cardsProcessed,
+					snapshotsCreated,
+					errors,
+					completed: false,
+					remainingQuestions: errors.length,
+				};
 			}
 			await this.db.$transaction([
 				this.db.syncRun.update({
@@ -528,7 +534,7 @@ export class EconomicsService {
 				inputs.get("modal")?.modalRows,
 			);
 			inputs.set(warehouseSql, shared);
-			inputs.set("modal", shared);
+			if (!inputs.has("modal")) inputs.set("modal", shared);
 		}
 		return economicsResult(
 			query,
@@ -641,18 +647,13 @@ export function economicsResult(
 				column("month", "Month", "type/DateTime"),
 				column("total_modal_cost_usd", "Total Modal spend"),
 			],
-			rows: [
-				...new Set([
-					...monthly.map((row) => row.month.slice(0, 7)),
-					...modalByMonth.keys(),
-				]),
-			]
-				.sort()
-				.slice(-query.months)
-				.map((period) => [
-					`${period}-01T00:00:00.000Z`,
-					modalByMonth.get(period) ?? null,
-				]),
+			rows: calendarMonthPeriods(
+				query.months,
+				new Date().toISOString().slice(0, 7),
+			).map((period) => [
+				`${period}-01T00:00:00.000Z`,
+				modalByMonth.get(period) ?? null,
+			]),
 		};
 	}
 	if (query.report === "prod-inference-cost") {
@@ -877,6 +878,22 @@ function outputMinuteRows(
 			`${month}-01T00:00:00.000Z`,
 			outputMinutes,
 		]);
+}
+
+function calendarMonthPeriods(months: number, endPeriod: string): string[] {
+	const [year, monthNumber] = endPeriod.split("-").map(Number);
+	if (!year || !monthNumber) return [];
+	const end = new Date(Date.UTC(year, monthNumber - 1, 1));
+	return Array.from({ length: months }, (_, index) => {
+		const period = new Date(
+			Date.UTC(
+				end.getUTCFullYear(),
+				end.getUTCMonth() - (months - 1 - index),
+				1,
+			),
+		);
+		return period.toISOString().slice(0, 7);
+	});
 }
 
 export function buildMonthlyEconomics(

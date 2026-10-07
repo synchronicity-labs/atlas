@@ -103,6 +103,7 @@ export function Tooltip({
                 />
                 <span className="whitespace-nowrap text-muted-foreground">
                   {item.label}
+                  {item.status ? ` · ${item.status}` : ""}
                 </span>
                 <span className="ml-auto whitespace-nowrap pl-2 text-foreground">
                   {item.value === null

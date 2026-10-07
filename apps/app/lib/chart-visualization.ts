@@ -36,6 +36,11 @@ function configuredColumns(
 	return value.filter((item): item is string => typeof item === "string");
 }
 
+function configuredStatusColumn(visualization: unknown): string | null {
+	const value = settingsRecord(visualization)?.["graph.status"];
+	return typeof value === "string" ? value : null;
+}
+
 function unique(values: string[]): string[] {
 	return [...new Set(values)];
 }
@@ -214,6 +219,10 @@ export function buildChartData(
 	const dimensions = unique(
 		(configuredDimensions ?? []).filter((name) => columnNames.has(name)),
 	);
+	const statusColumn = configuredStatusColumn(visualization);
+	const statusIndex = statusColumn
+		? columns.findIndex((column) => column.name === statusColumn)
+		: -1;
 	const xKey = dimensions[0] ?? columns[0]?.name ?? "period";
 	const configuredMetrics = configuredColumns(visualization, "graph.metrics");
 	const metrics =
@@ -275,6 +284,10 @@ export function buildChartData(
 			if (value === null) continue;
 			const key = JSON.stringify([metric, ...groupValues]);
 			point[key] = value;
+			if (statusIndex >= 0) {
+				const status = scalar(row[statusIndex]);
+				if (status !== null) point[`__status:${key}`] = String(status);
+			}
 			if (!series.has(key)) {
 				series.set(key, {
 					key,

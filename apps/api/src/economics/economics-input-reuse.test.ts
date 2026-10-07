@@ -190,9 +190,12 @@ test("Modal-only reports skip the eligibility and warehouse inputs", async () =>
 		report: "modal-spend",
 	});
 
-	await expect(service["execute"](query)).resolves.toMatchObject({
-		rows: [["2026-09-01T00:00:00.000Z", 5]],
-	});
+	const result = await service["execute"](query);
+	expect(result.rows).toContainEqual(["2026-09-01T00:00:00.000Z", 5]);
+	expect(result.rows).toContainEqual([
+		`${new Date().toISOString().slice(0, 7)}-01T00:00:00.000Z`,
+		null,
+	]);
 	expect(currentForRevenue).not.toHaveBeenCalled();
 	expect(preview).not.toHaveBeenCalled();
 });
@@ -406,6 +409,8 @@ test("syncDashboard publishes cost per minute when eligibility is incomplete", a
 	const result = await service.syncDashboard(6);
 
 	expect(result.cardsProcessed).toBe(1);
+	expect(result.completed).toBe(false);
+	expect(result.remainingQuestions).toBe(1);
 	expect(result.errors).toEqual([
 		{ number: 5003, message: "Product eligibility export is incomplete." },
 	]);

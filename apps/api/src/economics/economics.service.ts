@@ -32,6 +32,8 @@ const MODAL_RAW_QUESTION = "economics:modal:cost-by-model-raw";
 const FRESHNESS_MS = 8 * 60 * 60 * 1000;
 const MODAL_FRESHNESS_MS = 30 * 60 * 60 * 1000;
 const MODAL_CLOCK_SKEW_MS = 5 * 60 * 1000;
+const PRODUCT_FPS = 25;
+const PRODUCT_FRAMES_PER_MINUTE = PRODUCT_FPS * 60;
 
 export const ECONOMICS_WAREHOUSE_QUERY = `with now('UTC') as end_utc
 select
@@ -49,7 +51,7 @@ order by month, model`;
 export const ECONOMICS_OUTPUT_MINUTES_QUERY = `select
   date_trunc('month', g.finished_at at time zone 'UTC') as month,
   g.model_name as model,
-  sum(g.output_media_length) / 60.0 as output_minutes
+  sum(g.output_media_length * ${PRODUCT_FPS}) as output_frames_25fps
 from public.generations g
 where g.finished_at >= date_trunc('month', now() at time zone 'UTC') - interval '6 months'
   and g.finished_at < date_trunc('day', now() at time zone 'UTC')
@@ -110,6 +112,12 @@ function json(value: unknown): Prisma.InputJsonValue {
 
 function hash(value: unknown): string {
 	return createHash("sha256").update(JSON.stringify(value)).digest("hex");
+}
+
+function toError(error: unknown): Error {
+	return error instanceof Error
+		? error
+		: new Error("Unknown economics sync error.");
 }
 
 function month(value: unknown): string {
@@ -316,61 +324,107 @@ export class EconomicsService {
 		let cardsProcessed = 0;
 		let snapshotsCreated = 0;
 		try {
-			const eligibility = await this.tinybirdEligibility.currentForRevenue();
+			let eligibility: TinybirdEligibilitySnapshot | undefined;
+			let eligibilityError: Error | undefined;
 			const inputs = new Map<string, EconomicsInputs>();
+			const errors: Array<{ number: number; message: string }> = [];
 			for (const question of questions) {
-				const version = question.versions[0];
-				if (!version) continue;
-				const result = await this.execute(
-					economicsQuery.parse(JSON.parse(version.queryText)),
-					eligibility,
-					inputs,
-				);
-				const payload = { columns: result.columns, rows: result.rows };
-				const contentHash = hash(payload);
-				const externalId =
-					question.sourceExternalId ?? `economics:question:${question.number}`;
-				const capturedAt = new Date();
-				const created = await this.db.resultSnapshot.createMany({
-					data: [
-						{
-							idempotencyKey: `${ECONOMICS_SOURCE}:${externalId}:v${version.version}:${reportingPeriod}:${contentHash}`,
-							sourceId: source.id,
-							dashboardExternalId: `atlas:${number}`,
-							questionExternalId: externalId,
-							reportingPeriod,
-							capturedAt,
-							contentHash,
-							columns: json(result.columns),
-							rows: json(result.rows),
-							rowCount: result.rows.length,
-						},
-					],
-					skipDuplicates: true,
-				});
-				await this.metricPublisher.publish({
-					question,
-					version,
-					result,
-					syncRunId: run.id,
-					capturedAt,
-					eligibility: {
-						applied: true,
-						capturedAt: eligibility.capturedAt.toISOString(),
-						contentHash: eligibility.contentHash,
-						excludedUsers: eligibility.excludedUserIds.length,
-						excludedOrganizations: eligibility.excludedOrganizationIds.length,
-						excludedCustomers: eligibility.excludedCustomerIds.length,
-						complete: eligibility.complete,
-						sourceRows: eligibility.sourceRows,
-						returnedRows: eligibility.returnedRows,
-						scope: eligibility.scope,
-					},
-				});
-				cardsProcessed += 1;
-				snapshotsCreated += created.count;
+				try {
+					const version = question.versions[0];
+					if (!version) continue;
+					const query = economicsQuery.parse(JSON.parse(version.queryText));
+					if (query.report !== "cost-per-minute") {
+						if (eligibilityError) throw eligibilityError;
+						if (!eligibility) {
+							try {
+								eligibility =
+									await this.tinybirdEligibility.currentForRevenue();
+							} catch (error) {
+								eligibilityError = toError(error);
+								throw eligibilityError;
+							}
+						}
+					}
+					const result = await this.execute(query, eligibility, inputs);
+					const payload = { columns: result.columns, rows: result.rows };
+					const contentHash = hash(payload);
+					const externalId =
+						question.sourceExternalId ??
+						`economics:question:${question.number}`;
+					const capturedAt = new Date();
+					const created = await this.db.resultSnapshot.createMany({
+						data: [
+							{
+								idempotencyKey: `${ECONOMICS_SOURCE}:${externalId}:v${version.version}:${reportingPeriod}:${contentHash}`,
+								sourceId: source.id,
+								dashboardExternalId: `atlas:${number}`,
+								questionExternalId: externalId,
+								reportingPeriod,
+								capturedAt,
+								contentHash,
+								columns: json(result.columns),
+								rows: json(result.rows),
+								rowCount: result.rows.length,
+							},
+						],
+						skipDuplicates: true,
+					});
+					await this.metricPublisher.publish({
+						question,
+						version,
+						result,
+						syncRunId: run.id,
+						capturedAt,
+						...(eligibility
+							? {
+									eligibility: {
+										applied: true,
+										capturedAt: eligibility.capturedAt.toISOString(),
+										contentHash: eligibility.contentHash,
+										excludedUsers: eligibility.excludedUserIds.length,
+										excludedOrganizations:
+											eligibility.excludedOrganizationIds.length,
+										excludedCustomers: eligibility.excludedCustomerIds.length,
+										complete: eligibility.complete,
+										sourceRows: eligibility.sourceRows,
+										returnedRows: eligibility.returnedRows,
+										scope: eligibility.scope,
+									},
+								}
+							: {}),
+					});
+					cardsProcessed += 1;
+					snapshotsCreated += created.count;
+				} catch (error) {
+					errors.push({
+						number: question.number,
+						message: toError(error).message,
+					});
+				}
 			}
 			const finishedAt = new Date();
+			if (errors.length > 0) {
+				const errorMessage = errors
+					.map((error) => `Question ${error.number}: ${error.message}`)
+					.join("; ");
+				await this.db.$transaction([
+					this.db.syncRun.update({
+						where: { id: run.id },
+						data: {
+							status: SyncRunStatus.FAILED,
+							finishedAt,
+							error: errorMessage,
+							cardsProcessed,
+							snapshotsCreated,
+						},
+					}),
+					this.db.dataSource.update({
+						where: { id: source.id },
+						data: { state: SourceStatus.ERROR, lastError: errorMessage },
+					}),
+				]);
+				return { cardsProcessed, snapshotsCreated, errors };
+			}
 			await this.db.$transaction([
 				this.db.syncRun.update({
 					where: { id: run.id },
@@ -379,10 +433,14 @@ export class EconomicsService {
 						finishedAt,
 						cardsProcessed,
 						snapshotsCreated,
-						checkpoint: json({
-							eligibilityCapturedAt: eligibility.capturedAt.toISOString(),
-							eligibilityHash: eligibility.contentHash,
-						}),
+						...(eligibility
+							? {
+									checkpoint: json({
+										eligibilityCapturedAt: eligibility.capturedAt.toISOString(),
+										eligibilityHash: eligibility.contentHash,
+									}),
+								}
+							: {}),
 					},
 				}),
 				this.db.dataSource.update({
@@ -426,14 +484,32 @@ export class EconomicsService {
 		eligibility?: TinybirdEligibilitySnapshot,
 		inputs = new Map<string, EconomicsInputs>(),
 	): Promise<Result> {
+		if (query.report === "cost-per-minute") {
+			let shared = [...inputs.values()].find(
+				(value) => value.modalRows.length > 0,
+			);
+			if (!shared) {
+				shared = {
+					warehouseRows: [],
+					modalRows: await this.loadModalRows(),
+				};
+				inputs.set("cost-per-minute", shared);
+			}
+			if (!shared.outputMinutesRows) {
+				shared.outputMinutesRows = await this.loadOutputMinutes();
+			}
+			return economicsResult(
+				query,
+				shared.warehouseRows,
+				shared.modalRows,
+				shared.outputMinutesRows,
+			);
+		}
 		const warehouseSql = query.warehouseSql ?? ECONOMICS_WAREHOUSE_QUERY;
 		let shared = inputs.get(warehouseSql);
 		if (!shared) {
 			shared = await this.loadInputs(warehouseSql, eligibility);
 			inputs.set(warehouseSql, shared);
-		}
-		if (query.report === "cost-per-minute" && !shared.outputMinutesRows) {
-			shared.outputMinutesRows = await this.loadOutputMinutes();
 		}
 		return economicsResult(
 			query,
@@ -447,6 +523,33 @@ export class EconomicsService {
 		warehouseSql: string,
 		eligibility?: TinybirdEligibilitySnapshot,
 	): Promise<EconomicsInputs> {
+		const modalRows = await this.loadModalRows();
+		const config = metabaseConfig();
+		if (!config) throw new Error("Metabase is not configured.");
+		assertReadOnlyQuery("SQL", warehouseSql);
+		const currentEligibility =
+			eligibility ?? (await this.tinybirdEligibility.current());
+		const governed = this.tinybirdEligibility.govern(
+			warehouseSql,
+			"166",
+			currentEligibility,
+		);
+		const warehouse = await new MetabaseClient(config).preview({
+			language: "SQL",
+			queryText: governed.queryText,
+			databaseExternalId: "166",
+		});
+		const warehouseRows = warehouse.rows.map((row) => ({
+			month: month(row[0]),
+			model: normalizeModel(String(row[1] ?? "unknown")),
+			freeFrames: Number(row[2] ?? 0),
+			paidFrames: Number(row[3] ?? 0),
+			usageRevenueUsd: Number(row[4] ?? 0),
+		}));
+		return { warehouseRows, modalRows };
+	}
+
+	private async loadModalRows(): Promise<ModalRow[]> {
 		const cursor = await this.db.syncCursor.findFirst({
 			where: {
 				source: { key: MODAL_SOURCE },
@@ -472,34 +575,12 @@ export class EconomicsService {
 				"Modal billing aggregate is stale and must be re-imported.",
 			);
 		}
-		const config = metabaseConfig();
-		if (!config) throw new Error("Metabase is not configured.");
-		assertReadOnlyQuery("SQL", warehouseSql);
-		const currentEligibility =
-			eligibility ?? (await this.tinybirdEligibility.current());
-		const governed = this.tinybirdEligibility.govern(
-			warehouseSql,
-			"166",
-			currentEligibility,
-		);
-		const warehouse = await new MetabaseClient(config).preview({
-			language: "SQL",
-			queryText: governed.queryText,
-			databaseExternalId: "166",
-		});
-		const warehouseRows = warehouse.rows.map((row) => ({
-			month: month(row[0]),
-			model: normalizeModel(String(row[1] ?? "unknown")),
-			freeFrames: Number(row[2] ?? 0),
-			paidFrames: Number(row[3] ?? 0),
-			usageRevenueUsd: Number(row[4] ?? 0),
-		}));
 		const modalRows = (modal.rows as unknown[][]).map((row) => ({
 			month: month(row[0]),
 			model: normalizeModel(String(row[1] ?? "other")),
 			costUsd: Number(row[2] ?? 0),
 		}));
-		return { warehouseRows, modalRows };
+		return modalRows;
 	}
 
 	private async loadOutputMinutes(): Promise<OutputMinutesRow[]> {
@@ -513,7 +594,7 @@ export class EconomicsService {
 		return outputMinutes.rows.map((row) => ({
 			month: month(row[0]),
 			model: normalizeModel(String(row[1] ?? "unknown")),
-			outputMinutes: Number(row[2] ?? 0),
+			outputMinutes: Number(row[2] ?? 0) / PRODUCT_FRAMES_PER_MINUTE,
 		}));
 	}
 }
@@ -599,8 +680,14 @@ export function economicsResult(
 				column("month", "Month", "type/DateTime"),
 				column("model", "Model", "type/Text"),
 				column("modal_cost_usd", "Modal cost"),
-				column("output_minutes", "Completed output minutes"),
-				column("cost_per_output_minute_usd", "Cost per output minute"),
+				column(
+					"output_minutes",
+					"Completed output minutes (25 fps equivalent)",
+				),
+				column(
+					"cost_per_output_minute_usd",
+					"Cost per output minute (25 fps equivalent)",
+				),
 				column("cost_status", "Cost coverage", "type/Text"),
 			],
 			rows: costPerMinuteRows(modalRows, outputMinutesRows, query.months),

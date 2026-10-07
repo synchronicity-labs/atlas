@@ -998,7 +998,6 @@ model DataSource {
   questions                             Question[]
   productUsers                          ProductUser[]
   productOrganizations                  ProductOrganization[]
-  productOrganizationStatusEvents       ProductOrganizationStatusEvent[]
   productUserSnapshots                  ProductUserSnapshot[]
   stripeCustomerBillingCountries        StripeCustomerBillingCountry[]
   stripeCustomerBillingCountrySnapshots StripeCustomerBillingCountrySnapshot[]
@@ -1678,7 +1677,6 @@ model ProductOrganization {
   companyLinks          ProductOrganizationCompanyLink[]
   contractCustomerLinks ContractCustomerProductOrganization[]
   contractFindings      ContractFinding[]
-  statusEvents          ProductOrganizationStatusEvent[]
 
   @@unique([sourceId, externalId])
   @@index([name])
@@ -1689,33 +1687,6 @@ model ProductOrganization {
   @@index([domain(ops: raw("gin_trgm_ops"))], type: Gin, map: "productOrganization_domain_trgm_idx")
   @@index([stripeCustomerId(ops: raw("gin_trgm_ops"))], type: Gin, map: "productOrganization_stripeCustomerId_trgm_idx")
   @@map("productOrganization")
-  @@schema("public")
-}
-
-model ProductOrganizationStatusEvent {
-  id                    String             @id @default(cuid())
-  idempotencyKey        String             @unique
-  sourceId              String
-  source                DataSource         @relation(fields: [sourceId], references: [id], onDelete: Cascade)
-  productOrganizationId String
-  productOrganization   ProductOrganization @relation(fields: [productOrganizationId], references: [id], onDelete: Cascade)
-  observedAt            DateTime
-  effectiveAt           DateTime
-  plan                  String?
-  pilotType             String?
-  pilotAcceptedAt       DateTime?
-  pilotExpiresAt        DateTime?
-  paymentStatus         Json?
-  stripeSubscriptionId  String?
-  stripeCustomerId      String?
-  contentHash           String
-  evidence              Json
-  createdAt             DateTime           @default(now())
-
-  @@index([productOrganizationId, effectiveAt])
-  @@index([sourceId, observedAt])
-  @@index([stripeCustomerId, effectiveAt])
-  @@map("productOrganizationStatusEvent")
   @@schema("public")
 }
 

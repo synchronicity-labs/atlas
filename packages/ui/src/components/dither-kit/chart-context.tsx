@@ -385,11 +385,13 @@ export function useChartController({
     itemsAt: (i) =>
       configKeys.map((name) => {
         const raw = data[i]?.[name]
+        const status = data[i]?.[`__status:${name}`]
         return {
           name,
           label: config[name]?.label ?? name,
           value:
             typeof raw === "number" && Number.isFinite(raw) ? raw : null,
+          status: typeof status === "string" ? status : undefined,
           seed: seedOf(name),
           dimmed: (() => {
             const emphasis = selectedDataKey ?? focusDataKey

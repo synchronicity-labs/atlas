@@ -61,7 +61,7 @@ test("one refresh shares identical inputs without mixing custom SQL or retaining
 			report,
 		});
 		const outputMinutesRows =
-			report === "cost-per-minute"
+			report === "cost-per-minute" || report === "output-minutes"
 				? [{ month: "2026-09", model: "sync-3", outputMinutes: 10 }]
 				: [];
 		expect(await service["execute"](query, {} as never, inputs)).toEqual(
@@ -127,6 +127,77 @@ test("cost per minute reports matched and estimated model coverage", () => {
 		["2026-08-01T00:00:00.000Z", "sync-3", 1, 2, 0.5, "matched"],
 		["2026-09-01T00:00:00.000Z", "sync-3", null, 2, 0.5, "estimated"],
 	]);
+});
+
+test("output minutes reports monthly totals at the product frame rate", () => {
+	const query = economicsQuery.parse({
+		source: "atlas_economics",
+		definitionVersion: "inference-economics-v2",
+		report: "output-minutes",
+		months: 2,
+	});
+
+	expect(
+		economicsResult(
+			query,
+			[],
+			[],
+			[
+				{ month: "2026-08", model: "sync-3", outputMinutes: 2 },
+				{ month: "2026-08", model: "sync-3-pro", outputMinutes: 1 },
+				{ month: "2026-09", model: "sync-3", outputMinutes: 3 },
+			],
+		),
+	).toEqual({
+		columns: [
+			{ name: "month", displayName: "Month", baseType: "type/DateTime" },
+			{
+				name: "output_minutes",
+				displayName: "Completed output minutes (25 fps equivalent)",
+				baseType: "type/Decimal",
+			},
+		],
+		rows: [
+			["2026-08-01T00:00:00.000Z", 3],
+			["2026-09-01T00:00:00.000Z", 3],
+		],
+	});
+});
+
+test("Modal-only reports skip the eligibility and warehouse inputs", async () => {
+	process.env.METABASE_BASE_URL = "https://metabase.example.test";
+	process.env.METABASE_API_KEY = "test-only";
+	const preview = spyOn(MetabaseClient.prototype, "preview");
+	const currentForRevenue = mock(async () => {
+		throw new Error("Product eligibility export is incomplete.");
+	});
+	const service = new EconomicsService(
+		{
+			syncCursor: { findFirst: mock(async () => null) },
+			resultSnapshot: {
+				findFirst: mock(async () => ({
+					capturedAt: new Date(),
+					rows: [["2026-09", "sync-3", 5]],
+				})),
+			},
+		} as never,
+		{ currentForRevenue } as never,
+		{} as never,
+	);
+	const query = economicsQuery.parse({
+		source: "atlas_economics",
+		definitionVersion: "inference-economics-v1",
+		report: "modal-spend",
+	});
+
+	const result = await service["execute"](query);
+	expect(result.rows).toContainEqual(["2026-09-01T00:00:00.000Z", 5]);
+	expect(result.rows).toContainEqual([
+		`${new Date().toISOString().slice(0, 7)}-01T00:00:00.000Z`,
+		null,
+	]);
+	expect(currentForRevenue).not.toHaveBeenCalled();
+	expect(preview).not.toHaveBeenCalled();
 });
 
 test("cost per minute keeps monthly Modal costs available across Q2 and Q3", () => {
@@ -338,6 +409,8 @@ test("syncDashboard publishes cost per minute when eligibility is incomplete", a
 	const result = await service.syncDashboard(6);
 
 	expect(result.cardsProcessed).toBe(1);
+	expect(result.completed).toBe(false);
+	expect(result.remainingQuestions).toBe(1);
 	expect(result.errors).toEqual([
 		{ number: 5003, message: "Product eligibility export is incomplete." },
 	]);

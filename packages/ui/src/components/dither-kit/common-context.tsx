@@ -8,6 +8,7 @@ export type TooltipItem = {
   name: string
   label: string
   value: number | null
+  status?: string
   seed: Seed
   dimmed: boolean
 }

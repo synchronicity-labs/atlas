@@ -89,6 +89,39 @@ describe("saved chart visualization settings", () => {
 		]);
 	});
 
+	it("keeps configured per-point status alongside pivoted cost bars", () => {
+		const result = buildChartData(
+			[
+				{ name: "month" },
+				{ name: "model" },
+				{ name: "cost_per_output_minute_usd" },
+				{ name: "cost_status" },
+			],
+			[
+				["2026-08-01T00:00:00.000Z", "sync-3", 0.5, "estimated"],
+				["2026-09-01T00:00:00.000Z", "sync-3", 0.4, "matched"],
+			],
+			{
+				"graph.dimensions": ["month", "model"],
+				"graph.metrics": ["cost_per_output_minute_usd"],
+				"graph.status": "cost_status",
+			},
+		);
+
+		expect(result.data).toEqual([
+			{
+				month: "2026-08-01T00:00:00.000Z",
+				'["cost_per_output_minute_usd","sync-3"]': 0.5,
+				'__status:["cost_per_output_minute_usd","sync-3"]': "estimated",
+			},
+			{
+				month: "2026-09-01T00:00:00.000Z",
+				'["cost_per_output_minute_usd","sync-3"]': 0.4,
+				'__status:["cost_per_output_minute_usd","sync-3"]': "matched",
+			},
+		]);
+	});
+
 	it("reads saved titles, suffixes, precision, and explicit axes", () => {
 		const visualization = {
 			column_settings: {

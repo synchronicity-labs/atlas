@@ -15,7 +15,7 @@ function textLiteral(value: string): string {
 	return `'${value.replaceAll("'", "''").replaceAll("\0", "")}'`;
 }
 
-function timestampLiteral(value: Date | null): string {
+function timestampLiteral(value: Date | null | undefined): string {
 	return value ? `${textLiteral(value.toISOString())}::timestamptz` : "null";
 }
 
@@ -25,14 +25,14 @@ export function productPilotRegistryQuery(): string {
   o.stripe_customer_id::text as customer_id,
   nullif(trim(o.name), '') as account,
   max(f.enterprise_pilot_accepted_at) as pilot_started_at,
+  max(f.enterprise_pilot_expires_at) as pilot_ended_at,
   current_timestamp as data_through,
   count(*) over()::bigint as source_row_count
 from public.organizations o
 join public.organization_features f on f.organization_id = o.id
 where (
   nullif(trim(coalesce(f.pilot_type, '')), '') is not null
-  or f.enterprise_pilot_accepted_at is not null
-  or f.enterprise_pilot_expires_at is not null
+  or lower(trim(coalesce(o.plan, ''))) = 'pilot'
 )
   and (
     f.enterprise_pilot_accepted_at is null
@@ -55,6 +55,7 @@ export function parseProductPilotRegistry(
 		"customer_id",
 		"account",
 		"pilot_started_at",
+		"pilot_ended_at",
 		"data_through",
 		"source_row_count",
 	]);
@@ -111,6 +112,12 @@ export function parseProductPilotRegistry(
 				owner: "",
 				pilotStartedAt:
 					started && !Number.isNaN(started.getTime()) ? started : null,
+				pilotEndedAt: (() => {
+					const ended = row.pilot_ended_at
+						? new Date(String(row.pilot_ended_at))
+						: null;
+					return ended && !Number.isNaN(ended.getTime()) ? ended : null;
+				})(),
 			};
 		}),
 	};
@@ -191,11 +198,11 @@ export function buildPilotAdoptionQuery(registry: ActivePilotRegistry): string {
 			(entry, index) =>
 				`(${index + 1}, ${textLiteral(entry.account)}, ${
 					entry.domain ? textLiteral(entry.domain) : "null"
-				}, ${entry.organizationId ? textLiteral(entry.organizationId) : "null"}, ${textLiteral(entry.owner)}, ${timestampLiteral(entry.pilotStartedAt)})`,
+				}, ${entry.organizationId ? textLiteral(entry.organizationId) : "null"}, ${textLiteral(entry.owner)}, ${timestampLiteral(entry.pilotStartedAt)}, ${timestampLiteral(entry.pilotEndedAt)})`,
 		)
 		.join(",\n    ");
 	const dataThrough = timestampLiteral(registry.dataThrough);
-	return `with registry (ordinal, account, domain, organization_id, owner, pilot_started_at) as (
+	return `with registry (ordinal, account, domain, organization_id, owner, pilot_started_at, pilot_ended_at) as (
   values
     ${values}
 ),
@@ -323,7 +330,7 @@ select
   r.account,
   'active'::text as pilot_status,
   r.pilot_started_at as pilot_start,
-  null::timestamptz as pilot_end,
+  r.pilot_ended_at as pilot_end,
   r.owner,
   case
     when coalesce(ws.matched_workspaces, 0) > 0 and r.organization_id is not null then 'organization_verified'

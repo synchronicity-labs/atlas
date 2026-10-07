@@ -33,29 +33,24 @@ export function pilotOrganizationQuery(): string {
 	return `with active_pilots as (
   select distinct
     o.id::text as organization_id,
-    o.stripe_customer_id::text as customer_id
+    o.stripe_customer_id::text as customer_id,
+    f.enterprise_pilot_accepted_at as pilot_started_at,
+    f.enterprise_pilot_expires_at as pilot_ended_at
   from public.organizations o
   join public.organization_features f on f.organization_id = o.id
   where (
     nullif(trim(coalesce(f.pilot_type, '')), '') is not null
-    or f.enterprise_pilot_accepted_at is not null
-    or f.enterprise_pilot_expires_at is not null
+    or lower(trim(coalesce(o.plan, ''))) = 'pilot'
   )
-    and (
-      f.enterprise_pilot_accepted_at is null
-      or f.enterprise_pilot_accepted_at <= now()
-    )
-    and (
-      f.enterprise_pilot_expires_at is null
-      or f.enterprise_pilot_expires_at > now()
-    )
 )
 select
   organization_id,
   customer_id,
+  pilot_started_at,
+  pilot_ended_at,
   count(*) over()::bigint as source_row_count
 from active_pilots
-order by organization_id`;
+order by organization_id, pilot_started_at`;
 }
 
 export function excludePaidPilotIdentities<
@@ -85,6 +80,11 @@ const USER_TABLES = [
 	"sync_prod.sync_usage_integration_dubbing",
 ] as const;
 
+const PRODUCT_GENERATION_TABLES = new Set<string>([
+	"sync_prod.sync_usage3",
+	"sync_prod.sync_usage_by_completion",
+]);
+
 const ORGANIZATION_TABLES = [
 	"sync_prod.sync_stripe_invoice_items",
 	"sync_prod.sync_stripe_invoices",
@@ -108,6 +108,14 @@ export type TinybirdEligibilitySnapshot = {
 	returnedRows: number;
 	scope: "ALL_IDENTITIES" | "SUBSCRIBED_ORGANIZATIONS";
 	policy: "PRODUCT_ACTIVITY" | "MONEY";
+	pilotWindows?: PilotWindow[];
+};
+
+export type PilotWindow = {
+	organizationId: string;
+	customerId: string;
+	startedAt: Date | null;
+	endedAt: Date | null;
 };
 
 export type GovernedTinybirdQuery = {
@@ -154,6 +162,7 @@ export class TinybirdEligibilityService {
 			rows: EligibilityRow[];
 			pilotOrganizationIds: string[];
 			pilotCustomerIds: string[];
+			pilotWindows: PilotWindow[];
 			pilotSourceRows: number;
 			pilotReturnedRows: number;
 			pilotSourceComplete: boolean;
@@ -161,7 +170,7 @@ export class TinybirdEligibilityService {
 	>();
 
 	async current(): Promise<TinybirdEligibilitySnapshot> {
-		return this.load("ALL_IDENTITIES", "PRODUCT_ACTIVITY");
+		return this.load("ALL_IDENTITIES", "PRODUCT_ACTIVITY", false);
 	}
 
 	async currentForPaidActivity(): Promise<TinybirdEligibilitySnapshot> {
@@ -193,6 +202,7 @@ export class TinybirdEligibilityService {
 			!excludePilots ||
 				(base.pilotSourceComplete &&
 					base.pilotSourceRows === base.pilotReturnedRows),
+			excludePilots ? base.pilotWindows : [],
 		);
 	}
 
@@ -320,6 +330,20 @@ export class TinybirdEligibilityService {
 					paidCustomerIds,
 				);
 				return {
+					pilotWindows: unpaidPilotRows.flatMap((row) => {
+						const organizationId = text(row.organization_id);
+						if (!organizationId) return [];
+						const startedAt = dateOrNull(row.pilot_started_at);
+						const endedAt = dateOrNull(row.pilot_ended_at);
+						return [
+							{
+								organizationId,
+								customerId: text(row.customer_id),
+								startedAt,
+								endedAt,
+							},
+						];
+					}),
 					pilotOrganizationIds: sortedUnique(
 						unpaidPilotRows.map((row) => text(row.organization_id)),
 					),
@@ -331,9 +355,14 @@ export class TinybirdEligibilityService {
 			pilotSourceRows,
 			pilotReturnedRows: pilotRows.length,
 			pilotSourceComplete:
-				["organization_id", "customer_id", "source_row_count"].every((name) =>
-					pilotColumns.has(name),
-				) && pilotSourceRows === pilotRows.length,
+				[
+					"organization_id",
+					"customer_id",
+					"pilot_started_at",
+					"pilot_ended_at",
+					"source_row_count",
+				].every((name) => pilotColumns.has(name)) &&
+				pilotSourceRows === pilotRows.length,
 		};
 		this.baseCache.set(cacheKey, value);
 		return value;
@@ -360,6 +389,7 @@ export function buildTinybirdEligibility(
 	pilotOrganizationIds: string[] = [],
 	pilotCustomerIds: string[] = [],
 	pilotSourceComplete = true,
+	pilotWindows: PilotWindow[] = [],
 ): TinybirdEligibilitySnapshot {
 	const subscribedByUser = new Map<string, boolean>();
 	for (const row of rows) {
@@ -381,15 +411,24 @@ export function buildTinybirdEligibility(
 			(row.membershipRole === "owner" || row.membershipRole === ""),
 	);
 	const excludedOrganizationIds = sortedUnique(
-		ownerRows.map((row) => row.organizationId).concat(pilotOrganizationIds),
+		ownerRows.map((row) => row.organizationId),
 	);
 	const excludedCustomerIds = sortedUnique(
-		ownerRows.map((row) => row.customerId).concat(pilotCustomerIds),
+		ownerRows.map((row) => row.customerId),
 	);
+	const legacyPilotOrganizationIds = pilotWindows.length
+		? []
+		: pilotOrganizationIds;
+	const legacyPilotCustomerIds = pilotWindows.length ? [] : pilotCustomerIds;
 	const payload = {
 		excludedUserIds,
-		excludedOrganizationIds,
-		excludedCustomerIds,
+		excludedOrganizationIds: sortedUnique(
+			excludedOrganizationIds.concat(legacyPilotOrganizationIds),
+		),
+		excludedCustomerIds: sortedUnique(
+			excludedCustomerIds.concat(legacyPilotCustomerIds),
+		),
+		pilotWindows,
 		complete: sourceRows === rows.length && pilotSourceComplete,
 		sourceRows,
 		returnedRows: rows.length,
@@ -422,6 +461,7 @@ export function governTinybirdQuery(
 			queryText,
 			eligibility.policy,
 			eligibility.excludedOrganizationIds,
+			eligibility.pilotWindows ?? [],
 		);
 		return {
 			queryText: governed.queryText,
@@ -443,13 +483,20 @@ export function governTinybirdQuery(
 	let governed = queryText;
 	let applied = false;
 	for (const table of USER_TABLES) {
+		const usagePredicate = PRODUCT_GENERATION_TABLES.has(table)
+			? ` and ${pilotWindowPredicate(
+					'"organizationId"',
+					usageTimeColumn(table, eligibility.policy),
+					eligibility.pilotWindows ?? [],
+				)}`
+			: "";
 		const result = wrapTable(
 			governed,
 			table,
 			userPredicate(
 				eligibility.excludedUserIds,
 				eligibility.excludedOrganizationIds,
-			),
+			) + usagePredicate,
 		);
 		governed = result.queryText;
 		applied ||= result.applied;
@@ -458,10 +505,15 @@ export function governTinybirdQuery(
 		const result = wrapTable(
 			governed,
 			table,
-			knownExclusionPredicate(
-				'"organizationId"',
-				eligibility.excludedOrganizationIds,
-			),
+			`(${knownExclusionPredicate('"organizationId"', eligibility.excludedOrganizationIds)}) and ${
+				eligibility.policy === "MONEY"
+					? pilotWindowPredicate(
+							'"organizationId"',
+							organizationTimeColumn(table),
+							eligibility.pilotWindows ?? [],
+						)
+					: "1 = 1"
+			}`,
 		);
 		governed = result.queryText;
 		applied ||= result.applied;
@@ -470,7 +522,15 @@ export function governTinybirdQuery(
 		const result = wrapTable(
 			governed,
 			table,
-			knownExclusionPredicate("customer_id", eligibility.excludedCustomerIds),
+			`(${knownExclusionPredicate("customer_id", eligibility.excludedCustomerIds)}) and ${
+				eligibility.policy === "MONEY"
+					? pilotWindowPredicate(
+							"customer_id",
+							"toDate(concat(month, '-01'))",
+							eligibility.pilotWindows ?? [],
+						)
+					: "1 = 1"
+			}`,
 		);
 		governed = result.queryText;
 		applied ||= result.applied;
@@ -494,10 +554,11 @@ export function governProductPostgresQuery(
 	queryText: string,
 	policy: TinybirdEligibilitySnapshot["policy"],
 	pilotOrganizationIds: string[] = [],
+	pilotWindows: PilotWindow[] = [],
 ): { queryText: string; applied: boolean } {
 	if (hasEmbeddedProductPopulation(queryText)) {
 		let normalized = normalizeEmbeddedProductPopulation(queryText, policy);
-		if (pilotOrganizationIds.length > 0) {
+		if (pilotOrganizationIds.length > 0 || pilotWindows.length > 0) {
 			for (const table of [
 				"generations",
 				"generation_feedback",
@@ -506,7 +567,17 @@ export function governProductPostgresQuery(
 				normalized = wrapTable(
 					normalized,
 					`public.${table}`,
-					knownExclusionPredicate('"organization_id"', pilotOrganizationIds),
+					pilotWindows.length
+						? pilotWindowPredicate(
+								'"organization_id"',
+								'"created_at"',
+								pilotWindows,
+								"postgres",
+							)
+						: knownExclusionPredicate(
+								'"organization_id"',
+								pilotOrganizationIds,
+							),
 				).queryText;
 			}
 		}
@@ -539,12 +610,20 @@ export function governProductPostgresQuery(
 		policy === "PRODUCT_ACTIVITY" ? [subscribedUserPopulation()] : [];
 	if (usesOrganizations || organizationCohortTables.length > 0) {
 		commonTableExpressions.push(
-			productOrganizationPopulation(policy, pilotOrganizationIds),
+			productOrganizationPopulation(
+				policy,
+				pilotWindows.length ? [] : pilotOrganizationIds,
+			),
 		);
 	}
 	if (usesGenerations) {
 		commonTableExpressions.push(
-			productGenerationPopulation(policy, "generations", pilotOrganizationIds),
+			productGenerationPopulation(
+				policy,
+				"generations",
+				pilotOrganizationIds,
+				pilotWindows,
+			),
 		);
 	}
 	if (usesFeedback) {
@@ -553,6 +632,7 @@ export function governProductPostgresQuery(
 				policy,
 				"generation_feedback",
 				pilotOrganizationIds,
+				pilotWindows,
 			),
 		);
 	}
@@ -562,6 +642,7 @@ export function governProductPostgresQuery(
 				policy,
 				"generation_score",
 				pilotOrganizationIds,
+				pilotWindows,
 			),
 		);
 	}
@@ -658,6 +739,7 @@ function productGenerationPopulation(
 		| "generation_feedback"
 		| "generation_score" = "generations",
 	pilotOrganizationIds: string[] = [],
+	pilotWindows: PilotWindow[] = [],
 ): string {
 	const populationRule =
 		policy === "PRODUCT_ACTIVITY"
@@ -666,10 +748,17 @@ function productGenerationPopulation(
 		or atlas_population_user.id in (select user_id from atlas_subscribed_users)
 	)`
 			: "";
-	const pilotRule = knownExclusionPredicate(
-		"atlas_population_generation.organization_id",
-		pilotOrganizationIds,
-	);
+	const pilotRule = pilotWindows.length
+		? pilotWindowPredicate(
+				"atlas_population_generation.organization_id",
+				"atlas_population_generation.created_at",
+				pilotWindows,
+				"postgres",
+			)
+		: knownExclusionPredicate(
+				"atlas_population_generation.organization_id",
+				pilotOrganizationIds,
+			);
 	return `atlas_population_${table} as not materialized (
 	select atlas_population_generation.*
   from public.${table} atlas_population_generation
@@ -906,9 +995,77 @@ export function hasSubscribedPopulation(queryText: string): boolean {
 	);
 }
 
+export function usesProductGenerationUsage(
+	databaseExternalId: string | null,
+	queryText: string,
+): boolean {
+	if (databaseExternalId === "34") {
+		return /\bpublic\.(?:generations|generation_feedback|generation_score)\b/i.test(
+			queryText,
+		);
+	}
+	if (databaseExternalId === "166") {
+		return /\bsync_prod\.(?:sync_usage3|sync_usage_by_completion)\b/i.test(
+			queryText,
+		);
+	}
+	return false;
+}
+
 function knownExclusionPredicate(column: string, values: string[]): string {
 	if (values.length === 0) return "1 = 1";
 	return `${column} not in (${values.map(sqlString).join(", ")})`;
+}
+
+function usageTimeColumn(
+	table: string,
+	policy: TinybirdEligibilitySnapshot["policy"],
+): string | null {
+	if (table === "sync_prod.sync_usage3") {
+		return policy === "MONEY" ? '"generationEndedAt"' : '"generationCreatedAt"';
+	}
+	if (table === "sync_prod.sync_usage_by_completion") {
+		return '"generationEndedAt"';
+	}
+	if (
+		table === "sync_prod.sync_usage_integration_tts" ||
+		table === "sync_prod.sync_usage_integration_dubbing"
+	)
+		return '"createdAt"';
+	return null;
+}
+
+function organizationTimeColumn(table: string): string {
+	if (table === "sync_prod.sync_stripe_subscriptions_with_plan") {
+		return '"createdAt"';
+	}
+	return '"createdAt"';
+}
+
+function pilotWindowPredicate(
+	identityColumn: string,
+	timeColumn: string | null,
+	windows: PilotWindow[],
+	dialect: "clickhouse" | "postgres" = "clickhouse",
+): string {
+	if (!timeColumn || windows.length === 0) return "1 = 1";
+	const isCustomer = identityColumn === "customer_id";
+	const timestamp = (value: Date) =>
+		dialect === "clickhouse"
+			? `toDateTime64(${sqlString(value.toISOString())}, 3, 'UTC')`
+			: `${sqlString(value.toISOString())}::timestamptz`;
+	const predicates = windows.flatMap((window) => {
+		const identity = isCustomer ? window.customerId : window.organizationId;
+		if (!identity) return [];
+		const bounds = [
+			window.startedAt
+				? `${timeColumn} >= ${timestamp(window.startedAt)}`
+				: null,
+			window.endedAt ? `${timeColumn} < ${timestamp(window.endedAt)}` : null,
+		].filter((value): value is string => Boolean(value));
+		return `not (${identityColumn} = ${sqlString(identity)}${bounds.length ? ` and ${bounds.join(" and ")}` : ""})`;
+	});
+	return predicates.length ? predicates.join(" and ") : "1 = 1";
 }
 
 function wrapTable(queryText: string, table: string, predicate: string) {
@@ -930,6 +1087,12 @@ function sqlString(value: string): string {
 
 function text(value: unknown): string {
 	return typeof value === "string" ? value.trim() : "";
+}
+
+function dateOrNull(value: unknown): Date | null {
+	if (value === null || value === undefined || value === "") return null;
+	const parsed = new Date(String(value));
+	return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
 function number(value: unknown, fallback: number): number {

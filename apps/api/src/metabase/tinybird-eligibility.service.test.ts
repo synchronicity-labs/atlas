@@ -9,6 +9,7 @@ import {
 	hasSubscribedPopulation,
 	pilotOrganizationQuery,
 	TinybirdEligibilityService,
+	usesProductGenerationUsage,
 } from "./tinybird-eligibility.service";
 
 const row = (input: Partial<EligibilityRow>): EligibilityRow => ({
@@ -113,6 +114,75 @@ where "organizationPlanType" in ('hobbyist', 'creator', 'growth', 'scale')`,
 		expect(governed.eligibility.complete).toBe(true);
 		expect(governed.eligibility.limitation).toBeUndefined();
 	});
+
+	it("keeps integration usage outside the pilot exclusion scope", () => {
+		expect(
+			usesProductGenerationUsage(
+				"166",
+				"select * from sync_prod.sync_usage_integration_tts",
+			),
+		).toBe(false);
+		expect(
+			usesProductGenerationUsage("166", "select * from sync_prod.sync_usage3"),
+		).toBe(true);
+		const snapshot = buildTinybirdEligibility(
+			[],
+			new Date("2026-08-19T00:00:00.000Z"),
+			0,
+			"SUBSCRIBED_ORGANIZATIONS",
+			"PRODUCT_ACTIVITY",
+			[],
+			[],
+			true,
+			[
+				{
+					organizationId: "pilot-org",
+					customerId: "pilot-customer",
+					startedAt: new Date("2026-08-01T00:00:00.000Z"),
+					endedAt: null,
+				},
+			],
+		);
+		const governed = governTinybirdQuery(
+			"select * from sync_prod.sync_usage_integration_tts",
+			"166",
+			snapshot,
+		);
+
+		expect(governed.applied).toBe(true);
+		expect(governed.queryText).not.toContain("pilot-org");
+	});
+
+	it("applies pilot windows to the usage period", () => {
+		const snapshot = buildTinybirdEligibility(
+			[],
+			new Date("2026-08-19T00:00:00.000Z"),
+			0,
+			"SUBSCRIBED_ORGANIZATIONS",
+			"MONEY",
+			[],
+			[],
+			true,
+			[
+				{
+					organizationId: "pilot-org",
+					customerId: "pilot-customer",
+					startedAt: new Date("2026-08-01T00:00:00.000Z"),
+					endedAt: new Date("2026-09-01T00:00:00.000Z"),
+				},
+			],
+		);
+		const governed = governTinybirdQuery(
+			"select * from sync_prod.sync_usage3",
+			"166",
+			snapshot,
+		);
+
+		expect(governed.applied).toBe(true);
+		expect(governed.queryText).toContain('"generationEndedAt"');
+		expect(governed.queryText).toContain("2026-08-01T00:00:00.000Z");
+		expect(governed.queryText).toContain("2026-09-01T00:00:00.000Z");
+	});
 });
 
 describe("product activity eligibility", () => {
@@ -150,16 +220,17 @@ describe("product activity eligibility", () => {
 		expect(query).toContain("limit 2000");
 	});
 
-	it("uses only explicit active Product pilot markers", () => {
+	it("uses explicit Product pilot markers and plan values with period bounds", () => {
 		const query = pilotOrganizationQuery().toLowerCase();
 
 		expect(query).toContain("f.pilot_type");
+		expect(query).toContain("o.plan");
 		expect(query).toContain("f.enterprise_pilot_accepted_at");
 		expect(query).toContain("f.enterprise_pilot_expires_at");
-		expect(query).toContain("<= now()");
-		expect(query).toContain("> now()");
+		expect(query).toContain("pilot_started_at");
+		expect(query).toContain("pilot_ended_at");
 		expect(query).toContain("select distinct");
-		expect(query).not.toContain("o.name");
+		expect(query).not.toContain("enterprise_pilot_accepted_at is not null");
 	});
 
 	it("keeps verified paid organizations and customers out of pilot exclusions", () => {

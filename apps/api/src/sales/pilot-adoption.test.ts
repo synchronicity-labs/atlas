@@ -37,6 +37,7 @@ describe("active pilot adoption", () => {
 
 		expect(query).toContain("public.organization_features");
 		expect(query).toContain("f.pilot_type");
+		expect(query).toContain("o.plan");
 		expect(query).toContain("f.enterprise_pilot_accepted_at");
 		expect(query).toContain("f.enterprise_pilot_expires_at");
 		expect(query).toContain("<= now()");
@@ -51,6 +52,7 @@ describe("active pilot adoption", () => {
 				{ name: "customer_id", displayName: null, baseType: null },
 				{ name: "account", displayName: null, baseType: null },
 				{ name: "pilot_started_at", displayName: null, baseType: null },
+				{ name: "pilot_ended_at", displayName: null, baseType: null },
 				{ name: "data_through", displayName: null, baseType: null },
 				{ name: "source_row_count", displayName: null, baseType: null },
 			],
@@ -59,6 +61,7 @@ describe("active pilot adoption", () => {
 					"org-1",
 					"cus-1",
 					"Enterprise Pilot",
+					null,
 					null,
 					"2026-08-26T00:00:00.000Z",
 					1,
@@ -74,6 +77,7 @@ describe("active pilot adoption", () => {
 				customerId: "cus-1",
 				owner: "",
 				pilotStartedAt: null,
+				pilotEndedAt: null,
 			},
 		]);
 		expect(registry.dataThrough).toEqual(new Date("2026-08-26T00:00:00.000Z"));
@@ -108,6 +112,7 @@ describe("active pilot adoption", () => {
 					customerId: "cus-unrelated",
 					owner: "",
 					pilotStartedAt: null,
+					pilotEndedAt: null,
 				},
 				{
 					account: "Contract customer",
@@ -211,7 +216,7 @@ describe("active pilot adoption", () => {
 		const checks = pilotAdoptionVerificationChecks({
 			result,
 			query: {
-				source: "product",
+				source: "hubspot",
 				report: "active-pilot-adoption",
 				months: 1,
 				pipelines: [],
@@ -234,7 +239,7 @@ describe("active pilot adoption", () => {
 			),
 		).text();
 
-		expect(migration).toContain('"source":"product"');
+		expect(migration).toContain('"source":"hubspot"');
 		expect(migration).toContain('"report":"active-pilot-adoption"');
 		expect(migration).toContain("atlas-cron-question-active-pilot-adoption-v3");
 	});

@@ -20,7 +20,7 @@ INSERT INTO "questionVersion" (
   'atlas-cron-question-active-pilot-adoption',
   3,
   'API',
-  '{"source":"product","report":"active-pilot-adoption","months":1,"pipelines":[]}',
+  '{"source":"hubspot","report":"active-pilot-adoption","months":1,"pipelines":["989457121","1984250589"]}',
   'table',
   '{"columns":["account","pilot_status","pilot_start","pilot_end","owner","workspace_mapping","matched_workspaces","users","active_users_24h","pending_invites","generations_24h","generations_to_date","completed_generations","failed_generations","output_hours","model_usage","surface_usage","latest_activity_at","data_through"]}'::jsonb,
   NULL,
@@ -34,4 +34,3 @@ ON CONFLICT ("questionId", "version") DO UPDATE SET
   "visualization" = EXCLUDED."visualization",
   "sourceCardExternalId" = EXCLUDED."sourceCardExternalId",
   "createdBy" = EXCLUDED."createdBy";
-

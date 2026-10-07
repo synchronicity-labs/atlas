@@ -305,6 +305,7 @@ export type ActivePilotRegistryEntry = {
 	customerId?: string | null;
 	owner: string;
 	pilotStartedAt: Date | null;
+	pilotEndedAt?: Date | null;
 };
 
 export type ActivePilotRegistry = {

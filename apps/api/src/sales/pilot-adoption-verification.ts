@@ -58,10 +58,10 @@ export function pilotAdoptionVerificationChecks(input: {
 		),
 		check(
 			"pilot_source_mapping",
-			input.query.source === "product" &&
+			(input.query.source === "hubspot" || input.query.source === "product") &&
 				normalizedSql.includes("public.organization_features") &&
 				!normalizedSql.includes("hubspot"),
-			"The pilot registry must use the Product DB pilot fields rather than HubSpot stages.",
+			"The pilot registry must use Product DB pilot fields as the internal override, while preserving the approved HubSpot source route.",
 			{ source: input.query.source },
 		),
 		check(

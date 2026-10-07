@@ -1,7 +1,11 @@
 import { afterEach, expect, mock, spyOn, test } from "bun:test";
 import { MetabaseClient } from "../metabase/metabase.client";
 import { economicsQuery } from "./economics.contracts";
-import { EconomicsService, economicsResult } from "./economics.service";
+import {
+	ECONOMICS_OUTPUT_MINUTES_QUERY,
+	EconomicsService,
+	economicsResult,
+} from "./economics.service";
 
 const previousUrl = process.env.METABASE_BASE_URL;
 const previousKey = process.env.METABASE_API_KEY;
@@ -51,11 +55,19 @@ test("one refresh shares identical inputs without mixing custom SQL or retaining
 			definitionVersion: "inference-economics-v1",
 			report,
 		});
+		const outputMinutesRows =
+			report === "cost-per-minute"
+				? [{ month: "2026-09", model: "sync-3", outputMinutes: 10 }]
+				: [];
 		expect(await service["execute"](query, {} as never, inputs)).toEqual(
-			economicsResult(query, warehouseRows, modalRows),
+			economicsResult(query, warehouseRows, modalRows, outputMinutesRows),
 		);
 	}
-	expect(preview).toHaveBeenCalledTimes(1);
+	expect(preview).toHaveBeenCalledTimes(2);
+	expect(preview.mock.calls[1]?.[0]).toMatchObject({
+		databaseExternalId: "34",
+		queryText: ECONOMICS_OUTPUT_MINUTES_QUERY,
+	});
 	expect(findFirst).toHaveBeenCalledTimes(1);
 	const query = economicsQuery.parse({
 		source: "atlas_economics",
@@ -67,7 +79,44 @@ test("one refresh shares identical inputs without mixing custom SQL or retaining
 		{} as never,
 		inputs,
 	);
-	expect(preview).toHaveBeenCalledTimes(2);
-	await service["execute"](query, {} as never);
 	expect(preview).toHaveBeenCalledTimes(3);
+	await service["execute"](query, {} as never);
+	expect(preview).toHaveBeenCalledTimes(4);
+});
+
+test("cost per minute reports matched and estimated model coverage", () => {
+	const query = economicsQuery.parse({
+		source: "atlas_economics",
+		definitionVersion: "inference-economics-v1",
+		report: "cost-per-minute",
+		months: 2,
+	});
+	const result = economicsResult(
+		query,
+		[
+			{
+				month: "2026-08",
+				model: "sync-3",
+				freeFrames: 100,
+				paidFrames: 0,
+				usageRevenueUsd: 0,
+			},
+			{
+				month: "2026-09",
+				model: "sync-3",
+				freeFrames: 100,
+				paidFrames: 0,
+				usageRevenueUsd: 0,
+			},
+		],
+		[{ month: "2026-08", model: "sync-3", costUsd: 1 }],
+		[
+			{ month: "2026-08", model: "sync-3", outputMinutes: 2 },
+			{ month: "2026-09", model: "sync-3", outputMinutes: 2 },
+		],
+	);
+	expect(result.rows).toEqual([
+		["2026-08-01T00:00:00.000Z", "sync-3", 1, 2, 0.5, "matched"],
+		["2026-09-01T00:00:00.000Z", "sync-3", null, 2, 0.5, "estimated"],
+	]);
 });

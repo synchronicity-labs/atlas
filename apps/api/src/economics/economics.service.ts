@@ -46,6 +46,20 @@ where "generationEndedAt" >= addMonths(toStartOfMonth(end_utc, 'UTC'), -6)
 group by month, model
 order by month, model`;
 
+export const ECONOMICS_OUTPUT_MINUTES_QUERY = `select
+  date_trunc('month', g.finished_at at time zone 'UTC') as month,
+  g.model_name as model,
+  sum(g.output_media_length) / 60.0 as output_minutes
+from public.generations g
+where g.finished_at >= date_trunc('month', now() at time zone 'UTC') - interval '6 months'
+  and g.finished_at < now()
+  and g.deleted_at is null
+  and g.status::text = 'COMPLETED'
+  and g.output_media_length > 0
+  and g.model_name is not null
+group by 1, 2
+order by 1, 2`;
+
 type Result = {
 	columns: Array<{
 		name: string;
@@ -64,8 +78,13 @@ type WarehouseRow = {
 };
 
 type ModalRow = { month: string; model: string; costUsd: number };
+type OutputMinutesRow = { month: string; model: string; outputMinutes: number };
 
-type EconomicsInputs = { warehouseRows: WarehouseRow[]; modalRows: ModalRow[] };
+type EconomicsInputs = {
+	warehouseRows: WarehouseRow[];
+	modalRows: ModalRow[];
+	outputMinutesRows?: OutputMinutesRow[];
+};
 
 type MonthlyEconomics = {
 	month: string;
@@ -413,7 +432,15 @@ export class EconomicsService {
 			shared = await this.loadInputs(warehouseSql, eligibility);
 			inputs.set(warehouseSql, shared);
 		}
-		return economicsResult(query, shared.warehouseRows, shared.modalRows);
+		if (query.report === "cost-per-minute" && !shared.outputMinutesRows) {
+			shared.outputMinutesRows = await this.loadOutputMinutes();
+		}
+		return economicsResult(
+			query,
+			shared.warehouseRows,
+			shared.modalRows,
+			shared.outputMinutesRows,
+		);
 	}
 
 	private async loadInputs(
@@ -474,12 +501,28 @@ export class EconomicsService {
 		}));
 		return { warehouseRows, modalRows };
 	}
+
+	private async loadOutputMinutes(): Promise<OutputMinutesRow[]> {
+		const config = metabaseConfig();
+		if (!config) throw new Error("Metabase is not configured.");
+		const outputMinutes = await new MetabaseClient(config).preview({
+			language: "SQL",
+			queryText: ECONOMICS_OUTPUT_MINUTES_QUERY,
+			databaseExternalId: "34",
+		});
+		return outputMinutes.rows.map((row) => ({
+			month: month(row[0]),
+			model: normalizeModel(String(row[1] ?? "unknown")),
+			outputMinutes: Number(row[2] ?? 0),
+		}));
+	}
 }
 
 export function economicsResult(
 	query: EconomicsQuery,
 	warehouseRows: WarehouseRow[],
 	modalRows: ModalRow[],
+	outputMinutesRows: OutputMinutesRow[] = [],
 ): Result {
 	const monthly = buildMonthlyEconomics(warehouseRows, modalRows).slice(
 		-query.months,
@@ -550,6 +593,19 @@ export function economicsResult(
 			]),
 		};
 	}
+	if (query.report === "cost-per-minute") {
+		return {
+			columns: [
+				column("month", "Month", "type/DateTime"),
+				column("model", "Model", "type/Text"),
+				column("modal_cost_usd", "Modal cost"),
+				column("output_minutes", "Completed output minutes"),
+				column("cost_per_output_minute_usd", "Cost per output minute"),
+				column("cost_status", "Cost coverage", "type/Text"),
+			],
+			rows: costPerMinuteRows(modalRows, outputMinutesRows, query.months),
+		};
+	}
 	if (query.report === "frames-by-tier") {
 		return {
 			columns: [
@@ -582,6 +638,85 @@ export function economicsResult(
 				...models.map((model) => values.get(model) ?? 0),
 			]),
 	};
+}
+
+function costPerMinuteRows(
+	modalRows: ModalRow[],
+	outputMinutesRows: OutputMinutesRow[],
+	months: number,
+): unknown[][] {
+	const modal = new Map<string, Map<string, number>>();
+	for (const row of modalRows) {
+		const models = modal.get(row.month) ?? new Map<string, number>();
+		models.set(row.model, (models.get(row.model) ?? 0) + row.costUsd);
+		modal.set(row.month, models);
+	}
+	const actualCostByModel = new Map<string, number>();
+	const actualMinutesByModel = new Map<string, number>();
+	const output = new Map<string, number>();
+	for (const row of outputMinutesRows) {
+		const key = `${row.month}:${row.model}`;
+		output.set(key, (output.get(key) ?? 0) + row.outputMinutes);
+	}
+	for (const [period, costs] of modal) {
+		for (const [model, cost] of costs) {
+			const outputMinutes = output.get(`${period}:${model}`) ?? 0;
+			if (outputMinutes > 0) {
+				actualCostByModel.set(
+					model,
+					(actualCostByModel.get(model) ?? 0) + cost,
+				);
+				actualMinutesByModel.set(
+					model,
+					(actualMinutesByModel.get(model) ?? 0) + outputMinutes,
+				);
+			}
+		}
+	}
+	const costPerMinute = new Map(
+		[...actualCostByModel].map(([model, cost]) => [
+			model,
+			cost / (actualMinutesByModel.get(model) ?? 1),
+		]),
+	);
+	const periods = new Set(
+		[...new Set(outputMinutesRows.map((row) => row.month))]
+			.sort()
+			.slice(-months),
+	);
+	return outputMinutesRows
+		.map((row) => `${row.month}:${row.model}`)
+		.filter((key, index, values) => values.indexOf(key) === index)
+		.map((key) => {
+			const separator = key.indexOf(":");
+			const period = key.slice(0, separator);
+			const model = key.slice(separator + 1);
+			const outputMinutes = output.get(key) ?? 0;
+			const matchedCost = modal.get(period)?.get(model);
+			const rate = costPerMinute.get(model);
+			const estimatedCost = matchedCost ?? outputMinutes * (rate ?? 0);
+			const hasRate = matchedCost !== undefined || rate !== undefined;
+			const status =
+				!hasRate || outputMinutes <= 0
+					? "incomplete"
+					: matchedCost === undefined
+						? "estimated"
+						: "matched";
+			return [
+				`${period}-01T00:00:00.000Z`,
+				model,
+				matchedCost ?? null,
+				outputMinutes,
+				status === "incomplete" ? null : estimatedCost / outputMinutes,
+				status,
+			];
+		})
+		.sort((a, b) =>
+			`${String(a[0])}:${String(a[1])}`.localeCompare(
+				`${String(b[0])}:${String(b[1])}`,
+			),
+		)
+		.filter((row) => periods.has(String(row[0]).slice(0, 7)));
 }
 
 export function buildMonthlyEconomics(
@@ -711,8 +846,26 @@ export function buildMonthlyEconomics(
 
 function normalizeModel(model: string): string {
 	const value = model.trim().toLowerCase();
+	const prefixes: Array<[string, string]> = [
+		["sync-v2.5-v0", "sync-2-pro"],
+		["sync-v2.5-v0-pw", "sync-2-pro"],
+		["sync-v2.0.0-short-v1-25fps", "sync-2"],
+		["sync-v1.9.0-beta-long", "sync-1.9"],
+		["sync-v1.9.0-short", "sync-1.9"],
+		["react-distributed-inference", "react-1"],
+		["sync-v2.0.0-short-v1-mini", "sync-2-mini"],
+		["sync-v3.0.0-modal-prod", "sync-3"],
+	];
+	for (const [prefix, target] of prefixes) {
+		if (value.startsWith(prefix)) return target;
+	}
 	if (value === "sync-1.9.0-beta") return "sync-1.9";
-	if (value === "sync-3.0") return "sync-3";
+	if (
+		value === "sync-3.0" ||
+		value.includes("sync-v3.0") ||
+		value.includes("sync-3")
+	)
+		return "sync-3";
 	return value || "other";
 }
 

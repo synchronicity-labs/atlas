@@ -9,6 +9,7 @@ export const economicsQuery = z.object({
 		"margin-pct",
 		"margin-history",
 		"model-costs",
+		"cost-per-minute",
 		"frames-by-tier",
 	]),
 	months: z.number().int().min(2).max(12).default(7),

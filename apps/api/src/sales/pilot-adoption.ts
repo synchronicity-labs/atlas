@@ -42,7 +42,7 @@ where (
     f.enterprise_pilot_expires_at is null
     or f.enterprise_pilot_expires_at > now()
   )
-group by o.id, o.name
+group by o.id, o.stripe_customer_id, o.name
 order by o.id`;
 }
 

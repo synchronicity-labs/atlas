@@ -121,6 +121,44 @@ test("cost per minute reports matched and estimated model coverage", () => {
 	]);
 });
 
+test("cost per minute keeps monthly Modal costs available across Q2 and Q3", () => {
+	const query = economicsQuery.parse({
+		source: "atlas_economics",
+		definitionVersion: "inference-economics-v1",
+		report: "cost-per-minute",
+		months: 7,
+	});
+	const months = [
+		"2026-04",
+		"2026-05",
+		"2026-06",
+		"2026-07",
+		"2026-08",
+		"2026-09",
+	];
+	const result = economicsResult(
+		query,
+		months.map((period) => ({
+			month: period,
+			model: "sync-3",
+			freeFrames: 0,
+			paidFrames: 0,
+			usageRevenueUsd: 0,
+		})),
+		months.map((period) => ({ month: period, model: "sync-3", costUsd: 1 })),
+		months.map((period) => ({
+			month: period,
+			model: "sync-3",
+			outputMinutes: 2,
+		})),
+	);
+
+	expect(result.rows).toHaveLength(6);
+	expect(result.rows.map((row) => [row[0], row[2], row[5]])).toEqual(
+		months.map((period) => [`${period}-01T00:00:00.000Z`, 1, "matched"]),
+	);
+});
+
 test("normalizes Product model aliases before joining Modal costs", async () => {
 	process.env.METABASE_BASE_URL = "https://metabase.example.test";
 	process.env.METABASE_API_KEY = "test-only";

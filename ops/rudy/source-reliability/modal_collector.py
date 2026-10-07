@@ -35,8 +35,13 @@ def model(value):
 
 def windows(today):
     current = today.replace(day=1)
-    previous = (current - timedelta(days=1)).replace(day=1)
-    return [(start, end) for start, end in [(previous, current), (current, today)] if start < end]
+    start = current
+    for _ in range(6):
+        start = (start - timedelta(days=1)).replace(day=1)
+    result = [(start, current)]
+    if current < today:
+        result.append((current, today))
+    return result
 
 
 def aggregate(batches, now):

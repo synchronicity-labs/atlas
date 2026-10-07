@@ -434,8 +434,9 @@ back to the collector on Rudy when it is not. It sends only month/model/cost
 aggregates to `POST /internal/sync/modal`; it never stores the Modal token, app
 identifiers, or raw billing descriptions in Atlas. Then
 `bun run economics:sync` persists new content-addressed results. Modal aggregates
-expire after 30 hours so a stopped collector produces an explicit stale/error state.
-The generated deployment refreshes dashboard 6 every eight hours.
+cover six complete months plus the current month to date. They expire after 30
+hours so a stopped collector produces an explicit stale/error state. The
+generated deployment refreshes dashboard 6 every eight hours.
 
 ## Rudy query and session contract
 

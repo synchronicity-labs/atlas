@@ -15,10 +15,15 @@ class ModalCollectorTest(unittest.TestCase):
                 request.assert_not_called()
 
     def test_first_day_skips_the_empty_current_window(self):
-        self.assertEqual(windows(date(2026, 9, 1)), [(date(2026, 8, 1), date(2026, 9, 1))])
+        self.assertEqual(windows(date(2026, 9, 1)), [
+            (date(2026, 3, 1), date(2026, 9, 1)),
+        ])
 
     def test_year_rollover_and_previous_complete_days(self):
-        self.assertEqual(windows(date(2027, 1, 2)), [(date(2026, 12, 1), date(2027, 1, 1)), (date(2027, 1, 1), date(2027, 1, 2))])
+        self.assertEqual(windows(date(2027, 1, 2)), [
+            (date(2026, 7, 1), date(2027, 1, 1)),
+            (date(2027, 1, 1), date(2027, 1, 2)),
+        ])
 
     def test_aggregates_without_raw_function_names_or_identifiers(self):
         payload = aggregate([(date(2026, 9, 1), date(2026, 9, 7), [

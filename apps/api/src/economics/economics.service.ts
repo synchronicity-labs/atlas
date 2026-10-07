@@ -32,6 +32,8 @@ const MODAL_RAW_QUESTION = "economics:modal:cost-by-model-raw";
 const FRESHNESS_MS = 8 * 60 * 60 * 1000;
 const MODAL_FRESHNESS_MS = 30 * 60 * 60 * 1000;
 const MODAL_CLOCK_SKEW_MS = 5 * 60 * 1000;
+const PRODUCT_FPS = 25;
+const PRODUCT_FRAMES_PER_MINUTE = PRODUCT_FPS * 60;
 
 export const ECONOMICS_WAREHOUSE_QUERY = `with now('UTC') as end_utc
 select
@@ -49,7 +51,7 @@ order by month, model`;
 export const ECONOMICS_OUTPUT_MINUTES_QUERY = `select
   date_trunc('month', g.finished_at at time zone 'UTC') as month,
   g.model_name as model,
-  sum(g.output_media_length) / 60.0 as output_minutes
+  sum(g.output_media_length * ${PRODUCT_FPS}) as output_frames_25fps
 from public.generations g
 where g.finished_at >= date_trunc('month', now() at time zone 'UTC') - interval '6 months'
   and g.finished_at < date_trunc('day', now() at time zone 'UTC')
@@ -513,7 +515,7 @@ export class EconomicsService {
 		return outputMinutes.rows.map((row) => ({
 			month: month(row[0]),
 			model: normalizeModel(String(row[1] ?? "unknown")),
-			outputMinutes: Number(row[2] ?? 0),
+			outputMinutes: Number(row[2] ?? 0) / PRODUCT_FRAMES_PER_MINUTE,
 		}));
 	}
 }
@@ -599,8 +601,14 @@ export function economicsResult(
 				column("month", "Month", "type/DateTime"),
 				column("model", "Model", "type/Text"),
 				column("modal_cost_usd", "Modal cost"),
-				column("output_minutes", "Completed output minutes"),
-				column("cost_per_output_minute_usd", "Cost per output minute"),
+				column(
+					"output_minutes",
+					"Completed output minutes (25 fps equivalent)",
+				),
+				column(
+					"cost_per_output_minute_usd",
+					"Cost per output minute (25 fps equivalent)",
+				),
 				column("cost_status", "Cost coverage", "type/Text"),
 			],
 			rows: costPerMinuteRows(modalRows, outputMinutesRows, query.months),

@@ -421,8 +421,9 @@ from Postgres database 34, and aggregate Modal billing:
   cost per frame from available actual months and are marked as estimates in the
   question definition.
 - Cost per completed output minute by model divides mapped Modal cost by
-  completed, non-deleted output minutes. Months without a matching Modal export
-  use the available per-model cost-per-minute rate and are marked as estimates.
+  completed, non-deleted output minutes at the product's 25 fps convention.
+  Months without a matching Modal export use the available per-model
+  cost-per-minute rate and are marked as estimates.
 - Unmapped Modal services remain in staging/other cost instead of being silently
   assigned to production.
 

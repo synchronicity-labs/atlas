@@ -13,7 +13,10 @@ export const economicsQuery = z.object({
 		"frames-by-tier",
 	]),
 	months: z.number().int().min(2).max(12).default(7),
-	definitionVersion: z.literal("inference-economics-v1"),
+	definitionVersion: z.enum([
+		"inference-economics-v1",
+		"inference-economics-v2",
+	]),
 	warehouseSql: z.string().trim().min(1).max(100_000).optional(),
 });
 

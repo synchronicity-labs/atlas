@@ -44,10 +44,15 @@ test("one refresh shares identical inputs without mixing custom SQL or retaining
 		} as never,
 		{} as never,
 	);
-	const preview = spyOn(MetabaseClient.prototype, "preview").mockResolvedValue({
-		columns: [],
-		rows: [["2026-09", "sync-3", 10, 30, 100]],
-	});
+	const preview = spyOn(MetabaseClient.prototype, "preview")
+		.mockResolvedValueOnce({
+			columns: [],
+			rows: [["2026-09", "sync-3", 10, 30, 100]],
+		})
+		.mockResolvedValue({
+			columns: [],
+			rows: [["2026-09", "sync-3", 15000, 30, 100]],
+		});
 	const inputs = new Map();
 	for (const report of economicsQuery.shape.report.options) {
 		const query = economicsQuery.parse({
@@ -68,6 +73,9 @@ test("one refresh shares identical inputs without mixing custom SQL or retaining
 		databaseExternalId: "34",
 		queryText: ECONOMICS_OUTPUT_MINUTES_QUERY,
 	});
+	expect(ECONOMICS_OUTPUT_MINUTES_QUERY).toContain(
+		"sum(g.output_media_length * 25) as output_frames_25fps",
+	);
 	expect(findFirst).toHaveBeenCalledTimes(1);
 	const query = economicsQuery.parse({
 		source: "atlas_economics",
@@ -159,6 +167,16 @@ test("cost per minute keeps monthly Modal costs available across Q2 and Q3", () 
 	);
 });
 
+test("accepts the versioned 25 fps cost-per-minute definition", () => {
+	const query = economicsQuery.parse({
+		source: "atlas_economics",
+		definitionVersion: "inference-economics-v2",
+		report: "cost-per-minute",
+	});
+
+	expect(query.definitionVersion).toBe("inference-economics-v2");
+});
+
 test("normalizes Product model aliases before joining Modal costs", async () => {
 	process.env.METABASE_BASE_URL = "https://metabase.example.test";
 	process.env.METABASE_API_KEY = "test-only";
@@ -166,9 +184,9 @@ test("normalizes Product model aliases before joining Modal costs", async () => 
 	spyOn(MetabaseClient.prototype, "preview").mockResolvedValue({
 		columns: [],
 		rows: [
-			["2026-08", "sync2", 1],
-			["2026-08", "sync-2.0-pro", 2],
-			["2026-08", "sync3", 3],
+			["2026-08", "sync2", 1500],
+			["2026-08", "sync-2.0-pro", 3000],
+			["2026-08", "sync3", 4500],
 		],
 	});
 

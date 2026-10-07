@@ -9,6 +9,10 @@ from atlas_http import https_origin, request_json
 
 
 MODELS = {
+    "sync2-pro": "sync-2-pro",
+    "sync-2.0-pro": "sync-2-pro",
+    "sync2": "sync-2",
+    "sync-2.0": "sync-2",
     "sync-v2.5-v0": "sync-2-pro",
     "sync-v2.0.0-short-v1-25fps": "sync-2",
     "sync-v1.9.0-beta-long": "sync-1.9",
@@ -31,8 +35,13 @@ def model(value):
 
 def windows(today):
     current = today.replace(day=1)
-    previous = (current - timedelta(days=1)).replace(day=1)
-    return [(start, end) for start, end in [(previous, current), (current, today)] if start < end]
+    start = current
+    for _ in range(6):
+        start = (start - timedelta(days=1)).replace(day=1)
+    result = [(start, current)]
+    if current < today:
+        result.append((current, today))
+    return result
 
 
 def aggregate(batches, now):

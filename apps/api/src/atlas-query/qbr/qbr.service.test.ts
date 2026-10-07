@@ -645,7 +645,9 @@ describe("AtlasQbrService", () => {
 
 		await expect(
 			service.recordObservations("plg_teams_adds", [
-				observation("2026-Q3", 12),
+				observation("2026-Q3", 12, {
+					asOf: "2026-10-06T11:00:00.000Z",
+				}),
 			]),
 		).rejects.toThrow("Stale QBR observation rejected");
 		expect(tx.resultSnapshot.create).not.toHaveBeenCalled();

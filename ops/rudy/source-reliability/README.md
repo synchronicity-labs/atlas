@@ -75,8 +75,8 @@ production metric's trust state to test monitoring.
 
 ## Data and incident behavior
 
-The collector reads the previous month and current month through the start of
-today in UTC. It sends only month, model, and aggregate cost. It does not claim
+The collector reads six complete months and the current month through the start
+of today in UTC. It sends only month, model, and aggregate cost. It does not claim
 to have today's complete cost or create precise per-generation costs. Empty,
 invalid, negative, or out-of-window vendor responses fail instead of becoming
 zero. A real zero-cost row is valid. The first day of a month skips the empty

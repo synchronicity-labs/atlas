@@ -8,6 +8,11 @@ from collections import defaultdict
 from datetime import date, datetime, timedelta, timezone
 
 mapping = {
+    "sync2-pro": "sync-2-pro",
+    "sync-2.0-pro": "sync-2-pro",
+    "sync2": "sync-2",
+    "sync-2.0": "sync-2",
+    "sync3": "sync-3",
     "sync-v2.5-v0": "sync-2-pro",
     "sync-v2.5-v0-pw": "sync-2-pro",
     "sync-v2.0.0-short-v1-25fps": "sync-2",
@@ -30,16 +35,22 @@ def model(value):
         return "sync-3"
     return "other"
 
-today = date.today()
+today = datetime.now(timezone.utc).date()
 month_start = today.replace(day=1)
-previous_start = (month_start - timedelta(days=1)).replace(day=1)
 entries = []
 env = dict(os.environ)
 env["MODAL_PROFILE"] = os.environ.get("MODAL_PROFILE", "synchronicity-labs")
 default_command = "/usr/local/sbin/rudy-modal-billing" if os.path.isfile("/usr/local/sbin/rudy-modal-billing") else "modal billing report"
 modal_command = shlex.split(os.environ.get("ATLAS_MODAL_COMMAND", default_command))
 
-for start, end in [(previous_start, month_start), (month_start, today)]:
+start = month_start
+for _ in range(6):
+    start = (start - timedelta(days=1)).replace(day=1)
+windows = [(start, month_start)]
+if month_start < today:
+    windows.append((month_start, today))
+
+for start, end in windows:
     if start >= end:
         continue
     result = subprocess.run(

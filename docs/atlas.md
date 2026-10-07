@@ -408,7 +408,8 @@ every six hours.
 ## Inference economics
 
 Dashboard 6 is the deterministic version of Sync Tracker's Modal cost view. Its
-seven questions combine TinyBird database 166 usage with aggregate Modal billing:
+eight questions combine TinyBird database 166 usage, completed output minutes
+from Postgres database 34, and aggregate Modal billing:
 
 - Usage and frame counts come from `sync_prod.sync_usage3`, grouped by
   `generationEndedAt` and model.
@@ -419,18 +420,23 @@ seven questions combine TinyBird database 166 usage with aggregate Modal billing
 - Months with Modal billing are actual. Older periods use the weighted per-model
   cost per frame from available actual months and are marked as estimates in the
   question definition.
+- Cost per completed output minute by model divides mapped Modal cost by
+  completed, non-deleted output minutes. Months without a matching Modal export
+  use the available per-model cost-per-minute rate and are marked as estimates.
 - Unmapped Modal services remain in staging/other cost instead of being silently
   assigned to production.
 
-Every question version contains the exact read-only TinyBird SQL. Modal credentials
-stay in Doppler and are injected only into the collector process. `bun run
+Every question version contains the exact read-only source recipe. The output-minute
+Postgres query is server-owned alongside the economics API implementation. Modal
+credentials stay in Doppler and are injected only into the collector process. `bun run
 modal:import:rudy` uses the Atlas Modal credential when it is configured and falls
 back to the collector on Rudy when it is not. It sends only month/model/cost
 aggregates to `POST /internal/sync/modal`; it never stores the Modal token, app
 identifiers, or raw billing descriptions in Atlas. Then
 `bun run economics:sync` persists new content-addressed results. Modal aggregates
-expire after 30 hours so a stopped collector produces an explicit stale/error state.
-The generated deployment refreshes dashboard 6 every eight hours.
+cover six complete months plus the current month to date. They expire after 30
+hours so a stopped collector produces an explicit stale/error state. The
+generated deployment refreshes dashboard 6 every eight hours.
 
 ## Rudy query and session contract
 

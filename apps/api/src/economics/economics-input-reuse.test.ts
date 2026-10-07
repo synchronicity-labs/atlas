@@ -124,11 +124,7 @@ test("cost per minute reports matched and estimated model coverage", () => {
 test("normalizes Product model aliases before joining Modal costs", async () => {
 	process.env.METABASE_BASE_URL = "https://metabase.example.test";
 	process.env.METABASE_API_KEY = "test-only";
-	const service = new EconomicsService(
-		{} as never,
-		{} as never,
-		{} as never,
-	);
+	const service = new EconomicsService({} as never, {} as never, {} as never);
 	spyOn(MetabaseClient.prototype, "preview").mockResolvedValue({
 		columns: [],
 		rows: [

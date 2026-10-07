@@ -607,7 +607,7 @@ export class MarketingService {
 		scope: "ALL_IDENTITIES" | "SUBSCRIBED_ORGANIZATIONS";
 		policy: "PRODUCT_ACTIVITY" | "MONEY";
 	}> {
-		const eligibility = await this.tinybirdEligibility.current();
+		const eligibility = await this.tinybirdEligibility.currentForMarketing();
 		const excludedExternalIds = eligibility.excludedUserIds;
 		return {
 			predicate: productUserEligibilityPredicate(excludedExternalIds),

@@ -168,6 +168,10 @@ export class TinybirdEligibilityService {
 		return this.load("SUBSCRIBED_ORGANIZATIONS", "PRODUCT_ACTIVITY");
 	}
 
+	async currentForMarketing(): Promise<TinybirdEligibilitySnapshot> {
+		return this.load("ALL_IDENTITIES", "PRODUCT_ACTIVITY", false);
+	}
+
 	async currentForRevenue(): Promise<TinybirdEligibilitySnapshot> {
 		return this.load("SUBSCRIBED_ORGANIZATIONS", "MONEY");
 	}
@@ -175,6 +179,7 @@ export class TinybirdEligibilityService {
 	private async load(
 		scope: TinybirdEligibilitySnapshot["scope"],
 		policy: TinybirdEligibilitySnapshot["policy"],
+		excludePilots = true,
 	): Promise<TinybirdEligibilitySnapshot> {
 		const base = await this.baseRows();
 		return buildTinybirdEligibility(
@@ -183,9 +188,10 @@ export class TinybirdEligibilityService {
 			base.sourceRows,
 			scope,
 			policy,
-			base.pilotOrganizationIds,
-			base.pilotCustomerIds,
-			base.pilotSourceComplete &&
+			excludePilots ? base.pilotOrganizationIds : [],
+			excludePilots ? base.pilotCustomerIds : [],
+			excludePilots &&
+				base.pilotSourceComplete &&
 				base.pilotSourceRows === base.pilotReturnedRows,
 		);
 	}

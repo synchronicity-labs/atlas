@@ -190,9 +190,9 @@ export class TinybirdEligibilityService {
 			policy,
 			excludePilots ? base.pilotOrganizationIds : [],
 			excludePilots ? base.pilotCustomerIds : [],
-			excludePilots &&
-				base.pilotSourceComplete &&
-				base.pilotSourceRows === base.pilotReturnedRows,
+			!excludePilots ||
+				(base.pilotSourceComplete &&
+					base.pilotSourceRows === base.pilotReturnedRows),
 		);
 	}
 

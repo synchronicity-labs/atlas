@@ -8,6 +8,7 @@ import {
 	governTinybirdQuery,
 	hasSubscribedPopulation,
 	pilotOrganizationQuery,
+	TinybirdEligibilityService,
 } from "./tinybird-eligibility.service";
 
 const row = (input: Partial<EligibilityRow>): EligibilityRow => ({
@@ -115,6 +116,30 @@ where "organizationPlanType" in ('hobbyist', 'creator', 'growth', 'scale')`,
 });
 
 describe("product activity eligibility", () => {
+	it("keeps marketing complete and includes pilots when paid usage is blocked", async () => {
+		const service = new TinybirdEligibilityService({} as never);
+		Object.assign(service, {
+			baseRows: async () => ({
+				rows: [row({ email: "operator@sync.so" })],
+				capturedAt: new Date("2026-10-07T00:00:00.000Z"),
+				sourceRows: 1,
+				pilotOrganizationIds: ["pilot-org"],
+				pilotCustomerIds: ["pilot-customer"],
+				pilotSourceRows: 2,
+				pilotReturnedRows: 1,
+				pilotSourceComplete: false,
+			}),
+		});
+
+		const marketing = await service.currentForMarketing();
+		expect(marketing.complete).toBe(true);
+		expect(marketing.excludedOrganizationIds).toEqual(["org-1"]);
+		expect(marketing.excludedCustomerIds).toEqual(["customer-1"]);
+		const revenue = await service.currentForRevenue();
+		expect(revenue.complete).toBe(false);
+		expect(revenue.excludedOrganizationIds).toContain("pilot-org");
+	});
+
 	it("requests only bounded internal exclusion rows", () => {
 		const query = compactEligibilityQuery().toLowerCase();
 

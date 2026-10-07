@@ -27,6 +27,16 @@ class ModalCollectorTest(unittest.TestCase):
         ])], datetime(2026, 9, 7, tzinfo=timezone.utc))
         self.assertEqual(payload["rows"], [{"month": "2026-09", "model": "sync-3", "costUsd": 1.25}])
 
+    def test_keeps_pro_model_aliases_separate_from_base_model(self):
+        payload = aggregate([(date(2026, 9, 1), date(2026, 9, 7), [
+            {"interval_start": "2026-09-02T00:00:00Z", "object_id": "sync2-pro", "cost": 1.25},
+            {"interval_start": "2026-09-03T00:00:00Z", "object_id": "sync2", "cost": 0.75},
+        ])], datetime(2026, 9, 7, tzinfo=timezone.utc))
+        self.assertEqual(payload["rows"], [
+            {"month": "2026-09", "model": "sync-2", "costUsd": 0.75},
+            {"month": "2026-09", "model": "sync-2-pro", "costUsd": 1.25},
+        ])
+
     def test_empty_missing_invalid_or_out_of_window_data_is_not_zero(self):
         for entries in [[], [{}], [{"interval_start": "2026-08-01", "cost": 1}],
                         [{"interval_start": "2026-09-01", "cost": "nan"}],

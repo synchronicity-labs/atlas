@@ -9,6 +9,10 @@ from atlas_http import https_origin, request_json
 
 
 MODELS = {
+    "sync2-pro": "sync-2-pro",
+    "sync-2.0-pro": "sync-2-pro",
+    "sync2": "sync-2",
+    "sync-2.0": "sync-2",
     "sync-v2.5-v0": "sync-2-pro",
     "sync-v2.0.0-short-v1-25fps": "sync-2",
     "sync-v1.9.0-beta-long": "sync-1.9",

@@ -8,10 +8,10 @@ from collections import defaultdict
 from datetime import date, datetime, timedelta, timezone
 
 mapping = {
-    "sync2": "sync-2",
-    "sync-2.0": "sync-2",
     "sync2-pro": "sync-2-pro",
     "sync-2.0-pro": "sync-2-pro",
+    "sync2": "sync-2",
+    "sync-2.0": "sync-2",
     "sync3": "sync-3",
     "sync-v2.5-v0": "sync-2-pro",
     "sync-v2.5-v0-pw": "sync-2-pro",

@@ -1,6 +1,14 @@
 import { createHash } from "node:crypto";
+import {
+	ContractCustomerKind,
+	ContractMappingStatus,
+	type Db,
+	RevenueDoor,
+	RevenueDoorMatchKind,
+} from "@crm/db";
 import { Injectable } from "@nestjs/common";
 import { astVisitor, locationOf, parse } from "pgsql-ast-parser";
+import { InjectDatabase } from "../database/database.constants";
 import { MetabaseClient } from "./metabase.client";
 import { metabaseConfig } from "./metabase.config";
 
@@ -19,6 +27,55 @@ where lower(coalesce(u.email, '')) like '%@sync.so'
   or lower(coalesce(u.email, '')) like '%@sync.labs'
 order by u.id, o.id
 limit 2000`;
+}
+
+export function pilotOrganizationQuery(): string {
+	return `with active_pilots as (
+  select distinct
+    o.id::text as organization_id,
+    o.stripe_customer_id::text as customer_id
+  from public.organizations o
+  join public.organization_features f on f.organization_id = o.id
+  where (
+    nullif(trim(coalesce(f.pilot_type, '')), '') is not null
+    or f.enterprise_pilot_accepted_at is not null
+    or f.enterprise_pilot_expires_at is not null
+  )
+    and (
+      f.enterprise_pilot_accepted_at is null
+      or f.enterprise_pilot_accepted_at <= now()
+    )
+    and (
+      f.enterprise_pilot_expires_at is null
+      or f.enterprise_pilot_expires_at > now()
+    )
+)
+select
+  organization_id,
+  customer_id,
+  count(*) over()::bigint as source_row_count
+from active_pilots
+order by organization_id`;
+}
+
+export function excludePaidPilotIdentities<
+	T extends {
+		organization_id?: unknown;
+		customer_id?: unknown;
+	},
+>(
+	rows: T[],
+	paidOrganizationIds: ReadonlySet<string>,
+	paidCustomerIds: ReadonlySet<string>,
+): T[] {
+	return rows.filter((row) => {
+		const organizationId = text(row.organization_id);
+		const customerId = text(row.customer_id);
+		return !(
+			(organizationId && paidOrganizationIds.has(organizationId)) ||
+			(customerId && paidCustomerIds.has(customerId))
+		);
+	});
 }
 
 const USER_TABLES = [
@@ -86,6 +143,8 @@ export type EligibilityRow = {
 
 @Injectable()
 export class TinybirdEligibilityService {
+	constructor(@InjectDatabase() private readonly db: Db) {}
+
 	private readonly baseCache = new Map<
 		string,
 		{
@@ -93,6 +152,11 @@ export class TinybirdEligibilityService {
 			capturedAt: Date;
 			sourceRows: number;
 			rows: EligibilityRow[];
+			pilotOrganizationIds: string[];
+			pilotCustomerIds: string[];
+			pilotSourceRows: number;
+			pilotReturnedRows: number;
+			pilotSourceComplete: boolean;
 		}
 	>();
 
@@ -119,6 +183,10 @@ export class TinybirdEligibilityService {
 			base.sourceRows,
 			scope,
 			policy,
+			base.pilotOrganizationIds,
+			base.pilotCustomerIds,
+			base.pilotSourceComplete &&
+				base.pilotSourceRows === base.pilotReturnedRows,
 		);
 	}
 
@@ -130,11 +198,63 @@ export class TinybirdEligibilityService {
 		}
 		const config = metabaseConfig();
 		if (!config) throw new Error("Metabase is not configured.");
-		const result = await new MetabaseClient(config).preview({
-			language: "SQL",
-			queryText: compactEligibilityQuery(),
-			databaseExternalId: "34",
-		});
+		const client = new MetabaseClient(config);
+		const [
+			result,
+			pilotResult,
+			paidContractRows,
+			paidDoorRows,
+			paidCustomerRows,
+		] = await Promise.all([
+			client.preview({
+				language: "SQL",
+				queryText: compactEligibilityQuery(),
+				databaseExternalId: "34",
+			}),
+			client.preview({
+				language: "SQL",
+				queryText: pilotOrganizationQuery(),
+				databaseExternalId: "34",
+			}),
+			this.db.contractCustomerProductOrganization.findMany({
+				where: {
+					status: ContractMappingStatus.VERIFIED,
+					contractCustomer: {
+						sourceDeletedAt: null,
+						kind: {
+							in: [
+								ContractCustomerKind.ENTERPRISE,
+								ContractCustomerKind.CHANNEL_PARTNER,
+								ContractCustomerKind.PRODUCTION,
+							],
+						},
+					},
+				},
+				select: {
+					productOrganization: {
+						select: { externalId: true, stripeCustomerId: true },
+					},
+				},
+			}),
+			this.db.revenueDoorRule.findMany({
+				where: {
+					policyId: "company-revenue-doors",
+					active: true,
+					door: { not: RevenueDoor.TOOLS },
+					matchKind: RevenueDoorMatchKind.ORGANIZATION_ID,
+				},
+				select: { matchValue: true },
+			}),
+			this.db.revenueDoorRule.findMany({
+				where: {
+					policyId: "company-revenue-doors",
+					active: true,
+					door: { not: RevenueDoor.TOOLS },
+					matchKind: RevenueDoorMatchKind.STRIPE_CUSTOMER_ID,
+				},
+				select: { matchValue: true },
+			}),
+		]);
 		const rows = result.rows.map((values) =>
 			Object.fromEntries(
 				result.columns.map((column, index) => [
@@ -144,6 +264,33 @@ export class TinybirdEligibilityService {
 			),
 		);
 		const sourceRows = number(rows[0]?.source_row_count, rows.length);
+		const pilotRows = pilotResult.rows.map((values) =>
+			Object.fromEntries(
+				pilotResult.columns.map((column, index) => [
+					column.name,
+					values[index] ?? null,
+				]),
+			),
+		);
+		const pilotSourceRows = number(
+			pilotRows[0]?.source_row_count,
+			pilotRows.length,
+		);
+		const pilotColumns = new Set(
+			pilotResult.columns.map((column) => column.name),
+		);
+		const paidOrganizationIds = new Set([
+			...paidContractRows.map((row) => row.productOrganization.externalId),
+			...paidDoorRows.map((row) => row.matchValue),
+		]);
+		const paidCustomerIds = new Set([
+			...paidContractRows.flatMap((row) =>
+				row.productOrganization.stripeCustomerId
+					? [row.productOrganization.stripeCustomerId]
+					: [],
+			),
+			...paidCustomerRows.map((row) => row.matchValue),
+		]);
 		const capturedAt = new Date();
 		const value = {
 			expiresAt: Date.now() + 5 * 60 * 1000,
@@ -160,6 +307,27 @@ export class TinybirdEligibilityService {
 				customerId: text(row.customer_id),
 				hasSubscribed: false,
 			})),
+			...(() => {
+				const unpaidPilotRows = excludePaidPilotIdentities(
+					pilotRows,
+					paidOrganizationIds,
+					paidCustomerIds,
+				);
+				return {
+					pilotOrganizationIds: sortedUnique(
+						unpaidPilotRows.map((row) => text(row.organization_id)),
+					),
+					pilotCustomerIds: sortedUnique(
+						unpaidPilotRows.map((row) => text(row.customer_id)),
+					),
+				};
+			})(),
+			pilotSourceRows,
+			pilotReturnedRows: pilotRows.length,
+			pilotSourceComplete:
+				["organization_id", "customer_id", "source_row_count"].every((name) =>
+					pilotColumns.has(name),
+				) && pilotSourceRows === pilotRows.length,
 		};
 		this.baseCache.set(cacheKey, value);
 		return value;
@@ -183,6 +351,9 @@ export function buildTinybirdEligibility(
 	"SUBSCRIBED_ORGANIZATIONS"
 		? "MONEY"
 		: "PRODUCT_ACTIVITY",
+	pilotOrganizationIds: string[] = [],
+	pilotCustomerIds: string[] = [],
+	pilotSourceComplete = true,
 ): TinybirdEligibilitySnapshot {
 	const subscribedByUser = new Map<string, boolean>();
 	for (const row of rows) {
@@ -204,16 +375,16 @@ export function buildTinybirdEligibility(
 			(row.membershipRole === "owner" || row.membershipRole === ""),
 	);
 	const excludedOrganizationIds = sortedUnique(
-		ownerRows.map((row) => row.organizationId),
+		ownerRows.map((row) => row.organizationId).concat(pilotOrganizationIds),
 	);
 	const excludedCustomerIds = sortedUnique(
-		ownerRows.map((row) => row.customerId),
+		ownerRows.map((row) => row.customerId).concat(pilotCustomerIds),
 	);
 	const payload = {
 		excludedUserIds,
 		excludedOrganizationIds,
 		excludedCustomerIds,
-		complete: sourceRows === rows.length,
+		complete: sourceRows === rows.length && pilotSourceComplete,
 		sourceRows,
 		returnedRows: rows.length,
 		scope,
@@ -234,7 +405,18 @@ export function governTinybirdQuery(
 	eligibility: TinybirdEligibilitySnapshot,
 ): GovernedTinybirdQuery {
 	if (databaseExternalId === "34") {
-		const governed = governProductPostgresQuery(queryText, eligibility.policy);
+		if (!eligibility.complete) {
+			return {
+				queryText,
+				applied: false,
+				eligibility: eligibilityEvidence(eligibility),
+			};
+		}
+		const governed = governProductPostgresQuery(
+			queryText,
+			eligibility.policy,
+			eligibility.excludedOrganizationIds,
+		);
 		return {
 			queryText: governed.queryText,
 			applied: governed.applied,
@@ -305,9 +487,23 @@ export function governTinybirdQuery(
 export function governProductPostgresQuery(
 	queryText: string,
 	policy: TinybirdEligibilitySnapshot["policy"],
+	pilotOrganizationIds: string[] = [],
 ): { queryText: string; applied: boolean } {
 	if (hasEmbeddedProductPopulation(queryText)) {
-		const normalized = normalizeEmbeddedProductPopulation(queryText, policy);
+		let normalized = normalizeEmbeddedProductPopulation(queryText, policy);
+		if (pilotOrganizationIds.length > 0) {
+			for (const table of [
+				"generations",
+				"generation_feedback",
+				"generation_score",
+			]) {
+				normalized = wrapTable(
+					normalized,
+					`public.${table}`,
+					knownExclusionPredicate('"organization_id"', pilotOrganizationIds),
+				).queryText;
+			}
+		}
 		return {
 			queryText:
 				policy === "PRODUCT_ACTIVITY"
@@ -336,19 +532,31 @@ export function governProductPostgresQuery(
 	const commonTableExpressions =
 		policy === "PRODUCT_ACTIVITY" ? [subscribedUserPopulation()] : [];
 	if (usesOrganizations || organizationCohortTables.length > 0) {
-		commonTableExpressions.push(productOrganizationPopulation(policy));
+		commonTableExpressions.push(
+			productOrganizationPopulation(policy, pilotOrganizationIds),
+		);
 	}
 	if (usesGenerations) {
-		commonTableExpressions.push(productGenerationPopulation(policy));
+		commonTableExpressions.push(
+			productGenerationPopulation(policy, "generations", pilotOrganizationIds),
+		);
 	}
 	if (usesFeedback) {
 		commonTableExpressions.push(
-			productGenerationPopulation(policy, "generation_feedback"),
+			productGenerationPopulation(
+				policy,
+				"generation_feedback",
+				pilotOrganizationIds,
+			),
 		);
 	}
 	if (usesScores) {
 		commonTableExpressions.push(
-			productGenerationPopulation(policy, "generation_score"),
+			productGenerationPopulation(
+				policy,
+				"generation_score",
+				pilotOrganizationIds,
+			),
 		);
 	}
 	for (const table of organizationCohortTables) {
@@ -443,6 +651,7 @@ function productGenerationPopulation(
 		| "generations"
 		| "generation_feedback"
 		| "generation_score" = "generations",
+	pilotOrganizationIds: string[] = [],
 ): string {
 	const populationRule =
 		policy === "PRODUCT_ACTIVITY"
@@ -451,6 +660,10 @@ function productGenerationPopulation(
 		or atlas_population_user.id in (select user_id from atlas_subscribed_users)
 	)`
 			: "";
+	const pilotRule = knownExclusionPredicate(
+		"atlas_population_generation.organization_id",
+		pilotOrganizationIds,
+	);
 	return `atlas_population_${table} as not materialized (
 	select atlas_population_generation.*
   from public.${table} atlas_population_generation
@@ -459,12 +672,14 @@ function productGenerationPopulation(
 	where coalesce(atlas_population_user.is_anonymous, false) = false
 		and lower(coalesce(atlas_population_user.email, '')) not like '%@sync.so'
 		and lower(coalesce(atlas_population_user.email, '')) not like '%@sync.labs'
+		and ${pilotRule}
 		${populationRule}
 )`;
 }
 
 function productOrganizationPopulation(
 	policy: TinybirdEligibilitySnapshot["policy"],
+	pilotOrganizationIds: string[] = [],
 ): string {
 	const populationRule =
 		policy === "PRODUCT_ACTIVITY"
@@ -473,6 +688,10 @@ function productOrganizationPopulation(
 			or atlas_population_user.id in (select user_id from atlas_subscribed_users)
 		)`
 			: "";
+	const pilotRule = knownExclusionPredicate(
+		"atlas_population_organization.id",
+		pilotOrganizationIds,
+	);
 	return `atlas_population_organizations as (
 	select atlas_population_organization.*
   from public.organizations atlas_population_organization
@@ -487,6 +706,7 @@ function productOrganizationPopulation(
 		and lower(coalesce(atlas_population_user.email, '')) not like '%@sync.labs'
 		${populationRule}
 	)
+	and ${pilotRule}
 )`;
 }
 

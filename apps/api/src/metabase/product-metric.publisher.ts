@@ -353,17 +353,17 @@ const ACTIVE_PILOT_ADOPTION_CHECKS = [
 	{
 		name: "active_registry_parity",
 		reason:
-			"Every approved active HubSpot pilot must appear exactly once in the result.",
+			"Every approved active Product pilot must appear exactly once in the result.",
 	},
 	{
-		name: "deal_stage_mapping",
+		name: "pilot_source_mapping",
 		reason:
-			"The question must use the approved Enterprise and Studio pilot pipelines.",
+			"The question must use explicit Product pilot markers and exclude verified paid identities before usage reporting.",
 	},
 	{
 		name: "account_identity_join",
 		reason:
-			"Workspace identity must use exact company-domain evidence and must keep unmatched pilots visible.",
+			"Workspace identity must use the Product organization ID and keep unmatched pilots visible.",
 	},
 	{
 		name: "usage_population_exclusions",
@@ -377,8 +377,7 @@ const ACTIVE_PILOT_ADOPTION_CHECKS = [
 	},
 	{
 		name: "oldest_complete_watermark",
-		reason:
-			"Every row must use the HubSpot source watermark, which is older than the live product query.",
+		reason: "Every row must use one complete report watermark.",
 	},
 ];
 
@@ -468,22 +467,23 @@ const HUBSPOT_REPORT_SPECS: ProductMetricSpec[] = [
 		key: "sales.active_pilot_product_adoption",
 		name: "Active pilot registry and product adoption",
 		description:
-			"Current active Enterprise and Studio pilots joined to product workspaces by exact company-domain evidence, with unmatched pilots retained as not verified.",
+			"Current unpaid pilot accounts from Product Postgres pilot markers, after verified paid enterprise and channel mappings, joined to product workspaces by organization ID.",
 		grain: FactGrain.DAY,
 		source: {
 			key: "hubspot:crm",
 			kind: DataSourceKind.HUBSPOT,
-			label: "HubSpot CRM joined to Product Postgres",
+			label:
+				"Product Postgres pilot registry through the HubSpot report adapter",
 		},
 		eventTimeField: "data_through",
 		businessDefinition: {
-			entity: "active_hubspot_pilot",
+			entity: "active_product_pilot",
 			active:
-				"current deal stage is the approved Enterprise Pilot or Studio Pilot/POC stage",
+				"Product Postgres has a current pilot marker from pilot_type or the enterprise pilot accepted/expiry fields",
 			workspaceIdentity:
-				"at least one eligible product member has an email domain that exactly equals the normalized HubSpot company domain",
+				"the Product organization ID is joined directly to its eligible members",
 			unmatchedPolicy:
-				"retain the pilot with workspace_mapping=not_verified and zero product metrics",
+				"retain a pilot with workspace_mapping=not_verified and zero product metrics when its organization has no eligible member",
 			activity:
 				"eligible workspace users and non-deleted generations, with current 24-hour and all-time counts",
 			population:
@@ -492,7 +492,8 @@ const HUBSPOT_REPORT_SPECS: ProductMetricSpec[] = [
 				"publish account and internal CRM owner labels, but no domain, email, user, organization, or workspace identifiers",
 		},
 		computation: {
-			aggregate: "active_pilot_registry_joined_to_exact_domain_workspaces",
+			aggregate:
+				"active_product_pilot_registry_joined_to_organization_workspaces",
 			outputs: [
 				"pilot_status",
 				"pilot_start",
@@ -523,7 +524,7 @@ const HUBSPOT_REPORT_SPECS: ProductMetricSpec[] = [
 		key: "sales.weekly_active_pilots",
 		name: "Weekly active pilot count",
 		description:
-			"Current active pilots and current-week entries and exits from the approved Enterprise and Studio HubSpot pilot stages.",
+			"Historical weekly HubSpot pilot-stage transitions. Use the Product Postgres pilot registry for the current unpaid pilot roster and usage exclusion.",
 		grain: FactGrain.WEEK,
 		source: {
 			key: "hubspot:crm",

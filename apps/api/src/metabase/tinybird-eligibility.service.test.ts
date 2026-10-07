@@ -3,9 +3,11 @@ import {
 	buildTinybirdEligibility,
 	compactEligibilityQuery,
 	type EligibilityRow,
+	excludePaidPilotIdentities,
 	governProductPostgresQuery,
 	governTinybirdQuery,
 	hasSubscribedPopulation,
+	pilotOrganizationQuery,
 } from "./tinybird-eligibility.service";
 
 const row = (input: Partial<EligibilityRow>): EligibilityRow => ({
@@ -123,6 +125,56 @@ describe("product activity eligibility", () => {
 		expect(query).toContain("limit 2000");
 	});
 
+	it("uses only explicit active Product pilot markers", () => {
+		const query = pilotOrganizationQuery().toLowerCase();
+
+		expect(query).toContain("f.pilot_type");
+		expect(query).toContain("f.enterprise_pilot_accepted_at");
+		expect(query).toContain("f.enterprise_pilot_expires_at");
+		expect(query).toContain("<= now()");
+		expect(query).toContain("> now()");
+		expect(query).toContain("select distinct");
+		expect(query).not.toContain("o.name");
+	});
+
+	it("keeps verified paid organizations and customers out of pilot exclusions", () => {
+		expect(
+			excludePaidPilotIdentities(
+				[
+					{ organization_id: "org-paid", customer_id: "cus-paid" },
+					{ organization_id: "org-unpaid", customer_id: "cus-unpaid" },
+				],
+				new Set(["org-paid"]),
+				new Set(["cus-paid"]),
+			),
+		).toEqual([{ organization_id: "org-unpaid", customer_id: "cus-unpaid" }]);
+	});
+
+	it("adds pilot organizations and customers to every exclusion policy", () => {
+		const snapshot = buildTinybirdEligibility(
+			[
+				row({
+					userId: "internal",
+					email: "operator@sync.so",
+					organizationId: "org-1",
+					customerId: "customer-1",
+				}),
+			],
+			new Date("2026-08-19T00:00:00.000Z"),
+			1,
+			"SUBSCRIBED_ORGANIZATIONS",
+			"MONEY",
+			["pilot-org"],
+			["pilot-customer"],
+		);
+
+		expect(snapshot.excludedOrganizationIds).toEqual(["org-1", "pilot-org"]);
+		expect(snapshot.excludedCustomerIds).toEqual([
+			"customer-1",
+			"pilot-customer",
+		]);
+	});
+
 	it("recognizes quoted paid-plan predicates", () => {
 		expect(
 			hasSubscribedPopulation(`select count(*) from sync_prod.sync_usage3
@@ -176,6 +228,22 @@ where "organizationPlanType" in ('hobbyist', 'creator')`),
 			"atlas_population_organization.first_subscribed_at",
 		);
 		expect(governed.queryText).toContain("atlas_population_user.banned");
+	});
+
+	it("filters pilot organizations from Product Postgres populations", () => {
+		const governed = governProductPostgresQuery(
+			"select count(*) from public.generations g join public.organizations o on o.id = g.organization_id",
+			"PRODUCT_ACTIVITY",
+			["pilot-org"],
+		);
+
+		expect(governed.applied).toBe(true);
+		expect(governed.queryText).toContain(
+			"atlas_population_generation.organization_id not in ('pilot-org')",
+		);
+		expect(governed.queryText).toContain(
+			"atlas_population_organization.id not in ('pilot-org')",
+		);
 	});
 
 	it.each(["generations", "generation_feedback", "generation_score"])(

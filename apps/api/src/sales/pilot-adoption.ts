@@ -1,7 +1,15 @@
+import {
+	ContractCustomerKind,
+	ContractMappingStatus,
+	type Db,
+	RevenueDoor,
+	RevenueDoorMatchKind,
+} from "@crm/db";
 import type {
 	ActivePilotRegistry,
 	HubspotSalesResult,
 } from "@crm/db/hubspot-sales";
+import type { MetabaseResult } from "../metabase/metabase.client";
 
 function textLiteral(value: string): string {
 	return `'${value.replaceAll("'", "''").replaceAll("\0", "")}'`;
@@ -11,6 +19,171 @@ function timestampLiteral(value: Date | null): string {
 	return value ? `${textLiteral(value.toISOString())}::timestamptz` : "null";
 }
 
+export function productPilotRegistryQuery(): string {
+	return `select
+  o.id::text as organization_id,
+  o.stripe_customer_id::text as customer_id,
+  nullif(trim(o.name), '') as account,
+  max(f.enterprise_pilot_accepted_at) as pilot_started_at,
+  current_timestamp as data_through,
+  count(*) over()::bigint as source_row_count
+from public.organizations o
+join public.organization_features f on f.organization_id = o.id
+where (
+  nullif(trim(coalesce(f.pilot_type, '')), '') is not null
+  or f.enterprise_pilot_accepted_at is not null
+  or f.enterprise_pilot_expires_at is not null
+)
+  and (
+    f.enterprise_pilot_accepted_at is null
+    or f.enterprise_pilot_accepted_at <= now()
+  )
+  and (
+    f.enterprise_pilot_expires_at is null
+    or f.enterprise_pilot_expires_at > now()
+  )
+group by o.id, o.name
+order by o.id`;
+}
+
+export function parseProductPilotRegistry(
+	result: MetabaseResult,
+	dataThroughFallback = new Date(),
+): ActivePilotRegistry {
+	const requiredColumns = new Set([
+		"organization_id",
+		"customer_id",
+		"account",
+		"pilot_started_at",
+		"data_through",
+		"source_row_count",
+	]);
+	if (
+		!Array.from(requiredColumns).every((name) =>
+			result.columns.some((column) => column.name === name),
+		)
+	) {
+		throw new Error("Product pilot registry is missing required columns.");
+	}
+	const rows = result.rows.map((values) =>
+		Object.fromEntries(
+			result.columns.map((column, index) => [
+				column.name,
+				values[index] ?? null,
+			]),
+		),
+	);
+	const sourceRows = Number(rows[0]?.source_row_count ?? rows.length);
+	const sourceWatermark = rows[0]?.data_through
+		? new Date(String(rows[0].data_through))
+		: dataThroughFallback;
+	if (
+		!Number.isSafeInteger(sourceRows) ||
+		sourceRows !== rows.length ||
+		Number.isNaN(sourceWatermark.getTime()) ||
+		rows.some(
+			(row) =>
+				Number(row.source_row_count ?? sourceRows) !== sourceRows ||
+				new Date(String(row.data_through ?? "")).getTime() !==
+					sourceWatermark.getTime(),
+		)
+	) {
+		throw new Error("Product pilot registry is incomplete.");
+	}
+	return {
+		dataThrough: sourceWatermark,
+		entries: rows.map((row) => {
+			const organizationId = String(row.organization_id ?? "").trim();
+			const account = String(row.account ?? "").trim();
+			if (!organizationId || !account) {
+				throw new Error(
+					"Product pilot registry has an incomplete account row.",
+				);
+			}
+			const started = row.pilot_started_at
+				? new Date(String(row.pilot_started_at))
+				: null;
+			return {
+				account,
+				domain: null,
+				organizationId,
+				customerId: String(row.customer_id ?? "").trim() || null,
+				owner: "",
+				pilotStartedAt:
+					started && !Number.isNaN(started.getTime()) ? started : null,
+			};
+		}),
+	};
+}
+
+export async function excludePaidPilotRegistryEntries(
+	db: Db,
+	registry: ActivePilotRegistry,
+): Promise<ActivePilotRegistry> {
+	const [contractRows, organizationRows, customerRows] = await Promise.all([
+		db.contractCustomerProductOrganization.findMany({
+			where: {
+				status: ContractMappingStatus.VERIFIED,
+				contractCustomer: {
+					sourceDeletedAt: null,
+					kind: {
+						in: [
+							ContractCustomerKind.ENTERPRISE,
+							ContractCustomerKind.CHANNEL_PARTNER,
+							ContractCustomerKind.PRODUCTION,
+						],
+					},
+				},
+			},
+			select: {
+				productOrganization: {
+					select: { externalId: true, stripeCustomerId: true },
+				},
+			},
+		}),
+		db.revenueDoorRule.findMany({
+			where: {
+				policyId: "company-revenue-doors",
+				active: true,
+				door: { not: RevenueDoor.TOOLS },
+				matchKind: RevenueDoorMatchKind.ORGANIZATION_ID,
+			},
+			select: { matchValue: true },
+		}),
+		db.revenueDoorRule.findMany({
+			where: {
+				policyId: "company-revenue-doors",
+				active: true,
+				door: { not: RevenueDoor.TOOLS },
+				matchKind: RevenueDoorMatchKind.STRIPE_CUSTOMER_ID,
+			},
+			select: { matchValue: true },
+		}),
+	]);
+	const paidOrganizations = new Set([
+		...contractRows.map((row) => row.productOrganization.externalId),
+		...organizationRows.map((row) => row.matchValue),
+	]);
+	const paidCustomers = new Set([
+		...contractRows.flatMap((row) =>
+			row.productOrganization.stripeCustomerId
+				? [row.productOrganization.stripeCustomerId]
+				: [],
+		),
+		...customerRows.map((row) => row.matchValue),
+	]);
+	return {
+		...registry,
+		entries: registry.entries.filter((entry) => {
+			const paidOrganization = paidOrganizations.has(
+				entry.organizationId ?? "",
+			);
+			const paidCustomer = paidCustomers.has(entry.customerId ?? "");
+			return !paidOrganization && !paidCustomer;
+		}),
+	};
+}
+
 export function buildPilotAdoptionQuery(registry: ActivePilotRegistry): string {
 	if (registry.entries.length === 0) return "";
 	const values = registry.entries
@@ -18,19 +191,28 @@ export function buildPilotAdoptionQuery(registry: ActivePilotRegistry): string {
 			(entry, index) =>
 				`(${index + 1}, ${textLiteral(entry.account)}, ${
 					entry.domain ? textLiteral(entry.domain) : "null"
-				}, ${textLiteral(entry.owner)}, ${timestampLiteral(entry.pilotStartedAt)})`,
+				}, ${entry.organizationId ? textLiteral(entry.organizationId) : "null"}, ${textLiteral(entry.owner)}, ${timestampLiteral(entry.pilotStartedAt)})`,
 		)
 		.join(",\n    ");
 	const dataThrough = timestampLiteral(registry.dataThrough);
-	return `with registry (ordinal, account, domain, owner, pilot_started_at) as (
+	return `with registry (ordinal, account, domain, organization_id, owner, pilot_started_at) as (
   values
     ${values}
 ),
 candidate_orgs as (
   select distinct r.ordinal, uo.organization_id, u.id as proof_user_id
   from registry r
+  join public.user_organizations uo
+    on r.organization_id is not null
+   and uo.organization_id = r.organization_id::uuid
+  join auth.users u on u.id = uo.user_id
+  where u.email is not null
+  union all
+  select distinct r.ordinal, uo.organization_id, u.id as proof_user_id
+  from registry r
   join auth.users u
-    on r.domain is not null
+    on r.organization_id is null
+   and r.domain is not null
    and split_part(lower(u.email::text), '@', 2) = r.domain
   join public.user_organizations uo on uo.user_id = u.id
   where u.email is not null
@@ -143,7 +325,11 @@ select
   r.pilot_started_at as pilot_start,
   null::timestamptz as pilot_end,
   r.owner,
-  case when coalesce(ws.matched_workspaces, 0) > 0 then 'domain_verified' else 'not_verified' end as workspace_mapping,
+  case
+    when coalesce(ws.matched_workspaces, 0) > 0 and r.organization_id is not null then 'organization_verified'
+    when coalesce(ws.matched_workspaces, 0) > 0 then 'domain_verified'
+    else 'not_verified'
+  end as workspace_mapping,
   coalesce(ws.matched_workspaces, 0) as matched_workspaces,
   coalesce(us.users, 0) as users,
   coalesce(us.active_users_24h, 0) as active_users_24h,

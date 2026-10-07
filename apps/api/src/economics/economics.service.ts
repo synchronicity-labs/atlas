@@ -35,6 +35,15 @@ const MODAL_CLOCK_SKEW_MS = 5 * 60 * 1000;
 const PRODUCT_FPS = 25;
 const PRODUCT_FRAMES_PER_MINUTE = PRODUCT_FPS * 60;
 
+function isModalOnlyReport(report: EconomicsQuery["report"]): boolean {
+	return (
+		report === "modal-spend" ||
+		report === "model-costs" ||
+		report === "cost-per-minute" ||
+		report === "output-minutes"
+	);
+}
+
 export const ECONOMICS_WAREHOUSE_QUERY = `with now('UTC') as end_utc
 select
   toStartOfMonth("generationEndedAt", 'UTC') as month,
@@ -333,7 +342,7 @@ export class EconomicsService {
 					const version = question.versions[0];
 					if (!version) continue;
 					const query = economicsQuery.parse(JSON.parse(version.queryText));
-					if (query.report !== "cost-per-minute") {
+					if (!isModalOnlyReport(query.report)) {
 						if (eligibilityError) throw eligibilityError;
 						if (!eligibility) {
 							try {
@@ -484,18 +493,23 @@ export class EconomicsService {
 		eligibility?: TinybirdEligibilitySnapshot,
 		inputs = new Map<string, EconomicsInputs>(),
 	): Promise<Result> {
-		if (query.report === "cost-per-minute") {
-			let shared = [...inputs.values()].find(
-				(value) => value.modalRows.length > 0,
-			);
-			if (!shared) {
+		if (isModalOnlyReport(query.report)) {
+			let shared = inputs.get("modal");
+			if (!shared && query.report !== "output-minutes") {
 				shared = {
 					warehouseRows: [],
 					modalRows: await this.loadModalRows(),
 				};
-				inputs.set("cost-per-minute", shared);
+				inputs.set("modal", shared);
 			}
-			if (!shared.outputMinutesRows) {
+			if (!shared) {
+				shared = { warehouseRows: [], modalRows: [] };
+			}
+			if (
+				(query.report === "cost-per-minute" ||
+					query.report === "output-minutes") &&
+				!shared.outputMinutesRows
+			) {
 				shared.outputMinutesRows = await this.loadOutputMinutes();
 			}
 			return economicsResult(
@@ -508,8 +522,13 @@ export class EconomicsService {
 		const warehouseSql = query.warehouseSql ?? ECONOMICS_WAREHOUSE_QUERY;
 		let shared = inputs.get(warehouseSql);
 		if (!shared) {
-			shared = await this.loadInputs(warehouseSql, eligibility);
+			shared = await this.loadInputs(
+				warehouseSql,
+				eligibility,
+				inputs.get("modal")?.modalRows,
+			);
 			inputs.set(warehouseSql, shared);
+			inputs.set("modal", shared);
 		}
 		return economicsResult(
 			query,
@@ -522,8 +541,9 @@ export class EconomicsService {
 	private async loadInputs(
 		warehouseSql: string,
 		eligibility?: TinybirdEligibilitySnapshot,
+		knownModalRows?: ModalRow[],
 	): Promise<EconomicsInputs> {
-		const modalRows = await this.loadModalRows();
+		const modalRows = knownModalRows ?? (await this.loadModalRows());
 		const config = metabaseConfig();
 		if (!config) throw new Error("Metabase is not configured.");
 		assertReadOnlyQuery("SQL", warehouseSql);
@@ -609,12 +629,30 @@ export function economicsResult(
 		-query.months,
 	);
 	if (query.report === "modal-spend") {
+		const modalByMonth = new Map<string, number>();
+		for (const row of modalRows) {
+			modalByMonth.set(
+				row.month,
+				(modalByMonth.get(row.month) ?? 0) + row.costUsd,
+			);
+		}
 		return {
 			columns: [
 				column("month", "Month", "type/DateTime"),
 				column("total_modal_cost_usd", "Total Modal spend"),
 			],
-			rows: monthly.map((row) => [row.month, row.totalModalCostUsd]),
+			rows: [
+				...new Set([
+					...monthly.map((row) => row.month.slice(0, 7)),
+					...modalByMonth.keys(),
+				]),
+			]
+				.sort()
+				.slice(-query.months)
+				.map((period) => [
+					`${period}-01T00:00:00.000Z`,
+					modalByMonth.get(period) ?? null,
+				]),
 		};
 	}
 	if (query.report === "prod-inference-cost") {
@@ -691,6 +729,18 @@ export function economicsResult(
 				column("cost_status", "Cost coverage", "type/Text"),
 			],
 			rows: costPerMinuteRows(modalRows, outputMinutesRows, query.months),
+		};
+	}
+	if (query.report === "output-minutes") {
+		return {
+			columns: [
+				column("month", "Month", "type/DateTime"),
+				column(
+					"output_minutes",
+					"Completed output minutes (25 fps equivalent)",
+				),
+			],
+			rows: outputMinuteRows(outputMinutesRows, query.months),
 		};
 	}
 	if (query.report === "frames-by-tier") {
@@ -804,6 +854,29 @@ function costPerMinuteRows(
 			),
 		)
 		.filter((row) => periods.has(String(row[0]).slice(0, 7)));
+}
+
+function outputMinuteRows(
+	outputMinutesRows: OutputMinutesRow[],
+	months: number,
+): unknown[][] {
+	const periods = new Set(
+		[...new Set(outputMinutesRows.map((row) => row.month))]
+			.sort()
+			.slice(-months),
+	);
+	const totals = new Map<string, number>();
+	for (const row of outputMinutesRows) {
+		if (periods.has(row.month)) {
+			totals.set(row.month, (totals.get(row.month) ?? 0) + row.outputMinutes);
+		}
+	}
+	return [...totals.entries()]
+		.sort(([a], [b]) => a.localeCompare(b))
+		.map(([month, outputMinutes]) => [
+			`${month}-01T00:00:00.000Z`,
+			outputMinutes,
+		]);
 }
 
 export function buildMonthlyEconomics(

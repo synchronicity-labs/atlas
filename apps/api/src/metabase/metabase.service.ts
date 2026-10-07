@@ -86,6 +86,10 @@ const USER_COLUMNS = new Set([
 	"stripe_subscription_id",
 	"stripe_customer_id",
 	"name",
+	"pilot_type",
+	"enterprise_pilot_accepted_at",
+	"enterprise_pilot_expires_at",
+	"plan_updated_at",
 ]);
 
 type DashboardSyncInput = {
@@ -1951,6 +1955,23 @@ export class MetabaseService {
 
 						const organizationId = identifierString(row.organization_id, 255);
 						if (organizationId) {
+							const observedAt = new Date();
+							const plan = boundedString(row.plan, 128);
+							const pilotType = boundedString(row.pilot_type, 128);
+							const pilotAcceptedAt = checkpointDate(
+								row.enterprise_pilot_accepted_at,
+							);
+							const pilotExpiresAt = checkpointDate(
+								row.enterprise_pilot_expires_at,
+							);
+							const stripeSubscriptionId = identifierString(
+								row.stripe_subscription_id,
+								255,
+							);
+							const stripeCustomerId = identifierString(
+								row.stripe_customer_id,
+								255,
+							);
 							const organization = await tx.productOrganization.upsert({
 								where: {
 									sourceId_externalId: { sourceId, externalId: organizationId },
@@ -1959,16 +1980,10 @@ export class MetabaseService {
 									sourceId,
 									externalId: organizationId,
 									name: boundedString(row.name, 500),
-									plan: boundedString(row.plan, 128),
+									plan,
 									paymentStatus: json(row.payment_status),
-									stripeSubscriptionId: identifierString(
-										row.stripe_subscription_id,
-										255,
-									),
-									stripeCustomerId: identifierString(
-										row.stripe_customer_id,
-										255,
-									),
+									stripeSubscriptionId,
+									stripeCustomerId,
 									traits: json({
 										name: row.name,
 										plan: row.plan,
@@ -1978,16 +1993,10 @@ export class MetabaseService {
 								},
 								update: {
 									name: boundedString(row.name, 500),
-									plan: boundedString(row.plan, 128),
+									plan,
 									paymentStatus: json(row.payment_status),
-									stripeSubscriptionId: identifierString(
-										row.stripe_subscription_id,
-										255,
-									),
-									stripeCustomerId: identifierString(
-										row.stripe_customer_id,
-										255,
-									),
+									stripeSubscriptionId,
+									stripeCustomerId,
 									traits: json({
 										name: row.name,
 										plan: row.plan,
@@ -1996,6 +2005,49 @@ export class MetabaseService {
 									syncedAt: new Date(),
 								},
 							});
+
+							const status = {
+								plan,
+								pilotType,
+								pilotAcceptedAt: pilotAcceptedAt?.toISOString() ?? null,
+								pilotExpiresAt: pilotExpiresAt?.toISOString() ?? null,
+								paymentStatus: row.payment_status ?? null,
+								stripeSubscriptionId,
+								stripeCustomerId,
+							};
+							const contentHash = stableHash(status);
+							const previous =
+								await tx.productOrganizationStatusEvent.findFirst({
+									where: { productOrganizationId: organization.id },
+									orderBy: [{ observedAt: "desc" }, { createdAt: "desc" }],
+									select: { contentHash: true },
+								});
+							if (previous?.contentHash !== contentHash) {
+								const effectiveAt =
+									checkpointDate(row.plan_updated_at) ?? observedAt;
+								await tx.productOrganizationStatusEvent.create({
+									data: {
+										idempotencyKey: `${sourceId}:${organization.id}:${observedAt.toISOString()}:${contentHash}`,
+										sourceId,
+										productOrganizationId: organization.id,
+										observedAt,
+										effectiveAt,
+										plan,
+										pilotType,
+										pilotAcceptedAt,
+										pilotExpiresAt,
+										paymentStatus: json(row.payment_status),
+										stripeSubscriptionId,
+										stripeCustomerId,
+										contentHash,
+										evidence: json({
+											source: "metabase",
+											organizationExternalId: organizationId,
+											observedFields: Object.keys(status),
+										}),
+									},
+								});
+							}
 
 							await tx.productOrganizationMembership.upsert({
 								where: {

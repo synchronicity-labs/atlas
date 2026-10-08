@@ -65,6 +65,9 @@ describe("metric catalog question specs", () => {
 
 		expect(spec?.queryText).toContain('"generationCreatedAt"');
 		expect(spec?.queryText).not.toContain('"generationEndedAt"');
+		expect(spec?.provisionalDefinition).toContain(
+			"period-effective paid-account population",
+		);
 	});
 
 	test("does not invent a query for an unknown KPI", () => {

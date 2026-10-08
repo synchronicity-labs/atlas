@@ -23,6 +23,15 @@ describe("metric catalog evidence", () => {
 		).toEqual([2006, 2019]);
 	});
 
+	test("puts the paid-account question ahead of the old north-star proxy", () => {
+		expect(
+			catalogEvidenceFor({
+				title: "Active Rate (North Star ÷ Paid Teams)",
+				ownerTeam: "sync.",
+			}).map((candidate) => candidate.questionNumber),
+		).toEqual([423, 15, 1104]);
+	});
+
 	test("does not invent evidence for an unsupported metric", () => {
 		expect(
 			catalogEvidenceFor({ title: "Manual Health Check", ownerTeam: "CS" }),

@@ -247,7 +247,7 @@ export function catalogQuestionSpec(
 				display: "line",
 				visualization: {},
 				provisionalDefinition:
-					"Provisional: V2 professional organizations divided by organizations with paid invoices in the same UTC month.",
+					"Provisional: V2 professional organizations divided by the same period-effective paid-account population. Atlas must preserve subscription lifecycle state, canonical organization joins, pilot exclusions, unmatched rows, and unknown statuses; if that coverage is incomplete, the rate remains unavailable.",
 			};
 		default:
 			return null;

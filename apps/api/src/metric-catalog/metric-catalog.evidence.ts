@@ -184,6 +184,11 @@ export function catalogEvidenceFor(
 	if (title === "active rate (north star ÷ paid teams)") {
 		return [
 			{
+				questionNumber: 423,
+				rationale:
+					"Defines the paid-account denominator and requires period-effective subscription state, organization joins, pilot exclusions, and unmatched coverage before a rate can be published.",
+			},
+			{
 				questionNumber: 15,
 				rationale:
 					"Shows the current professional-organization numerator under the Product definition.",

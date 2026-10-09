@@ -84,7 +84,7 @@ try {
 			);
 			assert.equal(
 				prepared.governed.eligibility.scope,
-				query.databaseExternalId === "166"
+				["34", "166"].includes(query.databaseExternalId)
 					? "SUBSCRIBED_ORGANIZATIONS"
 					: "ALL_IDENTITIES",
 			);
@@ -169,7 +169,7 @@ try {
 				);
 				assert.equal(
 					population.scope,
-					query.databaseExternalId === "166"
+					["34", "166"].includes(query.databaseExternalId)
 						? "SUBSCRIBED_ORGANIZATIONS"
 						: "ALL_IDENTITIES",
 				);

@@ -82,12 +82,12 @@ try {
 				prepared.governed.eligibility.policy,
 				expectedPopulationPolicy(id, number, name, query.queryText),
 			);
-			assert.equal(
-				prepared.governed.eligibility.scope,
-				query.databaseExternalId === "166"
-					? "SUBSCRIBED_ORGANIZATIONS"
-					: "ALL_IDENTITIES",
-			);
+				assert.equal(
+					prepared.governed.eligibility.scope,
+					["34", "166"].includes(query.databaseExternalId)
+						? "SUBSCRIBED_ORGANIZATIONS"
+						: "ALL_IDENTITIES",
+				);
 			if (query.databaseExternalId === "166")
 				assert(
 					prepared.revenueDoor?.evidence.applied &&
@@ -169,7 +169,7 @@ try {
 				);
 				assert.equal(
 					population.scope,
-					query.databaseExternalId === "166"
+					["34", "166"].includes(query.databaseExternalId)
 						? "SUBSCRIBED_ORGANIZATIONS"
 						: "ALL_IDENTITIES",
 				);

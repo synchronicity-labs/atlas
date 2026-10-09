@@ -56,7 +56,7 @@
 			"unit": "percent",
 			"definition": "Paid PLG customer accounts meeting the professional-use qualification divided by that same paid customer base. Use the same identity and month; never remove idle paid accounts. Quarter observations use the quarter-ending month’s eligible account set and qualification; monthly observations use the selected month. Do not average monthly percentages.",
 			"notApplicable": false,
-			"automated": false,
+			"automated": true,
 			"preparation": {
 				"owner": "Noah (tentative)",
 				"ownerStatus": "Tentative lead in the outline",
@@ -2888,7 +2888,7 @@
 			"unit": "count",
 			"definition": "Eligible paid PLG subscriber accounts (excluding PAYG-only). Use the same monthly eligibility window and account identity as the active numerator. Quarter observations use the quarter-ending month’s eligible account set and qualification; monthly observations use the selected month. Do not average monthly percentages.",
 			"notApplicable": false,
-			"automated": false,
+			"automated": true,
 			"preparation": {
 				"owner": "Noah (tentative)",
 				"ownerStatus": "Tentative lead in the outline",
@@ -2910,7 +2910,7 @@
 			"unit": "count",
 			"definition": "Qualifying professional use within the eligible paid base, mapped to account identity. This numerator is not all professional teams; includes only members of the exact same denominator. Quarter observations use the quarter-ending month’s eligible account set and qualification; monthly observations use the selected month. Do not average monthly percentages.",
 			"notApplicable": false,
-			"automated": false,
+			"automated": true,
 			"preparation": {
 				"owner": "Noah (tentative)",
 				"ownerStatus": "Tentative lead in the outline",

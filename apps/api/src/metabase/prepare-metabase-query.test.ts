@@ -226,6 +226,42 @@ describe("shared Metabase preview and refresh preparation", () => {
 		expect(prepared.governed?.eligibility.policy).toBe("PRODUCT_ACTIVITY");
 		expect(prepared.governed?.applied).toBe(true);
 	});
+
+	it("uses the explicit subscription scope for paid-account QBR questions", async () => {
+		const { client, eligibility, policy } = dependencies();
+		const prepared = await prepareGovernedMetabaseQuery(
+			{
+				number: 536,
+				name: "PLG eligible paid base",
+				sourceExternalId: "qbr:plg_eligible_accounts",
+				databaseExternalId: "166",
+			},
+			{
+				language: "SQL",
+				queryText:
+					"select 1 from sync_prod.sync_stripe_subscriptions_with_plan",
+			},
+			client,
+			eligibility,
+			{
+				...policy,
+				compile: mock(async (queryText: string) => ({
+					queryText,
+					evidence: {
+						applied: true,
+						complete: true,
+					} as RevenueDoorPolicyEvidence,
+				})),
+			},
+		);
+		expect(eligibility.currentForPaidActivity).not.toHaveBeenCalled();
+		expect(prepared.governed?.eligibility).toMatchObject({
+			complete: true,
+			scope: "SUBSCRIBED_ORGANIZATIONS",
+			enforcement: "EXPLICIT_SUBSCRIPTION_SCOPE",
+		});
+	});
+
 	it("filters Product SQL at the source and limits identity result rows", async () => {
 		const { client, eligibility, policy } = dependencies();
 		const prepared = await prepareGovernedMetabaseQuery(

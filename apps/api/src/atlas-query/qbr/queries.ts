@@ -3,6 +3,9 @@ import { productCollectionQueries } from "./product-collection";
 export const qbrPlgMetricIds = [
 	"plg_teams",
 	"plg_teams_period_end",
+	"plg_eligible_accounts",
+	"plg_active_accounts",
+	"plg_active_rate",
 	"plg_teams_adds",
 	"plg_teams_losses",
 	"plg_teams_net",
@@ -13,6 +16,14 @@ export const qbrPlgMetricIds = [
 
 export function isQbrPlgQuestion(externalId: string | null) {
 	return qbrPlgMetricIds.some((id) => externalId === `qbr:${id}`);
+}
+
+export function isQbrPaidAccountQuestion(externalId: string | null) {
+	return [
+		"plg_eligible_accounts",
+		"plg_active_accounts",
+		"plg_active_rate",
+	].some((id) => externalId === `qbr:${id}`);
 }
 
 export function isQbrEnterpriseUsageRetentionQuestion(
@@ -59,6 +70,9 @@ export function qbrQuarterValue(
 		"plg_teams_losses",
 		"plg_teams_net",
 		"enterprise_usage_retention",
+		"plg_eligible_accounts",
+		"plg_active_accounts",
+		"plg_active_rate",
 	];
 	if (
 		![
@@ -72,6 +86,23 @@ export function qbrQuarterValue(
 	)
 		return null;
 	const quarterMonths = ["2026-07", "2026-08", "2026-09"];
+	if (
+		[
+			"plg_eligible_accounts",
+			"plg_active_accounts",
+			"plg_active_rate",
+		].includes(metricId)
+	) {
+		const september = monthlyValues.find((item) => item.period === "2026-09");
+		return september
+			? {
+					period: "2026-Q3" as const,
+					value: september.value,
+					numerator: september.numerator,
+					denominator: september.denominator,
+				}
+			: null;
+	}
 	const values = monthlyValues.filter((item) =>
 		quarterMonths.includes(item.period),
 	);
@@ -270,6 +301,84 @@ cross join q2_to_q3
 order by monthly.period_start`;
 }
 
+function paidAccountSource() {
+	return `with cutoff as (
+  select toDateTime('2026-09-30 23:59:59', 'UTC') as cutoff
+), lifecycle as (
+  select
+    s.id as subscription_id,
+    argMax(s.organizationId, tuple(s.currentPeriodStart, s.currentPeriodEnd, s.eventType)) as organization_id,
+    argMax(s.customerId, tuple(s.currentPeriodStart, s.currentPeriodEnd, s.eventType)) as customer_id,
+    argMax(s.status, tuple(s.currentPeriodStart, s.currentPeriodEnd, s.eventType)) as status,
+    argMax(s.plan, tuple(s.currentPeriodStart, s.currentPeriodEnd, s.eventType)) as plan,
+    argMax(s.currentPeriodStart, tuple(s.currentPeriodStart, s.currentPeriodEnd, s.eventType)) as period_start,
+    argMax(s.currentPeriodEnd, tuple(s.currentPeriodStart, s.currentPeriodEnd, s.eventType)) as period_end,
+    argMax(s.canceledAt, tuple(s.currentPeriodStart, s.currentPeriodEnd, s.eventType)) as canceled_at
+  from sync_prod.sync_stripe_subscriptions_with_plan s
+  cross join cutoff
+  where s.createdAt <= cutoff.cutoff
+  group by s.id
+), subscriptions as (
+  select *
+  from lifecycle
+  where plan in ('hobbyist', 'creator', 'growth', 'scale', 'starter', 'pro', 'team')
+    and status in ('active', 'past_due')
+    and period_start <= (select cutoff from cutoff)
+    and period_end > (select cutoff from cutoff)
+    and organization_id != ''
+    and customer_id != ''
+), accounts as (
+  select
+    organization_id,
+    any(customer_id) as customer_id,
+    groupUniqArray(subscription_id) as subscription_ids,
+    count() as subscription_count,
+    any(status) as status
+  from subscriptions
+  group by organization_id
+), professional as (
+  select
+    organizationId as organization_id,
+    uniqExact(generationId) as generations,
+    uniqExact(toDate(generationEndedAt, 'UTC')) as active_days,
+    sum(generationCostMillicents) / 100000.0 as accrued_value_usd
+  from sync_prod.sync_usage3
+  where generationEndedAt >= toDateTime('2026-09-01 00:00:00', 'UTC')
+    and generationEndedAt < toDateTime('2026-09-30 23:59:59', 'UTC') + INTERVAL 1 SECOND
+    and organizationId != ''
+    and organizationPlanType in ('hobbyist', 'creator', 'growth', 'scale', 'starter', 'pro', 'team')
+  group by organizationId
+  having generations >= 3 and active_days >= 2 and accrued_value_usd >= 100
+), joined as (
+  select
+    count() as eligible_accounts,
+    countIf(professional.organization_id != '') as professional_accounts,
+    countIf(accounts.status = 'active') as active_accounts,
+    countIf(accounts.status = 'past_due') as past_due_accounts,
+    countIf(accounts.subscription_count > 1) as multi_subscription_accounts
+  from accounts
+  left join professional using (organization_id)
+), quality as (
+  select countIf(subscription_count > 1) as lifecycle_ids_with_multiple_rows
+  from (
+    select id, count() as subscription_count
+    from sync_prod.sync_stripe_subscriptions_with_plan
+    where createdAt <= toDateTime('2026-09-30 23:59:59', 'UTC')
+    group by id
+  )
+)
+select
+  toDate('2026-09-01') as period_start,
+  eligible_accounts,
+  professional_accounts,
+  round(100.0 * professional_accounts / nullIf(eligible_accounts, 0), 2) as professional_rate,
+  active_accounts,
+  past_due_accounts,
+  multi_subscription_accounts,
+  quality.lifecycle_ids_with_multiple_rows
+from joined cross join quality`;
+}
+
 export function qbrQueries(now = new Date()) {
 	const through = new Date(
 		Math.min(
@@ -361,6 +470,19 @@ from (${cohorts}) order by period_start`,
 		databaseExternalId: "166",
 		queryText: enterpriseUsageRetentionSource(through),
 	};
+	for (const [id, valueColumn] of Object.entries({
+		plg_eligible_accounts: "eligible_accounts",
+		plg_active_accounts: "professional_accounts",
+		plg_active_rate: "professional_rate",
+	})) {
+		queries[id] = {
+			databaseExternalId: "166",
+			queryText: `select period_start,
+  ${valueColumn} as value,
+  ${id === "plg_active_rate" ? "professional_accounts as numerator, eligible_accounts as denominator" : "null as numerator, null as denominator"}
+from (${paidAccountSource()})`,
+		};
+	}
 	queries.platform_completion = {
 		databaseExternalId: "34",
 		queryText: `select date_trunc('month', g.created_at at time zone 'UTC') as period_start,

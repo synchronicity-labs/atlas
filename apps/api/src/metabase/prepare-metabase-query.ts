@@ -150,19 +150,22 @@ export async function prepareGovernedMetabaseQuery(
 		["34", "166"].includes(question.databaseExternalId ?? "") &&
 		!abuseUsesAllIdentities(question.sourceExternalId)
 	) {
-		const snapshot = qbrPlg
-			? await eligibility.currentForPaidActivity()
-			: qbrEnterpriseUsageRetention
-				? await eligibility.currentForRevenue()
-				: usesSubscribedRevenueEligibility(
-							question.number,
-							question.name,
-							classifiedQueryText,
-						)
-					? await eligibility.currentForRevenue()
-					: hasSubscribedPopulation(classifiedQueryText)
-						? await eligibility.currentForPaidActivity()
-						: await eligibility.current();
+		const snapshot =
+			question.databaseExternalId === "34"
+				? await eligibility.currentForPaidActivity()
+				: qbrPlg
+					? await eligibility.currentForPaidActivity()
+					: qbrEnterpriseUsageRetention
+						? await eligibility.currentForRevenue()
+						: usesSubscribedRevenueEligibility(
+									question.number,
+									question.name,
+									classifiedQueryText,
+								)
+							? await eligibility.currentForRevenue()
+							: hasSubscribedPopulation(classifiedQueryText)
+								? await eligibility.currentForPaidActivity()
+								: await eligibility.current();
 		governed = eligibility.govern(
 			classifiedQueryText,
 			question.databaseExternalId,

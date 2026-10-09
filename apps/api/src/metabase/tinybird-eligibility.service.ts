@@ -50,7 +50,7 @@ export function compactEligibilityQuery(
     ) as has_subscribed
   from auth.users u
   ${joins}
-}${filtered}
+)${filtered}
 select
   ${source}.*,
   count(*) over()::bigint as source_row_count

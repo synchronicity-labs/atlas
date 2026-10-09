@@ -304,29 +304,39 @@ order by monthly.period_start`;
 function paidAccountSource() {
 	return `with cutoff as (
   select toDateTime('2026-09-30 23:59:59', 'UTC') as cutoff
-), lifecycle as (
+), subscription_state as (
   select
     s.id as subscription_id,
-    argMax(s.organizationId, tuple(s.currentPeriodStart, s.currentPeriodEnd, s.eventType)) as organization_id,
-    argMax(s.customerId, tuple(s.currentPeriodStart, s.currentPeriodEnd, s.eventType)) as customer_id,
-    argMax(s.status, tuple(s.currentPeriodStart, s.currentPeriodEnd, s.eventType)) as status,
-    argMax(s.plan, tuple(s.currentPeriodStart, s.currentPeriodEnd, s.eventType)) as plan,
-    argMax(s.currentPeriodStart, tuple(s.currentPeriodStart, s.currentPeriodEnd, s.eventType)) as period_start,
-    argMax(s.currentPeriodEnd, tuple(s.currentPeriodStart, s.currentPeriodEnd, s.eventType)) as period_end,
-    argMax(s.canceledAt, tuple(s.currentPeriodStart, s.currentPeriodEnd, s.eventType)) as canceled_at
+    argMax(s.organizationId, s.createdAt) as organization_id,
+    argMax(s.customerId, s.createdAt) as customer_id,
+    argMax(s.status, s.createdAt) as status,
+    argMax(s.plan, s.createdAt) as plan,
+    argMax(s.currentPeriodStart, s.createdAt) as period_start,
+    argMax(s.currentPeriodEnd, s.createdAt) as period_end,
+    nullIf(maxIf(s.canceledAt, isNotNull(s.canceledAt)), toDateTime(0)) as canceled_at
   from sync_prod.sync_stripe_subscriptions_with_plan s
   cross join cutoff
   where s.createdAt <= cutoff.cutoff
   group by s.id
-), subscriptions as (
-  select *
-  from lifecycle
-  where plan in ('hobbyist', 'creator', 'growth', 'scale', 'starter', 'pro', 'team')
+), period_rows as (
+  select
+    subscription_id,
+    organization_id,
+    customer_id,
+    status,
+    plan,
+    period_start,
+    period_end,
+    canceled_at
+  from subscription_state
+  cross join cutoff
+  where period_start <= cutoff.cutoff
+    and period_end > cutoff.cutoff
+    and plan in ('hobbyist', 'creator', 'growth', 'scale', 'starter', 'pro', 'team')
     and status in ('active', 'past_due')
-    and period_start <= (select cutoff from cutoff)
-    and period_end > (select cutoff from cutoff)
     and organization_id != ''
     and customer_id != ''
+    and (isNull(canceled_at) or canceled_at > cutoff.cutoff)
 ), accounts as (
   select
     organization_id,
@@ -334,7 +344,7 @@ function paidAccountSource() {
     groupUniqArray(subscription_id) as subscription_ids,
     count() as subscription_count,
     any(status) as status
-  from subscriptions
+  from period_rows
   group by organization_id
 ), professional as (
   select
@@ -352,20 +362,12 @@ function paidAccountSource() {
 ), joined as (
   select
     count() as eligible_accounts,
-    countIf(professional.organization_id != '') as professional_accounts,
+    (select count() from professional) as professional_accounts,
     countIf(accounts.status = 'active') as active_accounts,
     countIf(accounts.status = 'past_due') as past_due_accounts,
     countIf(accounts.subscription_count > 1) as multi_subscription_accounts
   from accounts
   left join professional using (organization_id)
-), quality as (
-  select countIf(subscription_count > 1) as lifecycle_ids_with_multiple_rows
-  from (
-    select id, count() as subscription_count
-    from sync_prod.sync_stripe_subscriptions_with_plan
-    where createdAt <= toDateTime('2026-09-30 23:59:59', 'UTC')
-    group by id
-  )
 )
 select
   toDate('2026-09-01') as period_start,
@@ -374,9 +376,8 @@ select
   round(100.0 * professional_accounts / nullIf(eligible_accounts, 0), 2) as professional_rate,
   active_accounts,
   past_due_accounts,
-  multi_subscription_accounts,
-  quality.lifecycle_ids_with_multiple_rows
-from joined cross join quality`;
+  multi_subscription_accounts
+from joined`;
 }
 
 export function qbrQueries(now = new Date()) {

@@ -227,7 +227,7 @@ describe("shared Metabase preview and refresh preparation", () => {
 		expect(prepared.governed?.applied).toBe(true);
 	});
 
-	it("uses the explicit subscription scope for paid-account QBR questions", async () => {
+	it("uses governed paid eligibility for paid-account QBR questions", async () => {
 		const { client, eligibility, policy } = dependencies();
 		const prepared = await prepareGovernedMetabaseQuery(
 			{
@@ -254,12 +254,47 @@ describe("shared Metabase preview and refresh preparation", () => {
 				})),
 			},
 		);
-		expect(eligibility.currentForPaidActivity).not.toHaveBeenCalled();
+		expect(eligibility.currentForPaidActivity).toHaveBeenCalledTimes(1);
 		expect(prepared.governed?.eligibility).toMatchObject({
 			complete: true,
 			scope: "SUBSCRIBED_ORGANIZATIONS",
-			enforcement: "EXPLICIT_SUBSCRIPTION_SCOPE",
+			policy: "PRODUCT_ACTIVITY",
 		});
+		expect(prepared.governed?.eligibility.enforcement).toBe(
+			"TINYBIRD_ID_EXCLUSIONS",
+		);
+	});
+
+	it("does not certify an arbitrary SQL source from a paid question id", async () => {
+		const { client, eligibility, policy } = dependencies();
+		const prepared = await prepareGovernedMetabaseQuery(
+			{
+				number: 536,
+				name: "PLG eligible paid base",
+				sourceExternalId: "qbr:plg_eligible_accounts",
+				databaseExternalId: "166",
+			},
+			{ language: "SQL", queryText: "select 1" },
+			client,
+			eligibility,
+			{
+				...policy,
+				compile: mock(async (queryText: string) => ({
+					queryText,
+					evidence: {
+						applied: true,
+						complete: true,
+					} as RevenueDoorPolicyEvidence,
+				})),
+			},
+		);
+
+		expect(eligibility.currentForPaidActivity).toHaveBeenCalledTimes(1);
+		expect(prepared.governed?.applied).toBe(false);
+		expect(prepared.governed?.eligibility.complete).toBe(false);
+		expect(prepared.governed?.eligibility.limitation).toBe(
+			"QUERY_SOURCE_NOT_GOVERNED",
+		);
 	});
 
 	it("filters Product SQL at the source and limits identity result rows", async () => {

@@ -117,7 +117,10 @@ where "organizationPlanType" in ('hobbyist', 'creator', 'growth', 'scale')`,
 
 describe("product activity eligibility", () => {
 	it("emits parseable SQL for both eligibility scopes", () => {
-		for (const scope of ["ALL_IDENTITIES", "SUBSCRIBED_ORGANIZATIONS"] as const) {
+		for (const scope of [
+			"ALL_IDENTITIES",
+			"SUBSCRIBED_ORGANIZATIONS",
+		] as const) {
 			expect(() => parse(compactEligibilityQuery(scope))).not.toThrow();
 		}
 	});

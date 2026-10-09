@@ -340,7 +340,7 @@ function paidAccountSource() {
     sum(generationCostMillicents) / 100000.0 as accrued_value_usd
   from sync_prod.sync_usage3
   where generationEndedAt >= toDateTime('2026-09-01 00:00:00', 'UTC')
-    and generationEndedAt < toDateTime('2026-10-01 00:00:00', 'UTC')
+    and generationEndedAt < toDateTime('2026-09-30 23:59:59', 'UTC') + INTERVAL 1 SECOND
     and organizationId != ''
     and organizationPlanType in ('hobbyist', 'creator', 'growth', 'scale', 'starter', 'pro', 'team')
   group by organizationId
@@ -348,7 +348,7 @@ function paidAccountSource() {
 ), joined as (
   select
     count() as eligible_accounts,
-    countIf(professional.organization_id != '') as professional_accounts,
+    (select count() from professional) as professional_accounts,
     countIf(accounts.status = 'active') as active_accounts,
     countIf(accounts.status = 'past_due') as past_due_accounts,
     countIf(accounts.subscription_count > 1) as multi_subscription_accounts

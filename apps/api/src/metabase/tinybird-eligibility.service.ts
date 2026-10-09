@@ -56,7 +56,7 @@ select
   count(*) over()::bigint as source_row_count
 from ${source}
 order by user_id, organization_id
-limit 10000`;
+limit 1000000`;
 }
 
 const USER_TABLES = [

@@ -4,7 +4,32 @@ import { astVisitor, locationOf, parse } from "pgsql-ast-parser";
 import { MetabaseClient } from "./metabase.client";
 import { metabaseConfig } from "./metabase.config";
 
-export function compactEligibilityQuery(): string {
+export type EligibilityScope = "ALL_IDENTITIES" | "SUBSCRIBED_ORGANIZATIONS";
+
+export function compactEligibilityQuery(
+	scope: EligibilityScope = "ALL_IDENTITIES",
+): string {
+	const paidScope = scope === "SUBSCRIBED_ORGANIZATIONS";
+	const joins = paidScope
+		? `left join public.user_organizations uo on uo.user_id = u.id
+	  left join public.organizations o on o.id = uo.organization_id
+	  where lower(coalesce(u.email, '')) like '%@sync.so'
+	    or lower(coalesce(u.email, '')) like '%@sync.labs'`
+		: `left join public.user_organizations uo on uo.user_id = u.id
+  left join public.organizations o on o.id = uo.organization_id
+  where lower(coalesce(u.email, '')) like '%@sync.so'
+    or lower(coalesce(u.email, '')) like '%@sync.labs'
+    or coalesce(u.banned, false)`;
+	const source = paidScope ? "population" : "filtered";
+	const filtered = paidScope
+		? ""
+		: `, filtered as (
+  select population.*
+  from population
+  where population.email like '%@sync.so'
+    or population.email like '%@sync.labs'
+    or (population.banned and not population.has_subscribed)
+)`;
 	return `with population as (
   select
     u.id::text as user_id,
@@ -24,24 +49,14 @@ export function compactEligibilityQuery(): string {
         and paid_organization.first_subscribed_at is not null
     ) as has_subscribed
   from auth.users u
-  left join public.user_organizations uo on uo.user_id = u.id
-  left join public.organizations o on o.id = uo.organization_id
-  where lower(coalesce(u.email, '')) like '%@sync.so'
-    or lower(coalesce(u.email, '')) like '%@sync.labs'
-    or coalesce(u.banned, false)
-), filtered as (
-  select population.*
-  from population
-  where population.email like '%@sync.so'
-    or population.email like '%@sync.labs'
-    or (population.banned and not population.has_subscribed)
-)
+  ${joins}
+}${filtered}
 select
-  filtered.*,
+  ${source}.*,
   count(*) over()::bigint as source_row_count
-from filtered
+from ${source}
 order by user_id, organization_id
-limit 1000000`;
+limit 10000`;
 }
 
 const USER_TABLES = [
@@ -90,36 +105,12 @@ export type GovernedTinybirdQuery = {
 		returnedRows: number;
 		scope?: "ALL_IDENTITIES" | "SUBSCRIBED_ORGANIZATIONS";
 		policy?: "PRODUCT_ACTIVITY" | "MONEY";
-		enforcement?:
-			| "POSTGRES_LIVE_JOIN"
-			| "TINYBIRD_ID_EXCLUSIONS"
-			| "EXPLICIT_SUBSCRIPTION_SCOPE";
-		limitation?: "BANNED_NEVER_SUBSCRIBED_JOIN_REQUIRED";
+		enforcement?: "POSTGRES_LIVE_JOIN" | "TINYBIRD_ID_EXCLUSIONS";
+		limitation?:
+			| "BANNED_NEVER_SUBSCRIBED_JOIN_REQUIRED"
+			| "QUERY_SOURCE_NOT_GOVERNED";
 	};
 };
-
-export function governExplicitSubscriptionQuery(
-	queryText: string,
-): GovernedTinybirdQuery {
-	const capturedAt = new Date().toISOString();
-	return {
-		queryText,
-		applied: true,
-		eligibility: {
-			capturedAt,
-			contentHash: createHash("sha256").update(queryText).digest("hex"),
-			excludedUsers: 0,
-			excludedOrganizations: 0,
-			excludedCustomers: 0,
-			complete: true,
-			sourceRows: 0,
-			returnedRows: 0,
-			scope: "SUBSCRIBED_ORGANIZATIONS",
-			policy: "PRODUCT_ACTIVITY",
-			enforcement: "EXPLICIT_SUBSCRIPTION_SCOPE",
-		},
-	};
-}
 
 export type EligibilityRow = {
 	userId: string;
@@ -161,7 +152,7 @@ export class TinybirdEligibilityService {
 		scope: TinybirdEligibilitySnapshot["scope"],
 		policy: TinybirdEligibilitySnapshot["policy"],
 	): Promise<TinybirdEligibilitySnapshot> {
-		const base = await this.baseRows();
+		const base = await this.baseRows(scope);
 		return buildTinybirdEligibility(
 			base.rows,
 			base.capturedAt,
@@ -171,8 +162,8 @@ export class TinybirdEligibilityService {
 		);
 	}
 
-	private async baseRows() {
-		const cacheKey = "complete-product-exclusions";
+	private async baseRows(scope: EligibilityScope) {
+		const cacheKey = scope;
 		const cached = this.baseCache.get(cacheKey);
 		if (cached && cached.expiresAt > Date.now()) {
 			return cached;
@@ -180,7 +171,7 @@ export class TinybirdEligibilityService {
 		const config = metabaseConfig();
 		if (!config) throw new Error("Metabase is not configured.");
 		const rows = await new MetabaseClient(config).exportRows({
-			queryText: compactEligibilityQuery(),
+			queryText: compactEligibilityQuery(scope),
 			databaseExternalId: "34",
 		});
 		const sourceRows =
@@ -242,13 +233,23 @@ export function buildTinybirdEligibility(
 	const excludedUserIds = sortedUnique(
 		rows
 			.filter((row) =>
-				isIneligible(row, policy, Boolean(subscribedByUser.get(row.userId))),
+				isIneligible(
+					row,
+					policy,
+					Boolean(subscribedByUser.get(row.userId)),
+					scope,
+				),
 			)
 			.map((row) => row.userId),
 	);
 	const ownerRows = rows.filter(
 		(row) =>
-			isIneligible(row, policy, Boolean(subscribedByUser.get(row.userId))) &&
+			isIneligible(
+				row,
+				policy,
+				Boolean(subscribedByUser.get(row.userId)),
+				scope,
+			) &&
 			(row.membershipRole === "owner" || row.membershipRole === ""),
 	);
 	const excludedOrganizationIds = sortedUnique(
@@ -337,6 +338,7 @@ export function governTinybirdQuery(
 	}
 	const requiresBannedNeverSubscribedJoin =
 		eligibility.policy === "PRODUCT_ACTIVITY" &&
+		eligibility.scope === "ALL_IDENTITIES" &&
 		!hasSubscribedPopulation(queryText);
 	return {
 		queryText: governed,
@@ -345,7 +347,9 @@ export function governTinybirdQuery(
 			eligibility,
 			requiresBannedNeverSubscribedJoin
 				? "BANNED_NEVER_SUBSCRIBED_JOIN_REQUIRED"
-				: undefined,
+				: applied
+					? undefined
+					: "QUERY_SOURCE_NOT_GOVERNED",
 		),
 	};
 }
@@ -435,10 +439,12 @@ function isIneligible(
 	row: EligibilityRow,
 	policy: TinybirdEligibilitySnapshot["policy"],
 	hasSubscribed: boolean,
+	scope: TinybirdEligibilitySnapshot["scope"],
 ): boolean {
 	const internal =
 		row.email.endsWith("@sync.so") || row.email.endsWith("@sync.labs");
 	if (internal) return true;
+	if (scope === "SUBSCRIBED_ORGANIZATIONS") return false;
 	return policy === "PRODUCT_ACTIVITY" && row.banned && !hasSubscribed;
 }
 
@@ -457,7 +463,9 @@ function userPredicate(userIds: string[], organizationIds: string[]): string {
 
 function eligibilityEvidence(
 	eligibility: TinybirdEligibilitySnapshot,
-	limitation?: "BANNED_NEVER_SUBSCRIBED_JOIN_REQUIRED",
+	limitation?:
+		| "BANNED_NEVER_SUBSCRIBED_JOIN_REQUIRED"
+		| "QUERY_SOURCE_NOT_GOVERNED",
 ) {
 	return {
 		capturedAt: eligibility.capturedAt.toISOString(),

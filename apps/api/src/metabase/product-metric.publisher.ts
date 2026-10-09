@@ -81,11 +81,10 @@ export type PublishInput = {
 		returnedRows: number;
 		scope?: "ALL_IDENTITIES" | "SUBSCRIBED_ORGANIZATIONS";
 		policy?: "PRODUCT_ACTIVITY" | "MONEY";
-		enforcement?:
-			| "POSTGRES_LIVE_JOIN"
-			| "TINYBIRD_ID_EXCLUSIONS"
-			| "EXPLICIT_SUBSCRIPTION_SCOPE";
-		limitation?: "BANNED_NEVER_SUBSCRIBED_JOIN_REQUIRED";
+		enforcement?: "POSTGRES_LIVE_JOIN" | "TINYBIRD_ID_EXCLUSIONS";
+		limitation?:
+			| "BANNED_NEVER_SUBSCRIBED_JOIN_REQUIRED"
+			| "QUERY_SOURCE_NOT_GOVERNED";
 	};
 	revenueDoorPolicy?: RevenueDoorPolicyEvidence;
 	verificationChecks?: PublishVerificationCheck[];

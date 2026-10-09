@@ -126,7 +126,7 @@ describe("product activity eligibility", () => {
 		expect(query).toContain(
 			"population.banned and not population.has_subscribed",
 		);
-		expect(query).toContain("limit 1000000");
+		expect(query).toContain("limit 10000");
 	});
 
 	it("loads ban and subscription fields from the source export", async () => {
@@ -157,6 +157,82 @@ describe("product activity eligibility", () => {
 			const snapshot = await new TinybirdEligibilityService().current();
 			expect(snapshot.complete).toBe(true);
 			expect(snapshot.excludedUserIds).toEqual(["never-paid"]);
+		} finally {
+			exportRows.mockRestore();
+			if (previousUrl === undefined) delete process.env.METABASE_BASE_URL;
+			else process.env.METABASE_BASE_URL = previousUrl;
+			if (previousKey === undefined) delete process.env.METABASE_API_KEY;
+			else process.env.METABASE_API_KEY = previousKey;
+		}
+	});
+
+	it("uses a bounded paid-organization export for paid scopes", async () => {
+		const previousUrl = process.env.METABASE_BASE_URL;
+		const previousKey = process.env.METABASE_API_KEY;
+		process.env.METABASE_BASE_URL = "https://metabase.example.test";
+		process.env.METABASE_API_KEY = "test-only";
+		const exportRows = spyOn(
+			MetabaseClient.prototype,
+			"exportRows",
+		).mockImplementation(async ({ queryText }) => {
+			expect(queryText).toContain("first_subscribed_at is not null");
+			expect(queryText).toContain(
+				"lower(coalesce(u.email, '')) like '%@sync.so'",
+			);
+			expect(queryText).not.toContain(
+				"population.banned and not population.has_subscribed",
+			);
+			return [
+				{
+					user_id: "internal",
+					email: "operator@sync.so",
+					membership_role: "owner",
+					organization_id: "paid-org",
+					customer_id: "paid-customer",
+					has_subscribed: true,
+					source_row_count: 1,
+				},
+			];
+		});
+		try {
+			const service = new TinybirdEligibilityService();
+			const snapshot = await service.currentForPaidActivity();
+			expect(snapshot.complete).toBe(true);
+			expect(snapshot.scope).toBe("SUBSCRIBED_ORGANIZATIONS");
+			expect(snapshot.excludedUserIds).toEqual(["internal"]);
+			expect(snapshot.excludedOrganizationIds).toEqual(["paid-org"]);
+			expect(snapshot.sourceRows).toBe(1);
+		} finally {
+			exportRows.mockRestore();
+			if (previousUrl === undefined) delete process.env.METABASE_BASE_URL;
+			else process.env.METABASE_BASE_URL = previousUrl;
+			if (previousKey === undefined) delete process.env.METABASE_API_KEY;
+			else process.env.METABASE_API_KEY = previousKey;
+		}
+	});
+
+	it("keeps all-identity and paid-scope exports in separate caches", async () => {
+		const previousUrl = process.env.METABASE_BASE_URL;
+		const previousKey = process.env.METABASE_API_KEY;
+		process.env.METABASE_BASE_URL = "https://metabase.example.test";
+		process.env.METABASE_API_KEY = "test-only";
+		const queries: string[] = [];
+		const exportRows = spyOn(
+			MetabaseClient.prototype,
+			"exportRows",
+		).mockImplementation(async ({ queryText }) => {
+			queries.push(queryText);
+			return [];
+		});
+		try {
+			const service = new TinybirdEligibilityService();
+			await service.current();
+			await service.currentForPaidActivity();
+			expect(queries).toHaveLength(2);
+			expect(queries[0]).toContain(
+				"population.banned and not population.has_subscribed",
+			);
+			expect(queries[1]).toContain("first_subscribed_at is not null");
 		} finally {
 			exportRows.mockRestore();
 			if (previousUrl === undefined) delete process.env.METABASE_BASE_URL;
@@ -237,6 +313,22 @@ where "organizationPlanType" in ('hobbyist', 'creator')`),
 		expect(snapshot.excludedUserIds).toEqual(["internal", "never-paid"]);
 		expect(snapshot.excludedOrganizationIds).toEqual(["internal-org", "org-1"]);
 		expect(snapshot.excludedUserIds).not.toContain("paid-before-ban");
+	});
+
+	it("keeps paid scopes limited to internal exclusions", () => {
+		const snapshot = buildTinybirdEligibility(
+			[
+				row({ userId: "never-paid", banned: true }),
+				row({ userId: "internal", email: "operator@sync.so" }),
+			],
+			new Date("2026-08-19T00:00:00.000Z"),
+			2,
+			"SUBSCRIBED_ORGANIZATIONS",
+			"PRODUCT_ACTIVITY",
+		);
+
+		expect(snapshot.complete).toBe(true);
+		expect(snapshot.excludedUserIds).toEqual(["internal"]);
 	});
 
 	it("joins Product Postgres generations to the shared reporting population", () => {

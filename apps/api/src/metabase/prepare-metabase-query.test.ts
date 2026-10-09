@@ -247,7 +247,10 @@ describe("shared Metabase preview and refresh preparation", () => {
 				...policy,
 				compile: mock(async (queryText: string) => ({
 					queryText,
-					evidence: { applied: true, complete: true },
+					evidence: {
+						applied: true,
+						complete: true,
+					} as RevenueDoorPolicyEvidence,
 				})),
 			},
 		);

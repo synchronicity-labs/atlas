@@ -304,25 +304,39 @@ order by monthly.period_start`;
 function paidAccountSource() {
 	return `with cutoff as (
   select toDateTime('2026-09-30 23:59:59', 'UTC') as cutoff
-), period_rows as (
+), subscription_state as (
   select
     s.id as subscription_id,
-    s.organizationId as organization_id,
-    s.customerId as customer_id,
-    s.status as status,
-    s.plan as plan,
-    s.currentPeriodStart as period_start,
-    s.currentPeriodEnd as period_end,
-    s.canceledAt as canceled_at
+    argMax(s.organizationId, s.createdAt) as organization_id,
+    argMax(s.customerId, s.createdAt) as customer_id,
+    argMax(s.status, s.createdAt) as status,
+    argMax(s.plan, s.createdAt) as plan,
+    argMax(s.currentPeriodStart, s.createdAt) as period_start,
+    argMax(s.currentPeriodEnd, s.createdAt) as period_end,
+    nullIf(maxIf(s.canceledAt, isNotNull(s.canceledAt)), toDateTime(0)) as canceled_at
   from sync_prod.sync_stripe_subscriptions_with_plan s
   cross join cutoff
-  where s.currentPeriodStart <= cutoff.cutoff
-    and s.currentPeriodEnd > cutoff.cutoff
-    and s.plan in ('hobbyist', 'creator', 'growth', 'scale', 'starter', 'pro', 'team')
-    and s.status in ('active', 'past_due')
-    and s.organizationId != ''
-    and s.customerId != ''
-    and (isNull(s.canceledAt) or s.canceledAt > cutoff.cutoff)
+  where s.createdAt <= cutoff.cutoff
+  group by s.id
+), period_rows as (
+  select
+    subscription_id,
+    organization_id,
+    customer_id,
+    status,
+    plan,
+    period_start,
+    period_end,
+    canceled_at
+  from subscription_state
+  cross join cutoff
+  where period_start <= cutoff.cutoff
+    and period_end > cutoff.cutoff
+    and plan in ('hobbyist', 'creator', 'growth', 'scale', 'starter', 'pro', 'team')
+    and status in ('active', 'past_due')
+    and organization_id != ''
+    and customer_id != ''
+    and (isNull(canceled_at) or canceled_at > cutoff.cutoff)
 ), accounts as (
   select
     organization_id,

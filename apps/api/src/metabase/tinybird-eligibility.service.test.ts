@@ -1,4 +1,5 @@
 import { describe, expect, it, spyOn } from "bun:test";
+import { parse } from "pgsql-ast-parser";
 import { MetabaseClient } from "./metabase.client";
 import {
 	buildTinybirdEligibility,
@@ -115,6 +116,12 @@ where "organizationPlanType" in ('hobbyist', 'creator', 'growth', 'scale')`,
 });
 
 describe("product activity eligibility", () => {
+	it("emits parseable SQL for both eligibility scopes", () => {
+		for (const scope of ["ALL_IDENTITIES", "SUBSCRIBED_ORGANIZATIONS"] as const) {
+			expect(() => parse(compactEligibilityQuery(scope))).not.toThrow();
+		}
+	});
+
 	it("requests all required exclusions with authoritative subscription state", () => {
 		const query = compactEligibilityQuery().toLowerCase();
 

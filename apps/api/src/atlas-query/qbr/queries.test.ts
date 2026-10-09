@@ -343,16 +343,16 @@ test("PLG paid-account questions use the period-effective subscription query", (
 		);
 		expect(queries[id]?.queryText).toContain("group by organization_id");
 		expect(queries[id]?.queryText).toContain("2026-09-30");
-		expect(queries[id]?.queryText).toContain("argMax(s.status, s.createdAt)");
+		expect(queries[id]?.queryText).toContain(
+			"argMax(s.status, tuple(s.currentPeriodEnd, s.currentPeriodStart, s.createdAt, s.eventType, s.status, s.canceledAt, s.plan, s.organizationId, s.customerId))",
+		);
 		expect(queries[id]?.queryText).toContain(
 			"maxIf(s.canceledAt, isNotNull(s.canceledAt))",
 		);
 		expect(queries[id]?.queryText).toContain(
 			"where s.createdAt <= cutoff.cutoff",
 		);
-		expect(queries[id]?.queryText).not.toContain(
-			"tuple(s.currentPeriodStart, s.currentPeriodEnd",
-		);
+		expect(queries[id]?.queryText).not.toContain("argMax(s.status, s.createdAt)");
 	}
 });
 

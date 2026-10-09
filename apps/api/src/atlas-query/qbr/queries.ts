@@ -307,12 +307,12 @@ function paidAccountSource() {
 ), subscription_state as (
   select
     s.id as subscription_id,
-    argMax(s.organizationId, s.createdAt) as organization_id,
-    argMax(s.customerId, s.createdAt) as customer_id,
-    argMax(s.status, s.createdAt) as status,
-    argMax(s.plan, s.createdAt) as plan,
-    argMax(s.currentPeriodStart, s.createdAt) as period_start,
-    argMax(s.currentPeriodEnd, s.createdAt) as period_end,
+    argMax(s.organizationId, tuple(s.currentPeriodEnd, s.currentPeriodStart, s.createdAt, s.eventType, s.status, s.canceledAt, s.plan, s.organizationId, s.customerId)) as organization_id,
+    argMax(s.customerId, tuple(s.currentPeriodEnd, s.currentPeriodStart, s.createdAt, s.eventType, s.status, s.canceledAt, s.plan, s.organizationId, s.customerId)) as customer_id,
+    argMax(s.status, tuple(s.currentPeriodEnd, s.currentPeriodStart, s.createdAt, s.eventType, s.status, s.canceledAt, s.plan, s.organizationId, s.customerId)) as status,
+    argMax(s.plan, tuple(s.currentPeriodEnd, s.currentPeriodStart, s.createdAt, s.eventType, s.status, s.canceledAt, s.plan, s.organizationId, s.customerId)) as plan,
+    argMax(s.currentPeriodStart, tuple(s.currentPeriodEnd, s.currentPeriodStart, s.createdAt, s.eventType, s.status, s.canceledAt, s.plan, s.organizationId, s.customerId)) as period_start,
+    argMax(s.currentPeriodEnd, tuple(s.currentPeriodEnd, s.currentPeriodStart, s.createdAt, s.eventType, s.status, s.canceledAt, s.plan, s.organizationId, s.customerId)) as period_end,
     nullIf(maxIf(s.canceledAt, isNotNull(s.canceledAt)), toDateTime(0)) as canceled_at
   from sync_prod.sync_stripe_subscriptions_with_plan s
   cross join cutoff

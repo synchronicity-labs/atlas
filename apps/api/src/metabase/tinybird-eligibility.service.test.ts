@@ -136,7 +136,7 @@ describe("product activity eligibility", () => {
 		expect(query).toContain(
 			"population.banned and not population.has_subscribed",
 		);
-		expect(query).toContain("limit 10000");
+		expect(query).toContain("limit 1000000");
 	});
 
 	it("loads ban and subscription fields from the source export", async () => {

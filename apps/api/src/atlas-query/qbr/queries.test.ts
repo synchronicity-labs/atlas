@@ -352,7 +352,9 @@ test("PLG paid-account questions use the period-effective subscription query", (
 		expect(queries[id]?.queryText).toContain(
 			"where s.createdAt <= cutoff.cutoff",
 		);
-		expect(queries[id]?.queryText).not.toContain("argMax(s.status, s.createdAt)");
+		expect(queries[id]?.queryText).not.toContain(
+			"argMax(s.status, s.createdAt)",
+		);
 	}
 });
 

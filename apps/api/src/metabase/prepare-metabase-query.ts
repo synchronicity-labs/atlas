@@ -1,5 +1,6 @@
 import {
 	isQbrEnterpriseUsageRetentionQuestion,
+	isQbrPaidAccountQuestion,
 	isQbrPlgQuestion,
 } from "../atlas-query/qbr/queries";
 import {
@@ -17,6 +18,7 @@ import {
 import { boundRevenueUsage } from "./revenue-usage-bounds";
 import {
 	type GovernedTinybirdQuery,
+	governExplicitSubscriptionQuery,
 	hasSubscribedPopulation,
 	type TinybirdEligibilityService,
 } from "./tinybird-eligibility.service";
@@ -150,24 +152,28 @@ export async function prepareGovernedMetabaseQuery(
 		["34", "166"].includes(question.databaseExternalId ?? "") &&
 		!abuseUsesAllIdentities(question.sourceExternalId)
 	) {
-		const snapshot = qbrPlg
-			? await eligibility.currentForPaidActivity()
-			: qbrEnterpriseUsageRetention
-				? await eligibility.currentForRevenue()
-				: usesSubscribedRevenueEligibility(
-							question.number,
-							question.name,
-							classifiedQueryText,
-						)
+		if (isQbrPaidAccountQuestion(question.sourceExternalId)) {
+			governed = governExplicitSubscriptionQuery(classifiedQueryText);
+		} else {
+			const snapshot = qbrPlg
+				? await eligibility.currentForPaidActivity()
+				: qbrEnterpriseUsageRetention
 					? await eligibility.currentForRevenue()
-					: hasSubscribedPopulation(classifiedQueryText)
-						? await eligibility.currentForPaidActivity()
-						: await eligibility.current();
-		governed = eligibility.govern(
-			classifiedQueryText,
-			question.databaseExternalId,
-			snapshot,
-		);
+					: usesSubscribedRevenueEligibility(
+								question.number,
+								question.name,
+								classifiedQueryText,
+							)
+						? await eligibility.currentForRevenue()
+						: hasSubscribedPopulation(classifiedQueryText)
+							? await eligibility.currentForPaidActivity()
+							: await eligibility.current();
+			governed = eligibility.govern(
+				classifiedQueryText,
+				question.databaseExternalId,
+				snapshot,
+			);
+		}
 		if (question.databaseExternalId === "34" && !governed.applied) {
 			throw new Error(
 				"Atlas could not apply the required clean-user filter. The Product query was not executed. Existing results are unchanged.",

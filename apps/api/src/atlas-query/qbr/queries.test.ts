@@ -128,7 +128,7 @@ test("Q3 aggregates require all three months and use the authored aggregation", 
 	expect(qbrQuarterValue("plg_teams", months.slice(0, 2), now)).toBeNull();
 	expect(qbrQuarterValue("plg_teams", months, now)?.value).toBe(6);
 	expect(qbrQuarterValue("plg_teams_period_end", months, now)?.value).toBe(9);
-	expect(qbrQuarterValue("plg_active_rate", months, now)).toBeNull();
+	expect(qbrQuarterValue("plg_active_rate", months, now)?.value).toBe(9);
 	const movements = [
 		{
 			period: "2026-07",
@@ -330,10 +330,20 @@ test("Q3 return lift pools counts only after all quarter assignments mature", ()
 	).toBeNull();
 });
 
-test("PLG active rate stays unavailable without subscription history", () => {
-	expect(qbrQueries(new Date("2026-10-02T00:00:00Z"))).not.toHaveProperty(
+test("PLG paid-account questions use the period-effective subscription query", () => {
+	const queries = qbrQueries(new Date("2026-10-02T00:00:00Z"));
+	for (const id of [
+		"plg_eligible_accounts",
+		"plg_active_accounts",
 		"plg_active_rate",
-	);
+	]) {
+		expect(queries[id]?.databaseExternalId).toBe("166");
+		expect(queries[id]?.queryText).toContain(
+			"sync_stripe_subscriptions_with_plan",
+		);
+		expect(queries[id]?.queryText).toContain("group by organization_id");
+		expect(queries[id]?.queryText).toContain("2026-09-30");
+	}
 });
 
 test("Enterprise usage retention uses a fixed Stripe cohort for monthly and Q3 NDR", () => {

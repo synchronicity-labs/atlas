@@ -90,10 +90,36 @@ export type GovernedTinybirdQuery = {
 		returnedRows: number;
 		scope?: "ALL_IDENTITIES" | "SUBSCRIBED_ORGANIZATIONS";
 		policy?: "PRODUCT_ACTIVITY" | "MONEY";
-		enforcement?: "POSTGRES_LIVE_JOIN" | "TINYBIRD_ID_EXCLUSIONS";
+		enforcement?:
+			| "POSTGRES_LIVE_JOIN"
+			| "TINYBIRD_ID_EXCLUSIONS"
+			| "EXPLICIT_SUBSCRIPTION_SCOPE";
 		limitation?: "BANNED_NEVER_SUBSCRIBED_JOIN_REQUIRED";
 	};
 };
+
+export function governExplicitSubscriptionQuery(
+	queryText: string,
+): GovernedTinybirdQuery {
+	const capturedAt = new Date().toISOString();
+	return {
+		queryText,
+		applied: true,
+		eligibility: {
+			capturedAt,
+			contentHash: createHash("sha256").update(queryText).digest("hex"),
+			excludedUsers: 0,
+			excludedOrganizations: 0,
+			excludedCustomers: 0,
+			complete: true,
+			sourceRows: 0,
+			returnedRows: 0,
+			scope: "SUBSCRIBED_ORGANIZATIONS",
+			policy: "PRODUCT_ACTIVITY",
+			enforcement: "EXPLICIT_SUBSCRIPTION_SCOPE",
+		},
+	};
+}
 
 export type EligibilityRow = {
 	userId: string;
